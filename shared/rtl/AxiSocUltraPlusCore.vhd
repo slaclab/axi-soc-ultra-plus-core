@@ -31,6 +31,7 @@ entity AxiSocUltraPlusCore is
       ROGUE_SIM_PORT_NUM_G : natural range 1024 to 49151 := 10000;
       ROGUE_SIM_CH_COUNT_G : natural range 1 to 256      := 256;
       BUILD_INFO_G         : BuildInfoType;
+      EXT_AXIL_MASTER_G    : boolean                     := false;
       DMA_BURST_BYTES_G    : positive range 256 to 4096  := 256;
       DMA_SIZE_G           : positive range 1 to 8       := 1);
    port (
@@ -45,13 +46,18 @@ entity AxiSocUltraPlusCore is
       dmaObSlaves     : in  AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0);
       dmaIbMasters    : in  AxiStreamMasterArray(DMA_SIZE_G-1 downto 0);
       dmaIbSlaves     : out AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0);
+      -- External AXI-Lite Interfaces  (dmaClk domain): EXT_AXIL_MASTER_G = true
+      extReadMaster   : in AxiLiteReadMasterType  := AXI_LITE_READ_MASTER_INIT_C;
+      extReadSlave    : out  AxiLiteReadSlaveType  := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
+      extWriteMaster  : in AxiLiteWriteMasterType  := AXI_LITE_WRITE_MASTER_INIT_C;
+      extWriteSlave   : out  AxiLiteWriteSlaveType := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
       -- Application AXI-Lite Interfaces [0x80000000:0xFFFFFFFF] (appClk domain)
       appClk          : in  sl                    := '0';
       appRst          : in  sl                    := '1';
       appReadMaster   : out AxiLiteReadMasterType;
-      appReadSlave    : in  AxiLiteReadSlaveType  := AXI_LITE_READ_SLAVE_EMPTY_OK_C;
+      appReadSlave    : in  AxiLiteReadSlaveType  := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
       appWriteMaster  : out AxiLiteWriteMasterType;
-      appWriteSlave   : in  AxiLiteWriteSlaveType := AXI_LITE_WRITE_SLAVE_EMPTY_OK_C;  -- SYSMON Ports
+      appWriteSlave   : in  AxiLiteWriteSlaveType := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
       -- User General Purpose AXI4 Interfaces (dmaClk domain)
       usrReadMaster   : in  AxiReadMasterType     := AXI_READ_MASTER_INIT_C;
       usrReadSlave    : out AxiReadSlaveType      := AXI_READ_SLAVE_FORCE_C;
@@ -75,9 +81,9 @@ architecture mapping of AxiSocUltraPlusCore is
    signal regWriteSlave  : AxiLiteWriteSlaveType;
 
    signal dmaCtrlReadMasters  : AxiLiteReadMasterArray(2 downto 0);
-   signal dmaCtrlReadSlaves   : AxiLiteReadSlaveArray(2 downto 0)  := (others => AXI_LITE_READ_SLAVE_EMPTY_OK_C);
+   signal dmaCtrlReadSlaves   : AxiLiteReadSlaveArray(2 downto 0)  := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
    signal dmaCtrlWriteMasters : AxiLiteWriteMasterArray(2 downto 0);
-   signal dmaCtrlWriteSlaves  : AxiLiteWriteSlaveArray(2 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_OK_C);
+   signal dmaCtrlWriteSlaves  : AxiLiteWriteSlaveArray(2 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
 
    signal sysClock    : sl;
    signal sysReset    : sl;
@@ -149,15 +155,21 @@ begin
          ROGUE_SIM_EN_G       => ROGUE_SIM_EN_G,
          ROGUE_SIM_PORT_NUM_G => ROGUE_SIM_PORT_NUM_G,
          BUILD_INFO_G         => BUILD_INFO_G,
+         EXT_AXIL_MASTER_G    => EXT_AXIL_MASTER_G,
          DMA_SIZE_G           => DMA_SIZE_G)
       port map (
-         -- AXI4 Interfaces
+         -- Internal AXI4 Interfaces (axiClk domain)
          axiClk              => sysClock,
          axiRst              => sysReset,
          regReadMaster       => regReadMaster,
          regReadSlave        => regReadSlave,
          regWriteMaster      => regWriteMaster,
          regWriteSlave       => regWriteSlave,
+         -- External AXI-Lite Interfaces  (axiClk domain): EXT_AXIL_MASTER_G = true
+         extReadMaster   => extReadMaster,
+         extReadSlave    => extReadSlave,
+         extWriteMaster  => extWriteMaster,
+         extWriteSlave   => extWriteSlave,
          -- DMA AXI-Lite Interfaces
          dmaCtrlReadMasters  => dmaCtrlReadMasters,
          dmaCtrlReadSlaves   => dmaCtrlReadSlaves,

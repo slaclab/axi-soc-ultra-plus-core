@@ -30,17 +30,21 @@ entity AxiSocUltraPlusReg is
       ROGUE_SIM_EN_G       : boolean                     := false;
       ROGUE_SIM_PORT_NUM_G : natural range 1024 to 49151 := 8000;
       BUILD_INFO_G         : BuildInfoType;
-      EN_DEVICE_DNA_G      : boolean                     := true;
-      EN_ICAP_G            : boolean                     := true;
+      EXT_AXIL_MASTER_G    : boolean                     := false;
       DMA_SIZE_G           : positive range 1 to 16      := 1);
    port (
-      -- AXI4 Interfaces (axiClk domain)
+      -- Internal AXI4 Interfaces (axiClk domain)
       axiClk              : in  sl;
       axiRst              : in  sl;
       regReadMaster       : in  AxiLiteReadMasterType;
       regReadSlave        : out AxiLiteReadSlaveType;
       regWriteMaster      : in  AxiLiteWriteMasterType;
       regWriteSlave       : out AxiLiteWriteSlaveType;
+      -- External AXI-Lite Interfaces  (dmaClk domain): EXT_AXIL_MASTER_G = true
+      extReadMaster       : in  AxiLiteReadMasterType  := AXI_LITE_READ_MASTER_INIT_C;
+      extReadSlave        : out AxiLiteReadSlaveType   := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
+      extWriteMaster      : in  AxiLiteWriteMasterType := AXI_LITE_WRITE_MASTER_INIT_C;
+      extWriteSlave       : out AxiLiteWriteSlaveType  := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
       -- DMA AXI-Lite Interfaces (axiClk domain)
       dmaCtrlReadMasters  : out AxiLiteReadMasterArray(2 downto 0);
       dmaCtrlReadSlaves   : in  AxiLiteReadSlaveArray(2 downto 0);
@@ -76,7 +80,7 @@ architecture mapping of AxiSocUltraPlusReg is
       DMA_INDEX_C     => (
          baseAddr     => x"0000_0000",
          addrBits     => 16,
-         connectivity => x"FFFF"),
+         connectivity => x"0001"),  -- Only local AXI-Lite from CPU has access to DMA
       VERSION_INDEX_C => (
          baseAddr     => x"0001_0000",
          addrBits     => 16,
@@ -188,24 +192,49 @@ begin
    --------------------
    -- AXI-Lite Crossbar
    --------------------
-   U_XBAR : entity surf.AxiLiteCrossbar
-      generic map (
-         TPD_G              => TPD_G,
-         DEC_ERROR_RESP_G   => ite(ROGUE_SIM_EN_G, AXI_RESP_DECERR_C, AXI_RESP_OK_C),
-         NUM_SLAVE_SLOTS_G  => 1,
-         NUM_MASTER_SLOTS_G => NUM_AXI_MASTERS_C,
-         MASTERS_CONFIG_G   => AXI_CROSSBAR_MASTERS_CONFIG_C)
-      port map (
-         axiClk              => axiClk,
-         axiClkRst           => axiRst,
-         sAxiWriteMasters(0) => axilWriteMaster,
-         sAxiWriteSlaves(0)  => axilWriteSlave,
-         sAxiReadMasters(0)  => axilReadMaster,
-         sAxiReadSlaves(0)   => axilReadSlave,
-         mAxiWriteMasters    => axilWriteMasters,
-         mAxiWriteSlaves     => axilWriteSlaves,
-         mAxiReadMasters     => axilReadMasters,
-         mAxiReadSlaves      => axilReadSlaves);
+   DUAL_MASTER : if (EXT_AXIL_MASTER_G) generate
+      U_XBAR : entity surf.AxiLiteCrossbar
+         generic map (
+            TPD_G              => TPD_G,
+            NUM_SLAVE_SLOTS_G  => 2,
+            NUM_MASTER_SLOTS_G => NUM_AXI_MASTERS_C,
+            MASTERS_CONFIG_G   => AXI_CROSSBAR_MASTERS_CONFIG_C)
+         port map (
+            axiClk              => axiClk,
+            axiClkRst           => axiRst,
+            sAxiWriteMasters(0) => axilWriteMaster,
+            sAxiWriteMasters(1) => extWriteMaster,
+            sAxiWriteSlaves(0)  => axilWriteSlave,
+            sAxiWriteSlaves(1)  => extWriteSlave,
+            sAxiReadMasters(0)  => axilReadMaster,
+            sAxiReadMasters(1)  => extReadMaster,
+            sAxiReadSlaves(0)   => axilReadSlave,
+            sAxiReadSlaves(1)   => extReadSlave,
+            mAxiWriteMasters    => axilWriteMasters,
+            mAxiWriteSlaves     => axilWriteSlaves,
+            mAxiReadMasters     => axilReadMasters,
+            mAxiReadSlaves      => axilReadSlaves);
+   end generate;
+
+   SINGLE_MASTER : if (not EXT_AXIL_MASTER_G) generate
+      U_XBAR : entity surf.AxiLiteCrossbar
+         generic map (
+            TPD_G              => TPD_G,
+            NUM_SLAVE_SLOTS_G  => 1,
+            NUM_MASTER_SLOTS_G => NUM_AXI_MASTERS_C,
+            MASTERS_CONFIG_G   => AXI_CROSSBAR_MASTERS_CONFIG_C)
+         port map (
+            axiClk              => axiClk,
+            axiClkRst           => axiRst,
+            sAxiWriteMasters(0) => axilWriteMaster,
+            sAxiWriteSlaves(0)  => axilWriteSlave,
+            sAxiReadMasters(0)  => axilReadMaster,
+            sAxiReadSlaves(0)   => axilReadSlave,
+            mAxiWriteMasters    => axilWriteMasters,
+            mAxiWriteSlaves     => axilWriteSlaves,
+            mAxiReadMasters     => axilReadMasters,
+            mAxiReadSlaves      => axilReadSlaves);
+   end generate;
 
    --------------------------
    -- AXI-Lite Version Module
@@ -214,7 +243,7 @@ begin
       generic map (
          TPD_G           => TPD_G,
          BUILD_INFO_G    => BUILD_INFO_G,
-         CLK_PERIOD_G    => (1.0/DMA_CLK_FREQ_C),
+         CLK_PERIOD_G    => DMA_CLK_PERIOD_C,
          EN_DEVICE_DNA_G => true,
          XIL_DEVICE_G    => "ULTRASCALE_PLUS",
          EN_ICAP_G       => false)

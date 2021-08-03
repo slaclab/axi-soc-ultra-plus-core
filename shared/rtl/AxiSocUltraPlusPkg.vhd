@@ -21,12 +21,13 @@ use surf.AxiPkg.all;
 
 package AxiSocUltraPlusPkg is
 
-   -- System Clock Frequency
-   constant DMA_CLK_FREQ_C  : real := 250.0E+6;  -- units of Hz
-   
+   -- System Clock Frequency/Period
+   constant DMA_CLK_FREQ_C   : real := 250.0E+6;              -- units of Hz
+   constant DMA_CLK_PERIOD_C : real := (1.0/DMA_CLK_FREQ_C);  -- units of seconds
+
    -- Application Address Offset
-   constant APP_ADDR_OFFSET_C  : slv(31 downto 0) := x"8000_0000";  -- units of Hz
-      
+   constant APP_ADDR_OFFSET_C : slv(31 downto 0) := x"8000_0000";
+
    -- SOC AXI Configuration
    constant AXI_SOC_CONFIG_C : AxiConfigType := (
       ADDR_WIDTH_C => 40,               -- 40-bit address interface
@@ -37,7 +38,7 @@ package AxiSocUltraPlusPkg is
    -- DMA AXI Stream Configuration
    constant DMA_AXIS_CONFIG_C : AxiStreamConfigType := (
       TSTRB_EN_C    => false,
-      TDATA_BYTES_C => AXI_SOC_CONFIG_C.DATA_BYTES_C, -- Map the widths of the AXI interface
+      TDATA_BYTES_C => AXI_SOC_CONFIG_C.DATA_BYTES_C,  -- Map the widths of the AXI interface
       TDEST_BITS_C  => 8,
       TID_BITS_C    => 3,
       TKEEP_MODE_C  => TKEEP_COMP_C,

@@ -55,9 +55,9 @@ entity AxiSocUltraPlusDma is
       usrWriteSlave    : out AxiWriteSlaveType                  := AXI_WRITE_SLAVE_FORCE_C;
       -- AXI4-Lite Interfaces (axiClk domain)
       axilReadMasters  : in  AxiLiteReadMasterArray(2 downto 0);
-      axilReadSlaves   : out AxiLiteReadSlaveArray(2 downto 0)  := (others => AXI_LITE_READ_SLAVE_EMPTY_OK_C);
+      axilReadSlaves   : out AxiLiteReadSlaveArray(2 downto 0)  := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
       axilWriteMasters : in  AxiLiteWriteMasterArray(2 downto 0);
-      axilWriteSlaves  : out AxiLiteWriteSlaveArray(2 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_OK_C);
+      axilWriteSlaves  : out AxiLiteWriteSlaveArray(2 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
       -- DMA Interfaces (axiClk domain)
       dmaIrq           : out sl                                 := '0';
       dmaBuffGrpPause  : out slv(7 downto 0)                    := (others => '0');
