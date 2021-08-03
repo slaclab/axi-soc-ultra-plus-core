@@ -1,7 +1,7 @@
 # Load RUCKUS environment and library
 source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 
-# Check for valid FPGA 
+# Check for valid FPGA
 if { $::env(PRJ_PART) != "XCZU28DR-FFVG1517-2-E" } {
    puts "\n\nERROR: PRJ_PART must be either XCZU28DR-FFVG1517-2-E in the Makefile\n\n"; exit -1
 }

@@ -88,7 +88,7 @@ if { ${design_name} eq "" } {
    set errMsg "Design <$design_name> already exists in your project, please set the variable <design_name> to another value."
    set nRet 1
 } elseif { [get_files -quiet ${design_name}.bd] ne "" } {
-   # USE CASES: 
+   # USE CASES:
    #    6) Current opened design, has components, but diff names, design_name exists in project.
    #    7) No opened design, design_name exists in project.
 
@@ -122,7 +122,7 @@ set bCheckIPsPassed 1
 ##################################################################
 set bCheckIPs 1
 if { $bCheckIPs == 1 } {
-   set list_check_ips "\ 
+   set list_check_ips "\
 xilinx.com:ip:axi_protocol_converter:2.1\
 xilinx.com:ip:zynq_ultra_ps_e:3.3\
 "
@@ -190,7 +190,7 @@ proc create_root_design { parentCell } {
   # Create interface ports
   set axiLite [ create_bd_intf_port -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 axiLite ]
   set_property -dict [ list \
-   CONFIG.ADDR_WIDTH {32} \
+   CONFIG.ADDR_WIDTH {35} \
    CONFIG.DATA_WIDTH {32} \
    CONFIG.FREQ_HZ {250000000} \
    CONFIG.PROTOCOL {AXI4LITE} \
@@ -507,7 +507,7 @@ MIO}\
    CONFIG.PSU__DDRC__DEVICE_CAPACITY {8192 MBits} \
    CONFIG.PSU__DDRC__DRAM_WIDTH {16 Bits} \
    CONFIG.PSU__DDRC__ECC {Enabled} \
-   CONFIG.PSU__DDRC__ENABLE_LP4_HAS_ECC_COMP {ERR: 0  | 1} \
+   CONFIG.PSU__DDRC__ENABLE_LP4_HAS_ECC_COMP {ERR: 1  | 0} \
    CONFIG.PSU__DDRC__ROW_ADDR_COUNT {16} \
    CONFIG.PSU__DDRC__SB_TARGET {12-12-12} \
    CONFIG.PSU__DDRC__SPEED_BIN {DDR4_1600L} \
@@ -526,6 +526,7 @@ MIO}\
    CONFIG.PSU__ENET0__TSU__ENABLE {0} \
    CONFIG.PSU__FPD_SLCR__WDT1__ACT_FREQMHZ {99.999001} \
    CONFIG.PSU__FPD_SLCR__WDT1__FREQMHZ {99.999001} \
+   CONFIG.PSU__FPD_SLCR__WDT_CLK_SEL__SELECT {APB} \
    CONFIG.PSU__GEM0_COHERENCY {0} \
    CONFIG.PSU__GEM0_ROUTE_THROUGH_FPD {0} \
    CONFIG.PSU__GEM0__REF_CLK_FREQ {125} \
@@ -548,6 +549,7 @@ MIO}\
    CONFIG.PSU__IOU_SLCR__TTC3__FREQMHZ {100.000000} \
    CONFIG.PSU__IOU_SLCR__WDT0__ACT_FREQMHZ {99.999001} \
    CONFIG.PSU__IOU_SLCR__WDT0__FREQMHZ {99.999001} \
+   CONFIG.PSU__IOU_SLCR__WDT_CLK_SEL__SELECT {APB} \
    CONFIG.PSU__LPD_SLCR__CSUPMU__ACT_FREQMHZ {100.000000} \
    CONFIG.PSU__LPD_SLCR__CSUPMU__FREQMHZ {100.000000} \
    CONFIG.PSU__MAXIGP0__DATA_WIDTH {32} \
