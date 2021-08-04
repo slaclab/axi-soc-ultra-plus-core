@@ -47,22 +47,22 @@ entity AxiSocUltraPlusCore is
       dmaIbMasters    : in  AxiStreamMasterArray(DMA_SIZE_G-1 downto 0);
       dmaIbSlaves     : out AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0);
       -- External AXI-Lite Interfaces  (dmaClk domain): EXT_AXIL_MASTER_G = true
-      extReadMaster   : in AxiLiteReadMasterType  := AXI_LITE_READ_MASTER_INIT_C;
-      extReadSlave    : out  AxiLiteReadSlaveType  := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
-      extWriteMaster  : in AxiLiteWriteMasterType  := AXI_LITE_WRITE_MASTER_INIT_C;
-      extWriteSlave   : out  AxiLiteWriteSlaveType := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
+      extReadMaster   : in  AxiLiteReadMasterType  := AXI_LITE_READ_MASTER_INIT_C;
+      extReadSlave    : out AxiLiteReadSlaveType   := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
+      extWriteMaster  : in  AxiLiteWriteMasterType := AXI_LITE_WRITE_MASTER_INIT_C;
+      extWriteSlave   : out AxiLiteWriteSlaveType  := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
       -- Application AXI-Lite Interfaces [0x80000000:0xFFFFFFFF] (appClk domain)
-      appClk          : in  sl                    := '0';
-      appRst          : in  sl                    := '1';
+      appClk          : in  sl                     := '0';
+      appRst          : in  sl                     := '1';
       appReadMaster   : out AxiLiteReadMasterType;
-      appReadSlave    : in  AxiLiteReadSlaveType  := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
+      appReadSlave    : in  AxiLiteReadSlaveType   := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
       appWriteMaster  : out AxiLiteWriteMasterType;
-      appWriteSlave   : in  AxiLiteWriteSlaveType := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
+      appWriteSlave   : in  AxiLiteWriteSlaveType  := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
       -- User General Purpose AXI4 Interfaces (dmaClk domain)
-      usrReadMaster   : in  AxiReadMasterType     := AXI_READ_MASTER_INIT_C;
-      usrReadSlave    : out AxiReadSlaveType      := AXI_READ_SLAVE_FORCE_C;
-      usrWriteMaster  : in  AxiWriteMasterType    := AXI_WRITE_MASTER_INIT_C;
-      usrWriteSlave   : out AxiWriteSlaveType     := AXI_WRITE_SLAVE_FORCE_C;
+      usrReadMaster   : in  AxiReadMasterType      := AXI_READ_MASTER_INIT_C;
+      usrReadSlave    : out AxiReadSlaveType       := AXI_READ_SLAVE_FORCE_C;
+      usrWriteMaster  : in  AxiWriteMasterType     := AXI_WRITE_MASTER_INIT_C;
+      usrWriteSlave   : out AxiWriteSlaveType      := AXI_WRITE_SLAVE_FORCE_C;
       -- SYSMON Ports
       vPIn            : in  sl;
       vNIn            : in  sl);
@@ -166,10 +166,10 @@ begin
          regWriteMaster      => regWriteMaster,
          regWriteSlave       => regWriteSlave,
          -- External AXI-Lite Interfaces  (axiClk domain): EXT_AXIL_MASTER_G = true
-         extReadMaster   => extReadMaster,
-         extReadSlave    => extReadSlave,
-         extWriteMaster  => extWriteMaster,
-         extWriteSlave   => extWriteSlave,
+         extReadMaster       => extReadMaster,
+         extReadSlave        => extReadSlave,
+         extWriteMaster      => extWriteMaster,
+         extWriteSlave       => extWriteSlave,
          -- DMA AXI-Lite Interfaces
          dmaCtrlReadMasters  => dmaCtrlReadMasters,
          dmaCtrlReadSlaves   => dmaCtrlReadSlaves,
