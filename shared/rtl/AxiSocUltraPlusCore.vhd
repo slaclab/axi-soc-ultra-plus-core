@@ -115,20 +115,24 @@ begin
             TPD_G => TPD_G)
          port map (
             -- Clock and Reset
-            axiClk         => sysClock,
-            axiRst         => sysReset,
+            axiClk             => sysClock,
+            axiRst             => sysReset,
             -- Slave AXI4 Interface
-            dmaReadMaster  => dmaReadMaster,
-            dmaReadSlave   => dmaReadSlave,
-            dmaWriteMaster => dmaWriteMaster,
-            dmaWriteSlave  => dmaWriteSlave,
+            dmaReadMaster      => dmaReadMaster,
+            dmaReadSlave       => dmaReadSlave,
+            dmaWriteMaster     => dmaWriteMaster,
+            dmaWriteSlave      => dmaWriteSlave,
             -- Master AXI-Lite Interface
-            regReadMaster  => regReadMaster,
-            regReadSlave   => regReadSlave,
-            regWriteMaster => regWriteMaster,
-            regWriteSlave  => regWriteSlave,
+            regReadMaster      => regReadMaster,
+            regReadSlave       => regReadSlave,
+            regWriteMaster     => regWriteMaster,
+            regWriteSlave      => regWriteSlave,
+            dmaCtrlReadMaster  => dmaCtrlReadMasters(0),
+            dmaCtrlReadSlave   => dmaCtrlReadSlaves(0),
+            dmaCtrlWriteMaster => dmaCtrlWriteMasters(0),
+            dmaCtrlWriteSlave  => dmaCtrlWriteSlaves(0),
             -- Interrupt Interface
-            dmaIrq         => dmaIrq);
+            dmaIrq             => dmaIrq);
 
    end generate;
 
@@ -171,10 +175,10 @@ begin
          extWriteMaster      => extWriteMaster,
          extWriteSlave       => extWriteSlave,
          -- DMA AXI-Lite Interfaces
-         dmaCtrlReadMasters  => dmaCtrlReadMasters,
-         dmaCtrlReadSlaves   => dmaCtrlReadSlaves,
-         dmaCtrlWriteMasters => dmaCtrlWriteMasters,
-         dmaCtrlWriteSlaves  => dmaCtrlWriteSlaves,
+         dmaCtrlReadMasters  => dmaCtrlReadMasters(2 downto 1),
+         dmaCtrlReadSlaves   => dmaCtrlReadSlaves(2 downto 1),
+         dmaCtrlWriteMasters => dmaCtrlWriteMasters(2 downto 1),
+         dmaCtrlWriteSlaves  => dmaCtrlWriteSlaves(2 downto 1),
          -- (Optional) Application AXI-Lite Interfaces
          appClk              => appClk,
          appRst              => appRst,

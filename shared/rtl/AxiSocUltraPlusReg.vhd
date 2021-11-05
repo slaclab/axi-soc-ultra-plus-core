@@ -49,10 +49,10 @@ entity AxiSocUltraPlusReg is
       extWriteMaster      : in  AxiLiteWriteMasterType := AXI_LITE_WRITE_MASTER_INIT_C;
       extWriteSlave       : out AxiLiteWriteSlaveType  := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
       -- DMA AXI-Lite Interfaces (axiClk domain)
-      dmaCtrlReadMasters  : out AxiLiteReadMasterArray(2 downto 0);
-      dmaCtrlReadSlaves   : in  AxiLiteReadSlaveArray(2 downto 0);
-      dmaCtrlWriteMasters : out AxiLiteWriteMasterArray(2 downto 0);
-      dmaCtrlWriteSlaves  : in  AxiLiteWriteSlaveArray(2 downto 0);
+      dmaCtrlReadMasters  : out AxiLiteReadMasterArray(2 downto 1);
+      dmaCtrlReadSlaves   : in  AxiLiteReadSlaveArray(2 downto 1);
+      dmaCtrlWriteMasters : out AxiLiteWriteMasterArray(2 downto 1);
+      dmaCtrlWriteSlaves  : in  AxiLiteWriteSlaveArray(2 downto 1);
       -- Application AXI-Lite Interfaces [0x80000000:0xFFFFFFFF] (appClk domain)
       appClk              : in  sl;
       appRst              : in  sl;
@@ -70,34 +70,29 @@ end AxiSocUltraPlusReg;
 
 architecture mapping of AxiSocUltraPlusReg is
 
-   constant DMA_INDEX_C     : natural := 0;
-   constant VERSION_INDEX_C : natural := 1;
-   constant SYSMON_INDEX_C  : natural := 2;
-   constant AXIS_MON_IB_C   : natural := 3;
-   constant AXIS_MON_OB_C   : natural := 4;
-   constant APP_INDEX_C     : natural := 5;
+   constant VERSION_INDEX_C : natural := 0;
+   constant SYSMON_INDEX_C  : natural := 1;
+   constant AXIS_MON_IB_C   : natural := 2;
+   constant AXIS_MON_OB_C   : natural := 3;
+   constant APP_INDEX_C     : natural := 4;
 
-   constant NUM_AXI_MASTERS_C : natural := 6;
+   constant NUM_AXI_MASTERS_C : natural := 5;
 
    constant AXI_CROSSBAR_MASTERS_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_AXI_MASTERS_C-1 downto 0) := (
-      DMA_INDEX_C     => (
-         baseAddr     => x"0000_0000",
-         addrBits     => 16,
-         connectivity => x"0001"),  -- Only local AXI-Lite from CPU has access to DMA
       VERSION_INDEX_C => (
-         baseAddr     => x"0001_0000",
+         baseAddr     => x"0000_0000",
          addrBits     => 16,
          connectivity => x"FFFF"),
       SYSMON_INDEX_C  => (
-         baseAddr     => x"0002_0000",
+         baseAddr     => x"0001_0000",
          addrBits     => 16,
          connectivity => x"FFFF"),
       AXIS_MON_IB_C   => (
-         baseAddr     => x"0003_0000",
+         baseAddr     => x"0002_0000",
          addrBits     => 16,
          connectivity => x"FFFF"),
       AXIS_MON_OB_C   => (
-         baseAddr     => x"0004_0000",
+         baseAddr     => x"0003_0000",
          addrBits     => 16,
          connectivity => x"FFFF"),
       APP_INDEX_C     => (
@@ -286,11 +281,6 @@ begin
    ---------------------------------
    -- Map the AXI-Lite to DMA Engine
    ---------------------------------
-   dmaCtrlWriteMasters(0)       <= axilWriteMasters(DMA_INDEX_C);
-   axilWriteSlaves(DMA_INDEX_C) <= dmaCtrlWriteSlaves(0);
-   dmaCtrlReadMasters(0)        <= axilReadMasters(DMA_INDEX_C);
-   axilReadSlaves(DMA_INDEX_C)  <= dmaCtrlReadSlaves(0);
-
    dmaCtrlWriteMasters(1)         <= axilWriteMasters(AXIS_MON_IB_C);
    axilWriteSlaves(AXIS_MON_IB_C) <= dmaCtrlWriteSlaves(1);
    dmaCtrlReadMasters(1)          <= axilReadMasters(AXIS_MON_IB_C);
