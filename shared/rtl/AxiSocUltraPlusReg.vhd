@@ -24,6 +24,9 @@ use surf.AxiLitePkg.all;
 library axi_soc_ultra_plus_core;
 use axi_soc_ultra_plus_core.AxiSocUltraPlusPkg.all;
 
+library unisim;
+use unisim.vcomponents.all;
+
 entity AxiSocUltraPlusReg is
    generic (
       TPD_G                : time                        := 1 ns;
@@ -118,28 +121,48 @@ architecture mapping of AxiSocUltraPlusReg is
    signal appResetSync : sl;
    signal appClkFreq   : slv(31 downto 0);
 
+   signal efuse    : slv(31 downto 0);
+   signal localMac : slv(47 downto 0);
+
 begin
+
+   --------------------------------------------------
+   -- Example of using EFUSE to store the MAC Address
+   --------------------------------------------------
+   U_EFuse : EFUSE_USR
+      port map (
+         EFUSEUSR => efuse);
+
+   ----------------------------------------
+   -- 08:00:56:XX:XX:XX (little endian SLV)
+   ----------------------------------------
+   localMac(47 downto 24) <= x"08_00_56";  -- 08:00:56 is the SLAC Vendor ID
+   localMac(23 downto 0)  <= efuse(31 downto 8);  -- Picking off upper 24-bits of EFUSE
 
    ---------------------------------------------------------------------------------------------
    -- Driver Polls the userValues to determine the firmware's configurations and interrupt state
    ---------------------------------------------------------------------------------------------
-   process(appClkFreq, appResetSync)
+   process(appClkFreq, appResetSync, localMac)
       variable i : natural;
    begin
+      -- MAC Address
+      userValues(0)(31 downto 0) <= localMac(31 downto 0);
+      userValues(1)(15 downto 0) <= localMac(47 downto 32);
+
       -- Number of DMA lanes (defined by user)
-      userValues(0) <= toSlv(DMA_SIZE_G, 32);
+      userValues(2) <= toSlv(DMA_SIZE_G, 32);
 
       -- System Clock Frequency
-      userValues(4) <= toSlv(getTimeRatio(DMA_CLK_FREQ_C, 1.0), 32);
+      userValues(3) <= toSlv(getTimeRatio(DMA_CLK_FREQ_C, 1.0), 32);
 
       -- Application Reset
-      userValues(6)(0) <= appResetSync;
+      userValues(4)(0) <= appResetSync;
 
       -- Application Clock Frequency
-      userValues(8) <= appClkFreq;
+      userValues(5) <= appClkFreq;
 
       -- Set unused to zero
-      for i in 63 downto 9 loop
+      for i in 63 downto 6 loop
          userValues(i) <= x"00000000";
       end loop;
 
