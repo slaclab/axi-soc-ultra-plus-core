@@ -1,3 +1,13 @@
 /include/ "system-conf.dtsi"
+&dmaCtrl0 {
+	status = "disabled";
+};
 / {
+	axi_stream_dma_0@b0000000 {
+		compatible = "axi_stream_dma";
+		reg = <0x0 0xb0000000 0x0 0x10000>;
+		interrupts = <0x0 0x6c 0x4>;
+		interrupt-parent = <0x4>;
+		slac,acp = <0x0>;
+	};
 };
