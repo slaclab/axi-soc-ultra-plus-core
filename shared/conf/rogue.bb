@@ -31,6 +31,5 @@ do_configure() {
 
 do_install() {
    cmake_do_install
-   install build/setup.py .
    distutils3_do_install
 }
