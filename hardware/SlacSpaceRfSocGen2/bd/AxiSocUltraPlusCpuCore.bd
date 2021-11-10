@@ -2,8 +2,8 @@
   "design": {
     "design_info": {
       "boundary_crc": "0x15BDB9A6516FFB68",
-      "device": "xqzu48dr-fsrg1517-1M-m",
-      "gen_directory": "../../../../SpaceRfSocGen2_XQ_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
+      "device": "xczu48dr-ffvg1517-1-e",
+      "gen_directory": "../../../../SpaceRfSocGen2_XC_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
@@ -12,8 +12,8 @@
     },
     "design_tree": {
       "axi_protocol_convert_0": "",
-      "zynq_ultra_ps_e_0": "",
-      "axi_protocol_convert_1": ""
+      "axi_protocol_convert_1": "",
+      "zynq_ultra_ps_e_0": ""
     },
     "interface_ports": {
       "axiLite": {
@@ -492,6 +492,21 @@
           }
         }
       },
+      "axi_protocol_convert_1": {
+        "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
+        "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0",
+        "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0.xci",
+        "inst_hier_path": "axi_protocol_convert_1",
+        "interface_ports": {
+          "S_AXI": {
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Slave",
+            "bridges": [
+              "M_AXI"
+            ]
+          }
+        }
+      },
       "zynq_ultra_ps_e_0": {
         "vlnv": "xilinx.com:ip:zynq_ultra_ps_e:3.3",
         "xci_name": "AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0",
@@ -820,10 +835,7 @@
             "value": "0"
           },
           "PSU__NAND__CHIP_ENABLE__ENABLE": {
-            "value": "1"
-          },
-          "PSU__NAND__CHIP_ENABLE__IO": {
-            "value": "MIO 9"
+            "value": "0"
           },
           "PSU__NAND__DATA_STROBE__ENABLE": {
             "value": "0"
@@ -838,10 +850,7 @@
             "value": "MIO 10"
           },
           "PSU__NAND__READY1_BUSY__ENABLE": {
-            "value": "1"
-          },
-          "PSU__NAND__READY1_BUSY__IO": {
-            "value": "MIO 11"
+            "value": "0"
           },
           "PSU__PMU_COHERENCY": {
             "value": "0"
@@ -1106,21 +1115,6 @@
             }
           }
         }
-      },
-      "axi_protocol_convert_1": {
-        "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
-        "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_0_1",
-        "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_1/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_1.xci",
-        "inst_hier_path": "axi_protocol_convert_1",
-        "interface_ports": {
-          "S_AXI": {
-            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
-            "mode": "Slave",
-            "bridges": [
-              "M_AXI"
-            ]
-          }
-        }
       }
     },
     "interface_nets": {
@@ -1160,10 +1154,10 @@
         "ports": [
           "dmaClk",
           "axi_protocol_convert_0/aclk",
-          "zynq_ultra_ps_e_0/maxihpm0_fpd_aclk",
-          "zynq_ultra_ps_e_0/saxihp0_fpd_aclk",
           "axi_protocol_convert_1/aclk",
-          "zynq_ultra_ps_e_0/maxihpm1_fpd_aclk"
+          "zynq_ultra_ps_e_0/maxihpm0_fpd_aclk",
+          "zynq_ultra_ps_e_0/maxihpm1_fpd_aclk",
+          "zynq_ultra_ps_e_0/saxihp0_fpd_aclk"
         ]
       },
       "dmaIrq_1": {

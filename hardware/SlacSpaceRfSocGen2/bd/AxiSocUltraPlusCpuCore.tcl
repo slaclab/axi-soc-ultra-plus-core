@@ -43,7 +43,7 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 
 set list_projs [get_projects -quiet]
 if { $list_projs eq "" } {
-   create_project project_1 myproj -part xqzu48dr-fsrg1517-1M-m
+   create_project project_1 myproj -part xczu48dr-ffvg1517-1-e
 }
 
 
@@ -253,9 +253,6 @@ proc create_root_design { parentCell } {
   set dmaIrq [ create_bd_port -dir I -type intr dmaIrq ]
   set dmaRstL [ create_bd_port -dir I -type rst dmaRstL ]
   set plClk [ create_bd_port -dir O -type clk plClk ]
-  set_property -dict [ list \
-   CONFIG.ASSOCIATED_BUSIF {} \
- ] $plClk
   set plRstL [ create_bd_port -dir O -type rst plRstL ]
 
   # Create instance: axi_protocol_convert_0, and set properties
@@ -578,15 +575,15 @@ MIO}\
    CONFIG.PSU__MAXIGP2__DATA_WIDTH {32} \
    CONFIG.PSU__NAND_COHERENCY {0} \
    CONFIG.PSU__NAND_ROUTE_THROUGH_FPD {0} \
-   CONFIG.PSU__NAND__CHIP_ENABLE__ENABLE {1} \
-   CONFIG.PSU__NAND__CHIP_ENABLE__IO {MIO 9} \
+   CONFIG.PSU__NAND__CHIP_ENABLE__ENABLE {0} \
+   CONFIG.PSU__NAND__CHIP_ENABLE__IO {<Select>} \
    CONFIG.PSU__NAND__DATA_STROBE__ENABLE {0} \
    CONFIG.PSU__NAND__PERIPHERAL__ENABLE {1} \
    CONFIG.PSU__NAND__PERIPHERAL__IO {MIO 13 .. 25} \
    CONFIG.PSU__NAND__READY0_BUSY__ENABLE {1} \
    CONFIG.PSU__NAND__READY0_BUSY__IO {MIO 10} \
-   CONFIG.PSU__NAND__READY1_BUSY__ENABLE {1} \
-   CONFIG.PSU__NAND__READY1_BUSY__IO {MIO 11} \
+   CONFIG.PSU__NAND__READY1_BUSY__ENABLE {0} \
+   CONFIG.PSU__NAND__READY1_BUSY__IO {<Select>} \
    CONFIG.PSU__PMU_COHERENCY {0} \
    CONFIG.PSU__PMU__AIBACK__ENABLE {0} \
    CONFIG.PSU__PMU__EMIO_GPI__ENABLE {0} \
