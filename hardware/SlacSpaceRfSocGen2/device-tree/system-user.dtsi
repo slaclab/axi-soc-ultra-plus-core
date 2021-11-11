@@ -7,9 +7,6 @@
 &gem0 {
 	local-mac-address = [ff ff ff ff ff ff];
 };
-&dmaCtrl0 {
-	status = "disabled";
-};
 / {
 	axi_stream_dma_0@b0000000 {
 		compatible = "axi_stream_dma";
