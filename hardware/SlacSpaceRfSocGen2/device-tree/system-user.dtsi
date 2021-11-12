@@ -5,7 +5,7 @@
 	};
 };
 &gem0 {
-	local-mac-address = [ff ff ff ff ff ff];
+	local-mac-address = [08 00 56 00 00 00];
 };
 / {
 	axi_stream_dma_0@b0000000 {
