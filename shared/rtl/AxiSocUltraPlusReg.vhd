@@ -129,10 +129,10 @@ begin
          EFUSEUSR => efuse);
 
    ----------------------------------------
-   -- 08:00:56:XX:XX:XX (little endian SLV)
+   -- 08:00:56:XX:XX:XX (big endian SLV)
    ----------------------------------------
-   localMac(47 downto 24) <= x"08_00_56";  -- 08:00:56 is the SLAC Vendor ID
-   localMac(23 downto 0)  <= efuse(31 downto 8);  -- Picking off upper 24-bits of EFUSE
+   localMac(23 downto 0)  <= x"56_00_08";  -- 08:00:56 is the SLAC Vendor ID
+   localMac(47 downto 24) <= efuse(31 downto 8);  -- Picking off upper 24-bits of EFUSE
 
    ---------------------------------------------------------------------------------------------
    -- Driver Polls the userValues to determine the firmware's configurations and interrupt state
