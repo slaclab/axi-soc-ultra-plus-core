@@ -14,7 +14,7 @@ import surf.xilinx             as xil
 
 import axi_soc_ultra_plus_core as core
 
-class AxiPcieCore(pr.Device):
+class AxiSocCore(pr.Device):
     """This class maps to axi-soc-ultra-plus-core/shared/rtl/AxiSocUltraPlusReg.vhd"""
     def __init__(self,
                  numDmaLanes = 1,
