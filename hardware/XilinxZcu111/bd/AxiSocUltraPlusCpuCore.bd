@@ -1,19 +1,19 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x15BDB9A6516FFB68",
+      "boundary_crc": "0x15BDB9A6F48F85F2",
       "device": "xczu28dr-ffvg1517-2-e",
       "gen_directory": "../../../../SpaceRfSocXilinxZcu208DevBoard_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
-      "tool_version": "2021.1",
+      "tool_version": "2021.2",
       "validated": "true"
     },
     "design_tree": {
       "axi_protocol_convert_0": "",
-      "zynq_ultra_ps_e_0": "",
-      "axi_protocol_convert_1": ""
+      "axi_protocol_convert_1": "",
+      "zynq_ultra_ps_e_0": ""
     },
     "interface_ports": {
       "axiLite": {
@@ -482,6 +482,21 @@
         "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0.xci",
         "inst_hier_path": "axi_protocol_convert_0",
+        "interface_ports": {
+          "S_AXI": {
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Slave",
+            "bridges": [
+              "M_AXI"
+            ]
+          }
+        }
+      },
+      "axi_protocol_convert_1": {
+        "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
+        "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0",
+        "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0.xci",
+        "inst_hier_path": "axi_protocol_convert_1",
         "interface_ports": {
           "S_AXI": {
             "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
@@ -1538,21 +1553,6 @@
             }
           }
         }
-      },
-      "axi_protocol_convert_1": {
-        "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
-        "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_0_1",
-        "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_1/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_1.xci",
-        "inst_hier_path": "axi_protocol_convert_1",
-        "interface_ports": {
-          "S_AXI": {
-            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
-            "mode": "Slave",
-            "bridges": [
-              "M_AXI"
-            ]
-          }
-        }
       }
     },
     "interface_nets": {
@@ -1592,10 +1592,10 @@
         "ports": [
           "dmaClk",
           "axi_protocol_convert_0/aclk",
-          "zynq_ultra_ps_e_0/maxihpm0_fpd_aclk",
-          "zynq_ultra_ps_e_0/saxihp0_fpd_aclk",
           "axi_protocol_convert_1/aclk",
-          "zynq_ultra_ps_e_0/maxihpm1_fpd_aclk"
+          "zynq_ultra_ps_e_0/maxihpm0_fpd_aclk",
+          "zynq_ultra_ps_e_0/maxihpm1_fpd_aclk",
+          "zynq_ultra_ps_e_0/saxihp0_fpd_aclk"
         ]
       },
       "dmaIrq_1": {

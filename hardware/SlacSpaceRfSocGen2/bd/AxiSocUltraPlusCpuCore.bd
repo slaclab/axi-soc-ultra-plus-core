@@ -1,13 +1,13 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x15BDB9A6516FFB68",
-      "device": "xczu48dr-ffvg1517-1-e",
-      "gen_directory": "../../../../SpaceRfSocGen2_XC_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
+      "boundary_crc": "0x15BDB9A6F48F85F2",
+      "device": "xqzu48dr-fsrg1517-1M-m",
+      "gen_directory": "../../../../SpaceRfSocGen2_XQ_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
-      "tool_version": "2021.1",
+      "tool_version": "2021.2",
       "validated": "true"
     },
     "design_tree": {
@@ -525,6 +525,15 @@
           "PSU_DYNAMIC_DDR_CONFIG_EN": {
             "value": "0"
           },
+          "PSU_MIO_11_DIRECTION": {
+            "value": "in"
+          },
+          "PSU_MIO_11_DRIVE_STRENGTH": {
+            "value": "12"
+          },
+          "PSU_MIO_11_SLEW": {
+            "value": "fast"
+          },
           "PSU_MIO_27_DRIVE_STRENGTH": {
             "value": "12"
           },
@@ -609,11 +618,17 @@
           "PSU_MIO_77_POLARITY": {
             "value": "Default"
           },
+          "PSU_MIO_9_DIRECTION": {
+            "value": "out"
+          },
+          "PSU_MIO_9_INPUT_TYPE": {
+            "value": "cmos"
+          },
           "PSU_MIO_TREE_PERIPHERALS": {
-            "value": "#########NAND#NAND#NAND##NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#UART 0#UART 0########PMU GPO 3#PMU GPO 4#PMU GPO 5###############GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO"
+            "value": "##########NAND###NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#UART 0#UART 0########PMU GPO 3#PMU GPO 4#PMU GPO 5###############GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO"
           },
           "PSU_MIO_TREE_SIGNALS": {
-            "value": "#########nfc_ce[1]#nfc_rb_n[0]#nfc_rb_n[1]##nfc_ce[0]#nfc_cle#nfc_ale#nfc_dq_out[0]#nfc_dq_out[1]#nfc_dq_out[2]#nfc_dq_out[3]#nfc_dq_out[4]#nfc_dq_out[5]#nfc_we_b#nfc_dq_out[6]#nfc_dq_out[7]#nfc_re_n#rxd#txd########gpo[3]#gpo[4]#gpo[5]###############gpio2[52]#gpio2[53]#gpio2[54]#gpio2[55]#gpio2[56]#gpio2[57]#gpio2[58]#gpio2[59]#gpio2[60]#gpio2[61]#gpio2[62]#gpio2[63]#gpio2[64]#gpio2[65]#gpio2[66]#gpio2[67]#gpio2[68]#gpio2[69]#gpio2[70]#gpio2[71]#gpio2[72]#gpio2[73]#gpio2[74]#gpio2[75]#gpio2[76]#gpio2[77]"
+            "value": "##########nfc_rb_n[0]###nfc_ce[0]#nfc_cle#nfc_ale#nfc_dq_out[0]#nfc_dq_out[1]#nfc_dq_out[2]#nfc_dq_out[3]#nfc_dq_out[4]#nfc_dq_out[5]#nfc_we_b#nfc_dq_out[6]#nfc_dq_out[7]#nfc_re_n#rxd#txd########gpo[3]#gpo[4]#gpo[5]###############gpio2[52]#gpio2[53]#gpio2[54]#gpio2[55]#gpio2[56]#gpio2[57]#gpio2[58]#gpio2[59]#gpio2[60]#gpio2[61]#gpio2[62]#gpio2[63]#gpio2[64]#gpio2[65]#gpio2[66]#gpio2[67]#gpio2[68]#gpio2[69]#gpio2[70]#gpio2[71]#gpio2[72]#gpio2[73]#gpio2[74]#gpio2[75]#gpio2[76]#gpio2[77]"
           },
           "PSU__ACT_DDR_FREQ_MHZ": {
             "value": "799.992004"
