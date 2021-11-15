@@ -11,8 +11,9 @@
 import pyrogue                 as pr
 import surf.axi                as axi
 import surf.xilinx             as xil
-
 import axi_soc_ultra_plus_core as core
+
+import click
 
 class AxiSocCore(pr.Device):
     """This class maps to axi-soc-ultra-plus-core/shared/rtl/AxiSocUltraPlusReg.vhd"""
