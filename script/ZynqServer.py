@@ -30,7 +30,7 @@ parser.add_argument(
     "--numLane",
     type     = int,
     required = False,
-    default  = 1,
+    default  = 8,
     help     = "# of DMA Lanes",
 )
 
