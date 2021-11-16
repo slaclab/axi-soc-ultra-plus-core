@@ -9,7 +9,6 @@
 #-----------------------------------------------------------------------------
 import pyrogue       as pr
 import surf.axi      as axi
-from surf.ethernet import udp
 
 class AxiVersion(axi.AxiVersion):
     def __init__(self,
@@ -24,32 +23,15 @@ class AxiVersion(axi.AxiVersion):
         )
 
         self.add(pr.RemoteVariable(
-            name         = 'LocalMacRaw',
-            description  = 'MacAddress (big-Endian configuration)',
-            offset       = 0x400+(4*0),
-            bitSize      = 48,
-            mode         = 'RO',
-            hidden       = True,
-        ))
-
-        self.add(pr.LinkVariable(
-            name         = 'LocalMac',
-            description  = 'MacAddress (human readable)',
-            mode         = 'RO',
-            linkedGet    = udp.getMacValue,
-            dependencies = [self.variables['LocalMacRaw']],
-        ))
-
-        self.add(pr.RemoteVariable(
             name         = 'DMA_SIZE_G',
-            offset       = 0x400+(4*2),
+            offset       = 0x400+(4*0),
             bitSize      = 32,
             mode         = 'RO',
         ))
 
         self.add(pr.RemoteVariable(
             name         = 'DMA_CLK_FREQ_C',
-            offset       = 0x400+(4*3),
+            offset       = 0x400+(4*1),
             bitSize      = 32,
             mode         = 'RO',
             disp         = '{:d}',
@@ -58,7 +40,7 @@ class AxiVersion(axi.AxiVersion):
 
         self.add(pr.RemoteVariable(
             name         = 'AppReset',
-            offset       = 0x400+(4*4),
+            offset       = 0x400+(4*2),
             bitSize      = 1,
             bitOffset    = 0,
             mode         = 'RO',
@@ -69,7 +51,7 @@ class AxiVersion(axi.AxiVersion):
         self.add(pr.RemoteVariable(
             name         = "AppClkFreq",
             description  = "Application Clock Frequency",
-            offset       = 0x400+(4*5),
+            offset       = 0x400+(4*3),
             units        = 'Hz',
             disp         = '{:d}',
             mode         = "RO",

@@ -116,23 +116,7 @@ architecture mapping of AxiSocUltraPlusReg is
    signal appResetSync : sl;
    signal appClkFreq   : slv(31 downto 0);
 
-   signal efuse    : slv(31 downto 0);
-   signal localMac : slv(47 downto 0);
-
 begin
-
-   --------------------------------------------------
-   -- Example of using EFUSE to store the MAC Address
-   --------------------------------------------------
-   U_EFuse : EFUSE_USR
-      port map (
-         EFUSEUSR => efuse);
-
-   ----------------------------------------
-   -- 08:00:56:XX:XX:XX (big endian SLV)
-   ----------------------------------------
-   localMac(23 downto 0)  <= x"56_00_08";  -- 08:00:56 is the SLAC Vendor ID
-   localMac(47 downto 24) <= efuse(31 downto 8);  -- Picking off upper 24-bits of EFUSE
 
    ---------------------------------------------------------------------------------------------
    -- Driver Polls the userValues to determine the firmware's configurations and interrupt state
@@ -140,24 +124,20 @@ begin
    process(appClkFreq, appResetSync, localMac)
       variable i : natural;
    begin
-      -- MAC Address
-      userValues(0)(31 downto 0) <= localMac(31 downto 0);
-      userValues(1)(15 downto 0) <= localMac(47 downto 32);
-
       -- Number of DMA lanes (defined by user)
-      userValues(2) <= toSlv(DMA_SIZE_G, 32);
+      userValues(0) <= toSlv(DMA_SIZE_G, 32);
 
       -- System Clock Frequency
-      userValues(3) <= toSlv(getTimeRatio(DMA_CLK_FREQ_C, 1.0), 32);
+      userValues(1) <= toSlv(getTimeRatio(DMA_CLK_FREQ_C, 1.0), 32);
 
       -- Application Reset
-      userValues(4)(0) <= appResetSync;
+      userValues(2)(0) <= appResetSync;
 
       -- Application Clock Frequency
-      userValues(5) <= appClkFreq;
+      userValues(3) <= appClkFreq;
 
       -- Set unused to zero
-      for i in 63 downto 6 loop
+      for i in 63 downto 4 loop
          userValues(i) <= x"00000000";
       end loop;
 
