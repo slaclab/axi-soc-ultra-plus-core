@@ -66,7 +66,7 @@ petalinux-build -c rogue
 cp build/tmp/work/cortexa72-cortexa53-xilinx-linux/rogue/1.0-r0/build/setup.py build/tmp/work/cortexa72-cortexa53-xilinx-linux/rogue/1.0-r0/rogue-*/.
 petalinux-build -c rogue
 
-# Add rogue TCP memory/server server
+# Add rogue TCP memory/stream server
 petalinux-create -t apps --template install -n roguetcpbridge --enable
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
 echo IMAGE_INSTALL_append = \" roguetcpbridge\" >> build/conf/local.conf
@@ -76,7 +76,7 @@ petalinux-build -c roguetcpbridge
 # Check for JTAG booting
 if [ $jtag != "0" ]
 then
-   echo "Enable jtag Boot Build: $jtag";
+   echo "Enable JTAG Boot Build: $jtag";
    # Patch for JTAG booting
    petalinux-config --silentconfig
    echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
