@@ -58,7 +58,7 @@ if __name__ == "__main__":
             print( 'Starting Memory TcpServer at Port=9000')
             self.memMap = rogue.hardware.axi.AxiMemMap('/dev/axi_memory_map')
             self.memServer = rogue.interfaces.memory.TcpServer('*', 9000)
-            pyrogue.busConnect(self.memServer, self.memMap)
+            self.memServer >> self.memMap
 
             # Data server on port 10000+512*lane+2*tdest
             self.dmaStream = [[None for x in range(args.tdest)] for y in range(args.lane)]
