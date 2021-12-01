@@ -121,7 +121,7 @@ begin
    ---------------------------------------------------------------------------------------------
    -- Driver Polls the userValues to determine the firmware's configurations and interrupt state
    ---------------------------------------------------------------------------------------------
-   process(appClkFreq, appResetSync, localMac)
+   process(appClkFreq, appResetSync)
       variable i : natural;
    begin
       -- Number of DMA lanes (defined by user)
