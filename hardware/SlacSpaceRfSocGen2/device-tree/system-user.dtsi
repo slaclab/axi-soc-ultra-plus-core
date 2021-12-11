@@ -6,6 +6,12 @@
 };
 &gem0 {
 	local-mac-address = [08 00 56 00 00 00];
+	is-internal-pcspma;
+	phy-mode = "moca";
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+	};
 };
 / {
 	axi_stream_dma_0@b0000000 {
