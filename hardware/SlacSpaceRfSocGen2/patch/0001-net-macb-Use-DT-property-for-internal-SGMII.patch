@@ -1,0 +1,100 @@
+From 36216e1adeae6d4933344ef6d26e07300678582b Mon Sep 17 00:00:00 2001
+From: Larry Ruckman <ruckman@slac.stanford.edu>
+Date: Mon, 13 Dec 2021 20:06:14 -0800
+Subject: [PATCH] net-macb-Use-DT-property-for-internal-SGMII
+
+https://support.xilinx.com/s/article/69769
+---
+ drivers/net/ethernet/cadence/macb.h      |  1 +
+ drivers/net/ethernet/cadence/macb_main.c | 26 +++++++++++-------------
+ 2 files changed, 13 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/net/ethernet/cadence/macb.h b/drivers/net/ethernet/cadence/macb.h
+index aa60c514254a..e3f2262dedd5 100644
+--- a/drivers/net/ethernet/cadence/macb.h
++++ b/drivers/net/ethernet/cadence/macb.h
+@@ -1259,6 +1259,7 @@ struct macb {
+ 	struct ptp_clock_info ptp_clock_info;
+ 	struct tsu_incr tsu_incr;
+ 	struct hwtstamp_config tstamp_config;
++   bool                    internal_pcspma;
+ 
+ 	/* RX queue filer rule set*/
+ 	struct ethtool_rx_fs_list rx_fs_list;
+diff --git a/drivers/net/ethernet/cadence/macb_main.c b/drivers/net/ethernet/cadence/macb_main.c
+index d5ceef463fb9..a2e312db8618 100644
+--- a/drivers/net/ethernet/cadence/macb_main.c
++++ b/drivers/net/ethernet/cadence/macb_main.c
+@@ -492,9 +492,9 @@ static void macb_set_tx_clk(struct clk *clk, int speed, struct net_device *dev)
+ 	 */
+ 	ferr = abs(rate_rounded - rate);
+ 	ferr = DIV_ROUND_UP(ferr, rate / 100000);
+-	if (ferr > 5)
+-		netdev_warn(dev, "unable to generate target frequency: %ld Hz\n",
+-			    rate);
++//	if (ferr > 5)
++//		netdev_warn(dev, "unable to generate target frequency: %ld Hz\n",
++//			    rate);
+ 
+ 	if (clk_set_rate(clk, rate_rounded))
+ 		netdev_err(dev, "adjusting tx_clk failed.\n");
+@@ -586,7 +586,7 @@ static void macb_mac_config(struct phylink_config *config, unsigned int mode,
+ 	}
+ 
+ 	/* Apply the new configuration, if any */
+-	if (old_ctrl ^ ctrl)
++	if (old_ctrl ^ ctrl && !bp->internal_pcspma)
+ 		macb_or_gem_writel(bp, NCFGR, ctrl);
+ 
+ 	spin_unlock_irqrestore(&bp->lock, flags);
+@@ -2489,6 +2489,7 @@ static void macb_init_hw(struct macb *bp)
+ 	macb_set_hwaddr(bp);
+ 
+ 	config = macb_mdc_clk_div(bp);
++	if (bp->internal_pcspma) config |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
+ 	config |= MACB_BF(RBOF, NET_IP_ALIGN);	/* Make eth data aligned */
+ 
+ 	/* Do not discard Rx FCS if RX checsum offload disabled */
+@@ -2513,10 +2514,8 @@ static void macb_init_hw(struct macb *bp)
+ 	if (bp->caps & MACB_CAPS_JUMBO)
+ 		bp->rx_frm_len_mask = MACB_RX_JFRMLEN_MASK;
+ 
+-	if ((bp->phy_interface == PHY_INTERFACE_MODE_SGMII) &&
+-	    (bp->caps & MACB_CAPS_PCS))
+-		gem_writel(bp, PCSCNTRL,
+-			   gem_readl(bp, PCSCNTRL) | GEM_BIT(PCSAUTONEG));
++	if ((bp->internal_pcspma) && (bp->caps & MACB_CAPS_PCS))
++		gem_writel(bp, PCSCNTRL, gem_readl(bp, PCSCNTRL) & ~GEM_BIT(PCSAUTONEG));
+ 
+ 	macb_configure_dma(bp);
+ 
+@@ -3839,14 +3838,11 @@ static int macb_init(struct platform_device *pdev)
+ 	/* Set MII management clock divider */
+ 	val = macb_mdc_clk_div(bp);
+ 	val |= macb_dbw(bp);
+-	if (bp->phy_interface == PHY_INTERFACE_MODE_SGMII)
+-		val |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
++	if (bp->internal_pcspma) val |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
+ 	macb_writel(bp, NCFGR, val);
+ 
+-	if ((bp->phy_interface == PHY_INTERFACE_MODE_SGMII) &&
+-	    (bp->caps & MACB_CAPS_PCS))
+-		gem_writel(bp, PCSCNTRL,
+-			   gem_readl(bp, PCSCNTRL) | GEM_BIT(PCSAUTONEG));
++	if ((bp->internal_pcspma) && (bp->caps & MACB_CAPS_PCS))
++		gem_writel(bp, PCSCNTRL, gem_readl(bp, PCSCNTRL) & ~GEM_BIT(PCSAUTONEG));
+ 
+ 	return 0;
+ }
+@@ -4562,6 +4558,8 @@ static int macb_probe(struct platform_device *pdev)
+ 	bp->tsu_clk = tsu_clk;
+ 	bp->jumbo_max_len = macb_config->jumbo_max_len;
+ 
++	bp->internal_pcspma = of_property_read_bool(np, "is-internal-pcspma");
++
+ 	spin_lock_init(&bp->lock);
+ 
+ 	/* setup capabilities */
+-- 
+2.25.1
+
