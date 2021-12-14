@@ -26,6 +26,7 @@ echo "XSA File Path: $xsa";
 
 axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
 aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
+hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
 
 echo "$axi_soc_ultra_plus_core"
 echo "$aes_stream_drivers"
@@ -41,8 +42,18 @@ cd $name
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
+# Check if the patch directory exists
+if [ -d "$hwDir/patch" ]
+then
+   # Add the patches to the petalinux project
+   for filename in $(ls -p $hwDir/patch); do
+      echo SRC_URI_append = \" file://$filename\" >> project-spec/meta-user/recipes-kernel/linux/linux-xlnx_%.bbappend
+      cp -f $hwDir/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
+   done
+fi
+
 # Customize your user device tree
-cp -rf $axi_soc_ultra_plus_core/hardware/$hwType/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
+cp -f $hwDir/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
 
 # Add the axi-stream-dma & axi_memory_map modules
 petalinux-create -t modules --name axistreamdma --enable
