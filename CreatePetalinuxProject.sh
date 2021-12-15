@@ -71,6 +71,7 @@ petalinux-build -c aximemorymap
 # Add rogue to petalinux
 petalinux-create -t apps --name rogue --template install
 cp -f $axi_soc_ultra_plus_core/rogue.bb project-spec/meta-user/recipes-apps/rogue/rogue.bb
+echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
 petalinux-build -c rogue
