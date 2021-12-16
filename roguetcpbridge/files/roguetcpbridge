@@ -14,12 +14,15 @@ import rogue
 import rogue.hardware.axi
 import rogue.interfaces.memory
 
+import subprocess
 import socket
 import ipaddress
 import time
 import argparse
 
 # rogue.Logging.setLevel(rogue.Logging.Debug)
+
+#################################################################
 
 if __name__ == "__main__":
 
@@ -71,7 +74,16 @@ if __name__ == "__main__":
                     self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
                     self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
 
+    def eth0_ready():
+        command = 'ip -4 -o addr show eth0'.split()
+        return (subprocess.check_output(command).decode() != '')
+
     #################################################################
+
+    # Wait for NIC to be ready
+    while(eth0_ready() is False):
+        print('Waiting for ETH0 to get IP address')
+        time.sleep(5.0)
 
     # Create the server
     server = ZynqTcpServer()
