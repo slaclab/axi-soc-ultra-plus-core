@@ -48,6 +48,11 @@ if __name__ == "__main__":
         help     = "# of TDEST per lane",
     )
 
+    parser.add_argument(
+        "start",
+        help     = "Dummy arg for petalinux startup (related to INITSCRIPT_PARAMS)",
+    )
+
     # Get the arguments
     args = parser.parse_args()
 

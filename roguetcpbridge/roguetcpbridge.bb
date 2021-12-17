@@ -15,7 +15,7 @@ S = "${WORKDIR}"
 inherit update-rc.d
 
 INITSCRIPT_NAME = "roguetcpbridge"
-INITSCRIPT_PARAMS = "start 99 S ."
+INITSCRIPT_PARAMS = "start 99 5 ."
 
 do_install() {
 	     install -d ${D}${sysconfdir}/init.d
