@@ -25,6 +25,37 @@ sudo umount /u1/boot
 sudo dd if=/u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/rootfs.ext4 of=/dev/sdd2
 ```
 
+
+<!--- ######################################################## -->
+
+### Change the Boot Mode of the Xilinx Zynq UltraScale+ MPSoC from XSCT
+
+https://www.zachpfeffer.com/single-post/change-the-boot-mode-of-the-xilinx-zynq-ultrascale-mpsoc-from-xsct
+
+
+#### following sequence changes to JTAG boot mode
+```bash
+xsct
+connect
+targets -set -nocase -filter {name =~ "*PSU*"}
+stop
+mwr  0xff5e0200 0x0100
+rst -system
+disconnect
+```
+
+#### following sequence changes to NAND mode
+```bash
+xsct
+connect
+targets -set -nocase -filter {name =~ "*PSU*"}
+stop
+mwr  0xff5e0200 0x4100
+rst -system
+con
+disconnect
+```
+
 <!--- ######################################################## -->
 
 ### Load the bitstream and kernel via JTAG
@@ -48,10 +79,6 @@ Note: Make sure you power cycle the board before JTAG boot
 # Go to petalinux project directory
 cd <MY_PROJECT>
 
-###################################
-# build petalinux
-###################################
-
 # Execute the command
 petalinux-package --bsp -p SpaceRfSocXilinxZcu208DevBoard -o SpaceRfSocXilinxZcu208DevBoard.bsp
 ```
@@ -67,10 +94,6 @@ Note: Make sure you power cycle the board before JTAG boot
 ```bash
 # Go to petalinux project directory
 cd <MY_PROJECT>
-
-###################################
-# build petalinux
-###################################
 
 # Execute the command
 program_flash -f images/linux/BOOT.BIN -offset 0x0 -flash_type \
