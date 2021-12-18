@@ -28,20 +28,24 @@ entity AxiSocUltraPlusCpu is
       TPD_G : time := 1 ns);
    port (
       -- Clock and Reset
-      axiClk         : out sl;
-      axiRst         : out sl;
+      axiClk             : out sl;
+      axiRst             : out sl;
       -- Slave AXI4 Interface
-      dmaReadMaster  : in  AxiReadMasterType;
-      dmaReadSlave   : out AxiReadSlaveType;
-      dmaWriteMaster : in  AxiWriteMasterType;
-      dmaWriteSlave  : out AxiWriteSlaveType;
+      dmaReadMaster      : in  AxiReadMasterType;
+      dmaReadSlave       : out AxiReadSlaveType;
+      dmaWriteMaster     : in  AxiWriteMasterType;
+      dmaWriteSlave      : out AxiWriteSlaveType;
       -- Master AXI-Lite Interface
-      regReadMaster  : out AxiLiteReadMasterType;
-      regReadSlave   : in  AxiLiteReadSlaveType;
-      regWriteMaster : out AxiLiteWriteMasterType;
-      regWriteSlave  : in  AxiLiteWriteSlaveType;
+      regReadMaster      : out AxiLiteReadMasterType;
+      regReadSlave       : in  AxiLiteReadSlaveType;
+      regWriteMaster     : out AxiLiteWriteMasterType;
+      regWriteSlave      : in  AxiLiteWriteSlaveType;
+      dmaCtrlReadMaster  : out AxiLiteReadMasterType;
+      dmaCtrlReadSlave   : in  AxiLiteReadSlaveType;
+      dmaCtrlWriteMaster : out AxiLiteWriteMasterType;
+      dmaCtrlWriteSlave  : in  AxiLiteWriteSlaveType;
       -- Interrupt Interface
-      dmaIrq         : in  sl);
+      dmaIrq             : in  sl);
 end AxiSocUltraPlusCpu;
 
 architecture mapping of AxiSocUltraPlusCpu is
@@ -72,6 +76,25 @@ architecture mapping of AxiSocUltraPlusCpu is
          axiLite_rresp   : in  std_logic_vector (1 downto 0);
          axiLite_rvalid  : in  std_logic;
          axiLite_rready  : out std_logic;
+         dmaCtrl_awaddr  : out std_logic_vector (39 downto 0);
+         dmaCtrl_awprot  : out std_logic_vector (2 downto 0);
+         dmaCtrl_awvalid : out std_logic;
+         dmaCtrl_awready : in  std_logic;
+         dmaCtrl_wdata   : out std_logic_vector (31 downto 0);
+         dmaCtrl_wstrb   : out std_logic_vector (3 downto 0);
+         dmaCtrl_wvalid  : out std_logic;
+         dmaCtrl_wready  : in  std_logic;
+         dmaCtrl_bresp   : in  std_logic_vector (1 downto 0);
+         dmaCtrl_bvalid  : in  std_logic;
+         dmaCtrl_bready  : out std_logic;
+         dmaCtrl_araddr  : out std_logic_vector (39 downto 0);
+         dmaCtrl_arprot  : out std_logic_vector (2 downto 0);
+         dmaCtrl_arvalid : out std_logic;
+         dmaCtrl_arready : in  std_logic;
+         dmaCtrl_rdata   : in  std_logic_vector (31 downto 0);
+         dmaCtrl_rresp   : in  std_logic_vector (1 downto 0);
+         dmaCtrl_rvalid  : in  std_logic;
+         dmaCtrl_rready  : out std_logic;
          dma_aruser      : in  std_logic;
          dma_awuser      : in  std_logic;
          dma_awid        : in  std_logic_vector (5 downto 0);
@@ -110,10 +133,11 @@ architecture mapping of AxiSocUltraPlusCpu is
          dma_rvalid      : out std_logic;
          dma_rready      : in  std_logic;
          dma_awqos       : in  std_logic_vector (3 downto 0);
-         dma_arqos       : in  std_logic_vector (3 downto 0));
+         dma_arqos       : in  std_logic_vector (3 downto 0)
+         );
    end component AxiSocUltraPlusCpuCore;
 
-   signal dummyByte : Slv8Array(1 downto 0);
+   signal dummyByte : Slv8Array(3 downto 0);
 
    signal plClk  : sl;
    signal plRstL : sl;
@@ -139,7 +163,7 @@ begin
    -------------------
    U_CPU : AxiSocUltraPlusCpuCore
       port map (
-         -- AXI-Lite Interface
+         -- User AXI-Lite Interface
          axiLite_araddr(31 downto 0)  => regReadMaster.araddr,
          axiLite_araddr(39 downto 32) => dummyByte(0),
          axiLite_arprot               => regReadMaster.arprot,
@@ -161,6 +185,28 @@ begin
          axiLite_wready               => regWriteSlave.wready,
          axiLite_bresp                => AXI_RESP_OK_C,  -- Always respond OK
          axiLite_bvalid               => regWriteSlave.bvalid,
+         -- DMA AXI-Lite Interface
+         dmaCtrl_araddr(31 downto 0)  => dmaCtrlReadMaster.araddr,
+         dmaCtrl_araddr(39 downto 32) => dummyByte(2),
+         dmaCtrl_arprot               => dmaCtrlReadMaster.arprot,
+         dmaCtrl_arvalid              => dmaCtrlReadMaster.arvalid,
+         dmaCtrl_rready               => dmaCtrlReadMaster.rready,
+         dmaCtrl_arready              => dmaCtrlReadSlave.arready,
+         dmaCtrl_rdata                => dmaCtrlReadSlave.rdata,
+         dmaCtrl_rresp                => AXI_RESP_OK_C,  -- Always respond OK
+         dmaCtrl_rvalid               => dmaCtrlReadSlave.rvalid,
+         dmaCtrl_awaddr(31 downto 0)  => dmaCtrlWriteMaster.awaddr,
+         dmaCtrl_awaddr(39 downto 32) => dummyByte(3),
+         dmaCtrl_awprot               => dmaCtrlWriteMaster.awprot,
+         dmaCtrl_awvalid              => dmaCtrlWriteMaster.awvalid,
+         dmaCtrl_wdata                => dmaCtrlWriteMaster.wdata,
+         dmaCtrl_wstrb                => dmaCtrlWriteMaster.wstrb,
+         dmaCtrl_wvalid               => dmaCtrlWriteMaster.wvalid,
+         dmaCtrl_bready               => dmaCtrlWriteMaster.bready,
+         dmaCtrl_awready              => dmaCtrlWriteSlave.awready,
+         dmaCtrl_wready               => dmaCtrlWriteSlave.wready,
+         dmaCtrl_bresp                => AXI_RESP_OK_C,  -- Always respond OK
+         dmaCtrl_bvalid               => dmaCtrlWriteSlave.bvalid,
          -- DMA Interface
          dmaClk                       => dmaClk,
          dmaIrq                       => dmaIrq,

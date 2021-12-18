@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+##############################################################################
+## This file is part of 'axi-soc-ultra-plus-core'.
+## It is subject to the license terms in the LICENSE.txt file found in the
+## top-level directory of this distribution and at:
+##    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
+## No part of 'axi-soc-ultra-plus-core', including this file,
+## may be copied, modified, propagated, or distributed except according to
+## the terms contained in the LICENSE.txt file.
+##############################################################################
+
+import pyrogue
+import rogue
+import rogue.hardware.axi
+import rogue.interfaces.memory
+
+import subprocess
+import socket
+import ipaddress
+import time
+import argparse
+
+# rogue.Logging.setLevel(rogue.Logging.Debug)
+
+#################################################################
+
+if __name__ == "__main__":
+
+    #################################################################
+
+    # Set the argument parser
+    parser = argparse.ArgumentParser()
+
+    # Add arguments
+    parser.add_argument(
+        "--lane",
+        type     = int,
+        required = False,
+        default  = 8,
+        help     = "# of DMA Lanes",
+    )
+
+    parser.add_argument(
+        "--tdest",
+        type     = int,
+        required = False,
+        default  = 4,
+        help     = "# of TDEST per lane",
+    )
+
+    parser.add_argument(
+        "start",
+        help     = "Dummy arg for petalinux startup (related to INITSCRIPT_PARAMS)",
+    )
+
+    # Get the arguments
+    args = parser.parse_args()
+
+    #################################################################
+
+    class ZynqTcpServer(object):
+
+        def __init__(self):
+
+            # Memory server on port 9000
+            print( 'Starting Memory TcpServer at Port=9000')
+            self.memMap = rogue.hardware.axi.AxiMemMap('/dev/axi_memory_map')
+            self.memServer = rogue.interfaces.memory.TcpServer('*', 9000)
+            self.memServer >> self.memMap
+
+            # Data server on port 10000+512*lane+2*tdest
+            self.dmaStream = [[None for x in range(args.tdest)] for y in range(args.lane)]
+            self.dataServer = [[None for x in range(args.tdest)] for y in range(args.lane)]
+            for lane in range(args.lane):
+                for tdest in range(args.tdest):
+                    port = 10000+512*lane+2*tdest
+                    print( f'Starting Stream TcpServer at Port={port} and Port={port+1} for DMA[{lane}][{tdest}]' )
+                    self.dmaStream[lane][tdest] = rogue.hardware.axi.AxiStreamDma('/dev/axi_stream_dma_0', 256*lane+tdest, True)
+                    self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
+                    self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
+
+    def eth0_ready():
+        command = 'ip -4 -o addr show eth0'.split()
+        return (subprocess.check_output(command).decode() != '')
+
+    #################################################################
+
+    # Wait for NIC to be ready
+    while(eth0_ready() is False):
+        print('Waiting for ETH0 to get IP address')
+        time.sleep(5.0)
+
+    # Create the server
+    server = ZynqTcpServer()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print('Stopping TcpServers')
+
+    #################################################################
