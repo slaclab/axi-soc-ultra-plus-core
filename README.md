@@ -95,10 +95,15 @@ Note: Make sure you power cycle the board before JTAG boot
 # Go to petalinux project directory
 cd <MY_PROJECT>
 
-# Execute the command
-program_flash -f images/linux/BOOT.BIN -offset 0x0 -flash_type \
-nand-x8-single -fsbl images/linux/zynqmp_fsbl.elf -verify -cable \
-type xilinx_tcf url TCP:127.0.0.1:3121
-```
+# Define default parameters
+default_parameter="\
+-flash_type nand-x8-single \
+-fsbl images/linux/zynqmp_fsbl.elf \
+-verify -cable type xilinx_tcf url TCP:127.0.0.1:3121"
+
+# Execute the commands
+program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
+program_flash -f images/linux/boot.scr -offset 0x3E80000 $default_parameter
+program_flash -f images/linux/image.ub -offset 0x4180000 $default_parameter
 
 <!--- ######################################################## -->
