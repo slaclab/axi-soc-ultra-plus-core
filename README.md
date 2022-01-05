@@ -2,6 +2,12 @@
 
 <!--- ######################################################## -->
 
+### Zynq UltraScale+ Devices Register Reference
+
+https://www.xilinx.com/html_docs/registers/ug1087/ug1087-zynq-ultrascale-registers.html
+
+<!--- ######################################################## -->
+
 ### How to format SD card for SD boot
 
 https://xilinx-wiki.atlassian.net/wiki/x/EYMfAQ
