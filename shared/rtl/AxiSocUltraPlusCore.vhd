@@ -63,6 +63,9 @@ entity AxiSocUltraPlusCore is
       usrReadSlave    : out AxiReadSlaveType       := AXI_READ_SLAVE_FORCE_C;
       usrWriteMaster  : in  AxiWriteMasterType     := AXI_WRITE_MASTER_INIT_C;
       usrWriteSlave   : out AxiWriteSlaveType      := AXI_WRITE_SLAVE_FORCE_C;
+      -- PMU Interface
+      pmuErrorFromPl  : in  slv(3 downto 0)        := (others => '0');
+      pmuErrorToPl    : out slv(46 downto 0);
       -- SYSMON Ports
       vPIn            : in  sl;
       vNIn            : in  sl);
@@ -131,6 +134,9 @@ begin
             dmaCtrlReadSlave   => dmaCtrlReadSlaves(0),
             dmaCtrlWriteMaster => dmaCtrlWriteMasters(0),
             dmaCtrlWriteSlave  => dmaCtrlWriteSlaves(0),
+            -- PMU Interface
+            pmuErrorFromPl     => pmuErrorFromPl,
+            pmuErrorToPl       => pmuErrorToPl,
             -- Interrupt Interface
             dmaIrq             => dmaIrq);
 
