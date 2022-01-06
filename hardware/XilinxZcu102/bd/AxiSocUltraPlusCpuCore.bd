@@ -1,7 +1,7 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x15BDB9A6101B6FAE",
+      "boundary_crc": "0x23A30C2793374FD2",
       "device": "xczu9eg-ffvb1156-2-e",
       "gen_directory": "../../../../SpaceRfSocXilinxZcu208DevBoard_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
       "name": "AxiSocUltraPlusCpuCore",
@@ -474,6 +474,16 @@
             "value_src": "default"
           }
         }
+      },
+      "pmuErrorFromPl": {
+        "direction": "I",
+        "left": "3",
+        "right": "0"
+      },
+      "pmuErrorToPl": {
+        "direction": "O",
+        "left": "46",
+        "right": "0"
       }
     },
     "components": {
@@ -1360,7 +1370,7 @@
             "value": "1"
           },
           "PSU__PMU__PLERROR__ENABLE": {
-            "value": "0"
+            "value": "1"
           },
           "PSU__PRESET_APPLIED": {
             "value": "1"
@@ -1734,6 +1744,12 @@
           "axi_protocol_convert_1/aresetn"
         ]
       },
+      "pmu_error_from_pl_0_1": {
+        "ports": [
+          "pmuErrorFromPl",
+          "zynq_ultra_ps_e_0/pmu_error_from_pl"
+        ]
+      },
       "zynq_ultra_ps_e_0_pl_clk0": {
         "ports": [
           "zynq_ultra_ps_e_0/pl_clk0",
@@ -1744,6 +1760,12 @@
         "ports": [
           "zynq_ultra_ps_e_0/pl_resetn0",
           "plRstL"
+        ]
+      },
+      "zynq_ultra_ps_e_0_pmu_error_to_pl": {
+        "ports": [
+          "zynq_ultra_ps_e_0/pmu_error_to_pl",
+          "pmuErrorToPl"
         ]
       }
     },

@@ -7,8 +7,7 @@
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
-      "tool_version": "2021.2",
-      "validated": "true"
+      "tool_version": "2021.2"
     },
     "design_tree": {
       "axi_protocol_convert_0": "",
@@ -24,122 +23,14 @@
           "ADDR_WIDTH": {
             "value": "35"
           },
-          "ARUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "AWUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "BUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "CLK_DOMAIN": {
-            "value": "AxiSocUltraPlusCpuCore_dmaClk",
-            "value_src": "default"
-          },
           "DATA_WIDTH": {
             "value": "32"
           },
           "FREQ_HZ": {
             "value": "250000000"
           },
-          "HAS_BRESP": {
-            "value": "1",
-            "value_src": "default"
-          },
-          "HAS_BURST": {
-            "value": "0",
-            "value_src": "default_prop"
-          },
-          "HAS_CACHE": {
-            "value": "0",
-            "value_src": "default_prop"
-          },
-          "HAS_LOCK": {
-            "value": "0",
-            "value_src": "default_prop"
-          },
-          "HAS_PROT": {
-            "value": "1",
-            "value_src": "default"
-          },
-          "HAS_QOS": {
-            "value": "0",
-            "value_src": "default_prop"
-          },
-          "HAS_REGION": {
-            "value": "0",
-            "value_src": "default_prop"
-          },
-          "HAS_RRESP": {
-            "value": "1",
-            "value_src": "default"
-          },
-          "HAS_WSTRB": {
-            "value": "1",
-            "value_src": "default"
-          },
-          "ID_WIDTH": {
-            "value": "0",
-            "value_src": "ip_prop"
-          },
-          "INSERT_VIP": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "MAX_BURST_LENGTH": {
-            "value": "1",
-            "value_src": "ip_prop"
-          },
-          "NUM_READ_OUTSTANDING": {
-            "value": "8",
-            "value_src": "const_prop"
-          },
-          "NUM_READ_THREADS": {
-            "value": "4",
-            "value_src": "const_prop"
-          },
-          "NUM_WRITE_OUTSTANDING": {
-            "value": "8",
-            "value_src": "const_prop"
-          },
-          "NUM_WRITE_THREADS": {
-            "value": "4",
-            "value_src": "const_prop"
-          },
-          "PHASE": {
-            "value": "0.0",
-            "value_src": "default"
-          },
           "PROTOCOL": {
             "value": "AXI4LITE"
-          },
-          "READ_WRITE_MODE": {
-            "value": "READ_WRITE",
-            "value_src": "user_prop"
-          },
-          "RUSER_BITS_PER_BYTE": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "RUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "SUPPORTS_NARROW_BURST": {
-            "value": "0",
-            "value_src": "ip_prop"
-          },
-          "WUSER_BITS_PER_BYTE": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "WUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
           }
         },
         "memory_map_ref": "axiLite"
@@ -160,10 +51,6 @@
           },
           "BUSER_WIDTH": {
             "value": "0"
-          },
-          "CLK_DOMAIN": {
-            "value": "AxiSocUltraPlusCpuCore_dmaClk",
-            "value_src": "default"
           },
           "DATA_WIDTH": {
             "value": "128"
@@ -201,10 +88,6 @@
           "ID_WIDTH": {
             "value": "4"
           },
-          "INSERT_VIP": {
-            "value": "0",
-            "value_src": "default"
-          },
           "MAX_BURST_LENGTH": {
             "value": "256"
           },
@@ -219,10 +102,6 @@
           },
           "NUM_WRITE_THREADS": {
             "value": "1"
-          },
-          "PHASE": {
-            "value": "0.0",
-            "value_src": "default"
           },
           "PROTOCOL": {
             "value": "AXI4"
@@ -261,31 +140,11 @@
           "ADDR_WIDTH": {
             "value": "40"
           },
-          "ARUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "AWUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "BUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "CLK_DOMAIN": {
-            "value": "AxiSocUltraPlusCpuCore_dmaClk",
-            "value_src": "default"
-          },
           "DATA_WIDTH": {
             "value": "32"
           },
           "FREQ_HZ": {
             "value": "250000000"
-          },
-          "HAS_BRESP": {
-            "value": "1",
-            "value_src": "default"
           },
           "HAS_BURST": {
             "value": "0"
@@ -296,80 +155,20 @@
           "HAS_LOCK": {
             "value": "0"
           },
-          "HAS_PROT": {
-            "value": "1",
-            "value_src": "default"
-          },
           "HAS_QOS": {
             "value": "0"
           },
           "HAS_REGION": {
             "value": "0"
           },
-          "HAS_RRESP": {
-            "value": "1",
-            "value_src": "default"
-          },
-          "HAS_WSTRB": {
-            "value": "1",
-            "value_src": "default"
-          },
-          "ID_WIDTH": {
-            "value": "0",
-            "value_src": "ip_prop"
-          },
-          "INSERT_VIP": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "MAX_BURST_LENGTH": {
-            "value": "1",
-            "value_src": "ip_prop"
-          },
           "NUM_READ_OUTSTANDING": {
             "value": "8"
-          },
-          "NUM_READ_THREADS": {
-            "value": "4",
-            "value_src": "const_prop"
           },
           "NUM_WRITE_OUTSTANDING": {
             "value": "8"
           },
-          "NUM_WRITE_THREADS": {
-            "value": "4",
-            "value_src": "const_prop"
-          },
-          "PHASE": {
-            "value": "0.0",
-            "value_src": "default"
-          },
           "PROTOCOL": {
             "value": "AXI4LITE"
-          },
-          "READ_WRITE_MODE": {
-            "value": "READ_WRITE",
-            "value_src": "user_prop"
-          },
-          "RUSER_BITS_PER_BYTE": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "RUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
-          },
-          "SUPPORTS_NARROW_BURST": {
-            "value": "0",
-            "value_src": "ip_prop"
-          },
-          "WUSER_BITS_PER_BYTE": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "WUSER_WIDTH": {
-            "value": "0",
-            "value_src": "const_prop"
           }
         },
         "memory_map_ref": "dmaCtrl"
@@ -386,94 +185,36 @@
           "ASSOCIATED_RESET": {
             "value": "dmaRstL"
           },
-          "CLK_DOMAIN": {
-            "value": "AxiSocUltraPlusCpuCore_dmaClk",
-            "value_src": "default"
-          },
           "FREQ_HZ": {
             "value": "250000000"
-          },
-          "FREQ_TOLERANCE_HZ": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "INSERT_VIP": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "PHASE": {
-            "value": "0.0",
-            "value_src": "default"
           }
         }
       },
       "dmaIrq": {
         "type": "intr",
-        "direction": "I",
-        "parameters": {
-          "PortWidth": {
-            "value": "1",
-            "value_src": "default"
-          },
-          "SENSITIVITY": {
-            "value": "LEVEL_HIGH",
-            "value_src": "default"
-          }
-        }
+        "direction": "I"
       },
       "dmaRstL": {
         "type": "rst",
-        "direction": "I",
-        "parameters": {
-          "INSERT_VIP": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "POLARITY": {
-            "value": "ACTIVE_LOW",
-            "value_src": "default"
-          }
-        }
+        "direction": "I"
       },
       "plClk": {
         "type": "clk",
-        "direction": "O",
-        "parameters": {
-          "CLK_DOMAIN": {
-            "value": "AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0_pl_clk0",
-            "value_src": "default_prop"
-          },
-          "FREQ_HZ": {
-            "value": "249997498",
-            "value_src": "user_prop"
-          },
-          "FREQ_TOLERANCE_HZ": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "INSERT_VIP": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "PHASE": {
-            "value": "0.0",
-            "value_src": "default"
-          }
-        }
+        "direction": "O"
       },
       "plRstL": {
         "type": "rst",
+        "direction": "O"
+      },
+      "pmuErrorFromPl": {
+        "direction": "I",
+        "left": "3",
+        "right": "0"
+      },
+      "pmuErrorToPl": {
         "direction": "O",
-        "parameters": {
-          "INSERT_VIP": {
-            "value": "0",
-            "value_src": "default"
-          },
-          "POLARITY": {
-            "value": "ACTIVE_LOW",
-            "value_src": "default"
-          }
-        }
+        "left": "46",
+        "right": "0"
       }
     },
     "components": {
@@ -1204,7 +945,7 @@
             "value": "1"
           },
           "PSU__PMU__PLERROR__ENABLE": {
-            "value": "0"
+            "value": "1"
           },
           "PSU__PRESET_APPLIED": {
             "value": "1"
@@ -1563,6 +1304,12 @@
           "axi_protocol_convert_1/aresetn"
         ]
       },
+      "pmu_error_from_pl_0_1": {
+        "ports": [
+          "pmuErrorFromPl",
+          "zynq_ultra_ps_e_0/pmu_error_from_pl"
+        ]
+      },
       "zynq_ultra_ps_e_0_pl_clk0": {
         "ports": [
           "zynq_ultra_ps_e_0/pl_clk0",
@@ -1573,6 +1320,12 @@
         "ports": [
           "zynq_ultra_ps_e_0/pl_resetn0",
           "plRstL"
+        ]
+      },
+      "zynq_ultra_ps_e_0_pmu_error_to_pl": {
+        "ports": [
+          "zynq_ultra_ps_e_0/pmu_error_to_pl",
+          "pmuErrorToPl"
         ]
       }
     },
