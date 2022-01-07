@@ -442,6 +442,7 @@ proc create_root_design { parentCell } {
    CONFIG.PSU_MIO_33_POLARITY {Default} \
    CONFIG.PSU_MIO_33_PULLUPDOWN {pullup} \
    CONFIG.PSU_MIO_33_SLEW {fast} \
+   CONFIG.PSU_MIO_34_DIRECTION {out} \
    CONFIG.PSU_MIO_34_DRIVE_STRENGTH {12} \
    CONFIG.PSU_MIO_34_INPUT_TYPE {cmos} \
    CONFIG.PSU_MIO_34_POLARITY {Default} \
@@ -729,13 +730,12 @@ proc create_root_design { parentCell } {
    CONFIG.PSU_MIO_9_SLEW {fast} \
    CONFIG.PSU_MIO_TREE_PERIPHERALS {\
 ##########NAND###NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#UART\
-0#UART 0########PMU GPO 3#PMU GPO 4#PMU GPO 5###############GPIO2 MIO#GPIO2\
+0#UART 0#######PMU GPO 2##################GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2\
 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2\
 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2\
-MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2\
-MIO} \
+MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO} \
    CONFIG.PSU_MIO_TREE_SIGNALS {\
-##########nfc_rb_n[0]###nfc_ce[0]#nfc_cle#nfc_ale#nfc_dq_out[0]#nfc_dq_out[1]#nfc_dq_out[2]#nfc_dq_out[3]#nfc_dq_out[4]#nfc_dq_out[5]#nfc_we_b#nfc_dq_out[6]#nfc_dq_out[7]#nfc_re_n#rxd#txd########gpo[3]#gpo[4]#gpo[5]###############gpio2[52]#gpio2[53]#gpio2[54]#gpio2[55]#gpio2[56]#gpio2[57]#gpio2[58]#gpio2[59]#gpio2[60]#gpio2[61]#gpio2[62]#gpio2[63]#gpio2[64]#gpio2[65]#gpio2[66]#gpio2[67]#gpio2[68]#gpio2[69]#gpio2[70]#gpio2[71]#gpio2[72]#gpio2[73]#gpio2[74]#gpio2[75]#gpio2[76]#gpio2[77]} \
+##########nfc_rb_n[0]###nfc_ce[0]#nfc_cle#nfc_ale#nfc_dq_out[0]#nfc_dq_out[1]#nfc_dq_out[2]#nfc_dq_out[3]#nfc_dq_out[4]#nfc_dq_out[5]#nfc_we_b#nfc_dq_out[6]#nfc_dq_out[7]#nfc_re_n#rxd#txd#######gpo[2]##################gpio2[52]#gpio2[53]#gpio2[54]#gpio2[55]#gpio2[56]#gpio2[57]#gpio2[58]#gpio2[59]#gpio2[60]#gpio2[61]#gpio2[62]#gpio2[63]#gpio2[64]#gpio2[65]#gpio2[66]#gpio2[67]#gpio2[68]#gpio2[69]#gpio2[70]#gpio2[71]#gpio2[72]#gpio2[73]#gpio2[74]#gpio2[75]#gpio2[76]#gpio2[77]} \
    CONFIG.PSU_PERIPHERAL_BOARD_PRESET {} \
    CONFIG.PSU_SD0_INTERNAL_BUS_WIDTH {8} \
    CONFIG.PSU_SD1_INTERNAL_BUS_WIDTH {8} \
@@ -1293,8 +1293,8 @@ MIO} \
    CONFIG.PSU__GPIO2_MIO__IO {MIO 52 .. 77} \
    CONFIG.PSU__GPIO2_MIO__PERIPHERAL__ENABLE {1} \
    CONFIG.PSU__GPIO_EMIO_WIDTH {34} \
-   CONFIG.PSU__GPIO_EMIO__PERIPHERAL__ENABLE {1} \
-   CONFIG.PSU__GPIO_EMIO__PERIPHERAL__IO {34} \
+   CONFIG.PSU__GPIO_EMIO__PERIPHERAL__ENABLE {0} \
+   CONFIG.PSU__GPIO_EMIO__PERIPHERAL__IO {<Select>} \
    CONFIG.PSU__GPIO_EMIO__WIDTH {[94:0]} \
    CONFIG.PSU__GPU_PP0__POWER__ON {0} \
    CONFIG.PSU__GPU_PP1__POWER__ON {0} \
@@ -1543,16 +1543,18 @@ MIO} \
    CONFIG.PSU__PMU__GPI5__ENABLE {0} \
    CONFIG.PSU__PMU__GPO0__ENABLE {0} \
    CONFIG.PSU__PMU__GPO1__ENABLE {0} \
-   CONFIG.PSU__PMU__GPO2__ENABLE {0} \
-   CONFIG.PSU__PMU__GPO3__ENABLE {1} \
-   CONFIG.PSU__PMU__GPO3__IO {MIO 35} \
-   CONFIG.PSU__PMU__GPO3__POLARITY {low} \
-   CONFIG.PSU__PMU__GPO4__ENABLE {1} \
-   CONFIG.PSU__PMU__GPO4__IO {MIO 36} \
-   CONFIG.PSU__PMU__GPO4__POLARITY {low} \
-   CONFIG.PSU__PMU__GPO5__ENABLE {1} \
-   CONFIG.PSU__PMU__GPO5__IO {MIO 37} \
-   CONFIG.PSU__PMU__GPO5__POLARITY {low} \
+   CONFIG.PSU__PMU__GPO2__ENABLE {1} \
+   CONFIG.PSU__PMU__GPO2__IO {MIO 34} \
+   CONFIG.PSU__PMU__GPO2__POLARITY {low} \
+   CONFIG.PSU__PMU__GPO3__ENABLE {0} \
+   CONFIG.PSU__PMU__GPO3__IO {<Select>} \
+   CONFIG.PSU__PMU__GPO3__POLARITY {<Select>} \
+   CONFIG.PSU__PMU__GPO4__ENABLE {0} \
+   CONFIG.PSU__PMU__GPO4__IO {<Select>} \
+   CONFIG.PSU__PMU__GPO4__POLARITY {<Select>} \
+   CONFIG.PSU__PMU__GPO5__ENABLE {0} \
+   CONFIG.PSU__PMU__GPO5__IO {<Select>} \
+   CONFIG.PSU__PMU__GPO5__POLARITY {<Select>} \
    CONFIG.PSU__PMU__PERIPHERAL__ENABLE {1} \
    CONFIG.PSU__PMU__PLERROR__ENABLE {1} \
    CONFIG.PSU__PRESET_APPLIED {0} \

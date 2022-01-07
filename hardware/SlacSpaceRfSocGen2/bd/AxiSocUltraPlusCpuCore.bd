@@ -892,17 +892,20 @@
           "PSU_MIO_34_DRIVE_STRENGTH": {
             "value": "12"
           },
-          "PSU_MIO_34_INPUT_TYPE": {
-            "value": "cmos"
-          },
           "PSU_MIO_34_PULLUPDOWN": {
             "value": "pullup"
           },
           "PSU_MIO_34_SLEW": {
             "value": "fast"
           },
+          "PSU_MIO_35_DIRECTION": {
+            "value": "out"
+          },
           "PSU_MIO_35_DRIVE_STRENGTH": {
             "value": "12"
+          },
+          "PSU_MIO_35_INPUT_TYPE": {
+            "value": "cmos"
           },
           "PSU_MIO_35_PULLUPDOWN": {
             "value": "pullup"
@@ -910,8 +913,14 @@
           "PSU_MIO_35_SLEW": {
             "value": "fast"
           },
+          "PSU_MIO_36_DIRECTION": {
+            "value": "out"
+          },
           "PSU_MIO_36_DRIVE_STRENGTH": {
             "value": "12"
+          },
+          "PSU_MIO_36_INPUT_TYPE": {
+            "value": "cmos"
           },
           "PSU_MIO_36_PULLUPDOWN": {
             "value": "pullup"
@@ -919,8 +928,14 @@
           "PSU_MIO_36_SLEW": {
             "value": "fast"
           },
+          "PSU_MIO_37_DIRECTION": {
+            "value": "out"
+          },
           "PSU_MIO_37_DRIVE_STRENGTH": {
             "value": "12"
+          },
+          "PSU_MIO_37_INPUT_TYPE": {
+            "value": "cmos"
           },
           "PSU_MIO_37_PULLUPDOWN": {
             "value": "pullup"
@@ -1574,10 +1589,10 @@
             "value": "fast"
           },
           "PSU_MIO_TREE_PERIPHERALS": {
-            "value": "##########NAND###NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#UART 0#UART 0########PMU GPO 3#PMU GPO 4#PMU GPO 5###############GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO"
+            "value": "##########NAND###NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#NAND#UART 0#UART 0#######PMU GPO 2##################GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO#GPIO2 MIO"
           },
           "PSU_MIO_TREE_SIGNALS": {
-            "value": "##########nfc_rb_n[0]###nfc_ce[0]#nfc_cle#nfc_ale#nfc_dq_out[0]#nfc_dq_out[1]#nfc_dq_out[2]#nfc_dq_out[3]#nfc_dq_out[4]#nfc_dq_out[5]#nfc_we_b#nfc_dq_out[6]#nfc_dq_out[7]#nfc_re_n#rxd#txd########gpo[3]#gpo[4]#gpo[5]###############gpio2[52]#gpio2[53]#gpio2[54]#gpio2[55]#gpio2[56]#gpio2[57]#gpio2[58]#gpio2[59]#gpio2[60]#gpio2[61]#gpio2[62]#gpio2[63]#gpio2[64]#gpio2[65]#gpio2[66]#gpio2[67]#gpio2[68]#gpio2[69]#gpio2[70]#gpio2[71]#gpio2[72]#gpio2[73]#gpio2[74]#gpio2[75]#gpio2[76]#gpio2[77]"
+            "value": "##########nfc_rb_n[0]###nfc_ce[0]#nfc_cle#nfc_ale#nfc_dq_out[0]#nfc_dq_out[1]#nfc_dq_out[2]#nfc_dq_out[3]#nfc_dq_out[4]#nfc_dq_out[5]#nfc_we_b#nfc_dq_out[6]#nfc_dq_out[7]#nfc_re_n#rxd#txd#######gpo[2]##################gpio2[52]#gpio2[53]#gpio2[54]#gpio2[55]#gpio2[56]#gpio2[57]#gpio2[58]#gpio2[59]#gpio2[60]#gpio2[61]#gpio2[62]#gpio2[63]#gpio2[64]#gpio2[65]#gpio2[66]#gpio2[67]#gpio2[68]#gpio2[69]#gpio2[70]#gpio2[71]#gpio2[72]#gpio2[73]#gpio2[74]#gpio2[75]#gpio2[76]#gpio2[77]"
           },
           "PSU_SD0_INTERNAL_BUS_WIDTH": {
             "value": "8"
@@ -2627,10 +2642,7 @@
             "value": "34"
           },
           "PSU__GPIO_EMIO__PERIPHERAL__ENABLE": {
-            "value": "1"
-          },
-          "PSU__GPIO_EMIO__PERIPHERAL__IO": {
-            "value": "34"
+            "value": "0"
           },
           "PSU__GPIO_EMIO__WIDTH": {
             "value": "[94:0]"
@@ -3068,34 +3080,22 @@
             "value": "0"
           },
           "PSU__PMU__GPO2__ENABLE": {
-            "value": "0"
+            "value": "1"
+          },
+          "PSU__PMU__GPO2__IO": {
+            "value": "MIO 34"
+          },
+          "PSU__PMU__GPO2__POLARITY": {
+            "value": "low"
           },
           "PSU__PMU__GPO3__ENABLE": {
-            "value": "1"
-          },
-          "PSU__PMU__GPO3__IO": {
-            "value": "MIO 35"
-          },
-          "PSU__PMU__GPO3__POLARITY": {
-            "value": "low"
+            "value": "0"
           },
           "PSU__PMU__GPO4__ENABLE": {
-            "value": "1"
-          },
-          "PSU__PMU__GPO4__IO": {
-            "value": "MIO 36"
-          },
-          "PSU__PMU__GPO4__POLARITY": {
-            "value": "low"
+            "value": "0"
           },
           "PSU__PMU__GPO5__ENABLE": {
-            "value": "1"
-          },
-          "PSU__PMU__GPO5__IO": {
-            "value": "MIO 37"
-          },
-          "PSU__PMU__GPO5__POLARITY": {
-            "value": "low"
+            "value": "0"
           },
           "PSU__PMU__PERIPHERAL__ENABLE": {
             "value": "1"
