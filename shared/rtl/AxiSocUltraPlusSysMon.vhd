@@ -207,7 +207,7 @@ begin
       v.adcData := adcData;
 
       -- Check for change in bus and not forcing bus change detection from SW
-      if (r.adcData /= v.adcData) and (writeReg(31 downto 16) = 0) then
+      if (r.adcData /= v.adcData) and (writeReg(16) = '0') then
          -- Set the flag
          v.busChangeDet := '1';
       else
