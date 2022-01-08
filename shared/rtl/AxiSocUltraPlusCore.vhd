@@ -26,14 +26,15 @@ use axi_soc_ultra_plus_core.AxiSocUltraPlusPkg.all;
 
 entity AxiSocUltraPlusCore is
    generic (
-      TPD_G                : time                        := 1 ns;
-      ROGUE_SIM_EN_G       : boolean                     := false;
-      ROGUE_SIM_PORT_NUM_G : natural range 1024 to 49151 := 10000;
-      ROGUE_SIM_CH_COUNT_G : natural range 1 to 256      := 256;
-      BUILD_INFO_G         : BuildInfoType;
-      EXT_AXIL_MASTER_G    : boolean                     := false;
-      DMA_BURST_BYTES_G    : positive range 256 to 4096  := 256;
-      DMA_SIZE_G           : positive range 1 to 8       := 1);
+      TPD_G                    : time                        := 1 ns;
+      ROGUE_SIM_EN_G           : boolean                     := false;
+      ROGUE_SIM_PORT_NUM_G     : natural range 1024 to 49151 := 10000;
+      ROGUE_SIM_CH_COUNT_G     : natural range 1 to 256      := 256;
+      BUILD_INFO_G             : BuildInfoType;
+      EXT_AXIL_MASTER_G        : boolean                     := false;
+      SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0)            := x"FFFF";
+      DMA_BURST_BYTES_G        : positive range 256 to 4096  := 256;
+      DMA_SIZE_G               : positive range 1 to 8       := 1);
    port (
       ------------------------
       --  Top Level Interfaces
@@ -66,6 +67,8 @@ entity AxiSocUltraPlusCore is
       -- PMU Interface
       pmuErrorFromPl  : in  slv(3 downto 0)        := (others => '0');
       pmuErrorToPl    : out slv(46 downto 0);
+      -- Over Temp or LVAUX Error Detect
+      sysmonError     : out sl;
       -- SYSMON Ports
       vPIn            : in  sl;
       vNIn            : in  sl);
@@ -161,12 +164,13 @@ begin
    ---------------
    U_REG : entity axi_soc_ultra_plus_core.AxiSocUltraPlusReg
       generic map (
-         TPD_G                => TPD_G,
-         ROGUE_SIM_EN_G       => ROGUE_SIM_EN_G,
-         ROGUE_SIM_PORT_NUM_G => ROGUE_SIM_PORT_NUM_G,
-         BUILD_INFO_G         => BUILD_INFO_G,
-         EXT_AXIL_MASTER_G    => EXT_AXIL_MASTER_G,
-         DMA_SIZE_G           => DMA_SIZE_G)
+         TPD_G                    => TPD_G,
+         ROGUE_SIM_EN_G           => ROGUE_SIM_EN_G,
+         ROGUE_SIM_PORT_NUM_G     => ROGUE_SIM_PORT_NUM_G,
+         BUILD_INFO_G             => BUILD_INFO_G,
+         EXT_AXIL_MASTER_G        => EXT_AXIL_MASTER_G,
+         SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
+         DMA_SIZE_G               => DMA_SIZE_G)
       port map (
          -- Internal AXI4 Interfaces (axiClk domain)
          axiClk              => sysClock,
@@ -195,6 +199,8 @@ begin
          -- Application Force reset
          cardResetOut        => cardReset,
          cardResetIn         => systemReset,
+         -- Over Temp or LVAUX Error Detect
+         sysmonError         => sysmonError,
          -- SYSMON Ports
          vPIn                => vPIn,
          vNIn                => vNIn);

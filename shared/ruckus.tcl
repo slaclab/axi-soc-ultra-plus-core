@@ -23,3 +23,6 @@ loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/ip/SysMon"
 
 # loadIpCore -dir "$::DIR_PATH/ip/AxiPcie16BCrossbarIpCore"
 loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/ip/AxiPcie16BCrossbarIpCore"
+
+# Load External FW utilities
+loadRuckusTcl "$::DIR_PATH/rfsoc-utility"

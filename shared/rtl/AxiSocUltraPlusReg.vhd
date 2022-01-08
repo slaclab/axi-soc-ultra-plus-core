@@ -29,12 +29,13 @@ use unisim.vcomponents.all;
 
 entity AxiSocUltraPlusReg is
    generic (
-      TPD_G                : time                        := 1 ns;
-      ROGUE_SIM_EN_G       : boolean                     := false;
-      ROGUE_SIM_PORT_NUM_G : natural range 1024 to 49151 := 8000;
-      BUILD_INFO_G         : BuildInfoType;
-      EXT_AXIL_MASTER_G    : boolean                     := false;
-      DMA_SIZE_G           : positive range 1 to 16      := 1);
+      TPD_G                    : time                        := 1 ns;
+      ROGUE_SIM_EN_G           : boolean                     := false;
+      ROGUE_SIM_PORT_NUM_G     : natural range 1024 to 49151 := 8000;
+      BUILD_INFO_G             : BuildInfoType;
+      EXT_AXIL_MASTER_G        : boolean                     := false;
+      SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0);
+      DMA_SIZE_G               : positive range 1 to 16      := 1);
    port (
       -- Internal AXI4 Interfaces (axiClk domain)
       axiClk              : in  sl;
@@ -63,6 +64,8 @@ entity AxiSocUltraPlusReg is
       -- Application Force reset
       cardResetIn         : in  sl;
       cardResetOut        : out sl;
+      -- Over Temp or LVAUX Error Detect
+      sysmonError         : out sl;
       -- SYSMON Ports
       vPIn                : in  sl;
       vNIn                : in  sl);
@@ -155,8 +158,12 @@ begin
 
       U_SysMon : entity axi_soc_ultra_plus_core.AxiSocUltraPlusSysMon
          generic map (
-            TPD_G => TPD_G)
+            TPD_G                    => TPD_G,
+            SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
+            AXIL_BASE_ADDR_G         => AXI_CROSSBAR_MASTERS_CONFIG_C(SYSMON_INDEX_C).baseAddr)
          port map (
+            -- Over Temp or LVAUX Error Detect
+            sysmonError     => sysmonError,
             -- SYSMON Ports
             vPIn            => vPIn,
             vNIn            => vNIn,
