@@ -2,5 +2,4 @@
 source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 
 # Load Source Code
-loadRuckusTcl "$::DIR_PATH/AppRingBuffer"
-loadRuckusTcl "$::DIR_PATH/DacSigGen"
+loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"

@@ -12,7 +12,7 @@ import pyrogue       as pr
 class SysMonLvAuxDet(pr.Device):
     def __init__(self,**kwargs):
         super().__init__(**kwargs)
-    
+
         self.add(pr.RemoteVariable(
             name         = 'AdcBus',
             offset       = 0x000,
@@ -21,14 +21,14 @@ class SysMonLvAuxDet(pr.Device):
             mode         = 'RO',
             pollInterval = 1,
         ))
-        
+
         self.add(pr.RemoteVariable(
             name         = 'LvAuxThresh',
             offset       = 0x100,
             bitSize      = 16,
             bitOffset    = 0,
             mode         = 'RW',
-        ))            
+        ))
 
         self.add(pr.RemoteVariable(
             name         = 'ForceAdcBusLockUp',
@@ -36,5 +36,4 @@ class SysMonLvAuxDet(pr.Device):
             bitSize      = 1,
             bitOffset    = 16,
             mode         = 'RW',
-        ))            
-        
+        ))
