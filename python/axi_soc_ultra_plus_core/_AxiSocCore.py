@@ -35,9 +35,17 @@ class AxiSocCore(pr.Device):
 
         # SYSMON Module
         self.add(xil.AxiSysMonUltraScale(
-            offset       = 0x1_0000,
-            XIL_DEVICE_G = 'ULTRASCALE_PLUS',
-            expand       = False
+            offset         = 0x1_0000,
+            XIL_DEVICE_G   = 'ULTRASCALE_PLUS',
+            simpleViewList = ['Temperature', 'VccInt', 'VccAux', 'VccBram', 'VpVn'],
+            expand         = False
+        ))
+
+        # SYSMON LVAUX Module
+        self.add(core.SysMonLvAuxDet(
+            name        = 'SysMonLvAuxDet',
+            offset      = 0x1_1000,
+            expand      = False,
         ))
 
         # DMA AXI Stream Inbound Monitor

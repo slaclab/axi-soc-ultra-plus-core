@@ -44,6 +44,9 @@ entity AxiSocUltraPlusCpu is
       dmaCtrlReadSlave   : in  AxiLiteReadSlaveType;
       dmaCtrlWriteMaster : out AxiLiteWriteMasterType;
       dmaCtrlWriteSlave  : in  AxiLiteWriteSlaveType;
+      -- PMU Interface
+      pmuErrorFromPl     : in  slv(3 downto 0);
+      pmuErrorToPl       : out slv(46 downto 0);
       -- Interrupt Interface
       dmaIrq             : in  sl);
 end AxiSocUltraPlusCpu;
@@ -57,6 +60,8 @@ architecture mapping of AxiSocUltraPlusCpu is
          dmaRstL         : in  std_logic;
          plClk           : out std_logic;
          plRstL          : out std_logic;
+         pmuErrorFromPl  : in  std_logic_vector (3 downto 0);
+         pmuErrorToPl    : out std_logic_vector (46 downto 0);
          axiLite_awaddr  : out std_logic_vector (39 downto 0);
          axiLite_awprot  : out std_logic_vector (2 downto 0);
          axiLite_awvalid : out std_logic;
@@ -250,6 +255,9 @@ begin
          dma_wready                   => dmaWriteSlave.wready,
          dma_wstrb(15 downto 0)       => dmaWriteMaster.wstrb(AXI_SOC_CONFIG_C.DATA_BYTES_C-1 downto 0),
          dma_wvalid                   => dmaWriteMaster.wvalid,
+         -- PMU Interface
+         pmuErrorFromPl               => pmuErrorFromPl,
+         pmuErrorToPl                 => pmuErrorToPl,
          -- Reference Clock and reset
          plClk                        => plClk,
          plRstL                       => plRstL);

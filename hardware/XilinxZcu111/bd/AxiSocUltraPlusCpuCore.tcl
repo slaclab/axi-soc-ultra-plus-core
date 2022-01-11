@@ -255,6 +255,8 @@ proc create_root_design { parentCell } {
   set dmaRstL [ create_bd_port -dir I -type rst dmaRstL ]
   set plClk [ create_bd_port -dir O -type clk plClk ]
   set plRstL [ create_bd_port -dir O -type rst plRstL ]
+  set pmuErrorFromPl [ create_bd_port -dir I -from 3 -to 0 pmuErrorFromPl ]
+  set pmuErrorToPl [ create_bd_port -dir O -from 46 -to 0 pmuErrorToPl ]
 
   # Create instance: axi_protocol_convert_0, and set properties
   set axi_protocol_convert_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_protocol_converter:2.1 axi_protocol_convert_0 ]
@@ -860,7 +862,7 @@ sclk_out#miso_mo1#mo2#mo3#mosi_mi0#n_ss_out#clk_for_lpbk#n_ss_out_upper#mo_upper
    CONFIG.PSU__PMU__GPO5__IO {MIO 37} \
    CONFIG.PSU__PMU__GPO5__POLARITY {low} \
    CONFIG.PSU__PMU__PERIPHERAL__ENABLE {1} \
-   CONFIG.PSU__PMU__PLERROR__ENABLE {0} \
+   CONFIG.PSU__PMU__PLERROR__ENABLE {1} \
    CONFIG.PSU__PRESET_APPLIED {1} \
    CONFIG.PSU__PROTECTION__MASTERS {\
 USB1:NonSecure;0|USB0:NonSecure;1|S_AXI_LPD:NA;0|S_AXI_HPC1_FPD:NA;0|S_AXI_HPC0_FPD:NA;0|S_AXI_HP3_FPD:NA;0|S_AXI_HP2_FPD:NA;0|S_AXI_HP1_FPD:NA;0|S_AXI_HP0_FPD:NA;1|S_AXI_ACP:NA;0|S_AXI_ACE:NA;0|SD1:NonSecure;1|SD0:NonSecure;0|SATA1:NonSecure;1|SATA0:NonSecure;1|RPU1:Secure;1|RPU0:Secure;1|QSPI:NonSecure;1|PMU:NA;1|PCIe:NonSecure;0|NAND:NonSecure;0|LDMA:NonSecure;1|GPU:NonSecure;1|GEM3:NonSecure;1|GEM2:NonSecure;0|GEM1:NonSecure;0|GEM0:NonSecure;0|FDMA:NonSecure;1|DP:NonSecure;1|DAP:NA;1|Coresight:NA;1|CSU:NA;1|APU:NA;1} \
@@ -952,8 +954,10 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
   connect_bd_net -net dmaClk_1 [get_bd_ports dmaClk] [get_bd_pins axi_protocol_convert_0/aclk] [get_bd_pins axi_protocol_convert_1/aclk] [get_bd_pins zynq_ultra_ps_e_0/maxihpm0_fpd_aclk] [get_bd_pins zynq_ultra_ps_e_0/maxihpm1_fpd_aclk] [get_bd_pins zynq_ultra_ps_e_0/saxihp0_fpd_aclk]
   connect_bd_net -net dmaIrq_1 [get_bd_ports dmaIrq] [get_bd_pins zynq_ultra_ps_e_0/pl_ps_irq0]
   connect_bd_net -net dmaRstL_1 [get_bd_ports dmaRstL] [get_bd_pins axi_protocol_convert_0/aresetn] [get_bd_pins axi_protocol_convert_1/aresetn]
+  connect_bd_net -net pmu_error_from_pl_0_1 [get_bd_ports pmuErrorFromPl] [get_bd_pins zynq_ultra_ps_e_0/pmu_error_from_pl]
   connect_bd_net -net zynq_ultra_ps_e_0_pl_clk0 [get_bd_ports plClk] [get_bd_pins zynq_ultra_ps_e_0/pl_clk0]
   connect_bd_net -net zynq_ultra_ps_e_0_pl_resetn0 [get_bd_ports plRstL] [get_bd_pins zynq_ultra_ps_e_0/pl_resetn0]
+  connect_bd_net -net zynq_ultra_ps_e_0_pmu_error_to_pl [get_bd_ports pmuErrorToPl] [get_bd_pins zynq_ultra_ps_e_0/pmu_error_to_pl]
 
   # Create address segments
   assign_bd_address -offset 0x000400000000 -range 0x000100000000 -target_address_space [get_bd_addr_spaces zynq_ultra_ps_e_0/Data] [get_bd_addr_segs axiLite/Reg] -force
