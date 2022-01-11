@@ -9,6 +9,8 @@
 #-----------------------------------------------------------------------------
 
 import pyrogue as pr
+import click
+import csv
 
 class DacSigGen(pr.Device):
     def __init__(self,
@@ -17,6 +19,10 @@ class DacSigGen(pr.Device):
             smplPerCycle = 16, # Must match SAMPLE_PER_CYCLE_G config
             **kwargs):
         super().__init__(**kwargs)
+
+        self.numCh        = numCh
+        self.ramWidth     = ramWidth
+        self.smplPerCycle = smplPerCycle
 
         self.add(pr.RemoteVariable(
             name         = 'NUM_CH_G',
@@ -79,7 +85,7 @@ class DacSigGen(pr.Device):
             name         = 'BufferLength',
             description  = 'Number of clock cycles per burst (zero inclusive), related to SAMPLE_PER_CYCLE_G)',
             offset       = 0x0C,
-            bitSize      = 32,
+            bitSize      = ramWidth,
             mode         = 'RW',
         ))
 
@@ -92,7 +98,7 @@ class DacSigGen(pr.Device):
         ))
 
         self.add(pr.RemoteCommand(
-            name         = 'StartBurst',
+            name         = 'SoftwareTrigger',
             description  = 'Start the burst mode',
             offset       = 0x14,
             bitSize      = 1,
@@ -125,11 +131,48 @@ class DacSigGen(pr.Device):
         ))
 
         for i in range(numCh):
-            pr.MemoryDevice(
-                name        = f'MemCh{i}',
-                offset      = (0x1_0000+i*0x1_0000),
-                size        = smplPerCycle*(2**ramWidth),
-                wordBitSize = 16, # 16-bit word
-                stride      = 2,  # 16-bit (2 byte) stride
-                base        = pr.Int,
-            )
+            self.add(pr.RemoteVariable(
+                name         = ('Waveform[%d]' % i),
+                description  = 'Waveform data 16-bit samples',
+                offset       = (0x1_0000+i*0x1_0000),
+                bitSize      = 16 * smplPerCycle*(2**ramWidth),
+                bitOffset    = 0,
+                numValues    = smplPerCycle*(2**ramWidth),
+                valueBits    = 16,
+                valueStride  = 16,
+                updateNotify = True,
+                bulkOpEn     = False, # FALSE for large variables
+                overlapEn    = False,
+                verify       = True,
+                hidden       = True,
+                base         = pr.Int,
+                mode         = "RW",
+            ))
+
+        self.add(pr.LocalVariable(
+            name         = 'CsvFilePath',
+            description  = 'Used if command\'s argument is empty',
+            mode         = 'RW',
+            value        = '',
+        ))
+
+        @self.command(value='',description='Load the .CSV',)
+        def LoadCsvFile(arg):
+            # Check if non-empty argument
+            if (arg != ''):
+                path = arg
+            else:
+                # Use the variable path instead
+                path = self.CsvFilePath.get()
+
+            # Open the .CSV file
+            index = 0
+            with open(path, mode='r', encoding='utf-8-sig') as csvfile:
+                reader = csv.reader(csvfile, delimiter=',', quoting=csv.QUOTE_NONE)
+                for row in reader:
+                    for ch in range(len(row)):
+                        self.Waveform[ch].set(value=int(row[ch]),index=index)
+                    index += 1
+
+            # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
+            self.BufferLength.set(int(index/smplPerCycle)-1)
