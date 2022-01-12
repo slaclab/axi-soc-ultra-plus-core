@@ -157,6 +157,11 @@ begin
                      v.status.burstCnt := r.status.burstCnt - 1;
                   end if;
 
+               else
+
+                  -- Latch the counter size
+                  v.cntSize := config.bufferLength(RAM_ADDR_WIDTH_G-1 downto 0);
+
                end if;
 
             end if;
