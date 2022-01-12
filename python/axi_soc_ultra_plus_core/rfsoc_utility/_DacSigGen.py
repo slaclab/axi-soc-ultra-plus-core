@@ -167,12 +167,21 @@ class DacSigGen(pr.Device):
 
             # Open the .CSV file
             index = 0
+            firstRead = True
             with open(path, mode='r', encoding='utf-8-sig') as csvfile:
                 reader = csv.reader(csvfile, delimiter=',', quoting=csv.QUOTE_NONE)
                 for row in reader:
-                    for ch in range(len(row)):
-                        self.Waveform[ch].set(value=int(row[ch]),index=index)
+                    if firstRead:
+                        firstRead = False
+                        numCh = len(row)
+                    for ch in range(numCh):
+                        # Update only the shadow variable value (write performance reasons)
+                        self.Waveform[ch].set(value=int(row[ch]),index=index,write=False)
                     index += 1
+
+            # Push all shadow variables to hardware
+            for ch in range(numCh):
+                self.Waveform[ch].write()
 
             # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
             self.BufferLength.set(int(index/smplPerCycle)-1)
