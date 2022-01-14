@@ -134,7 +134,7 @@ begin
    U_SyncOut : entity surf.SynchronizerFifo
       generic map (
          TPD_G        => TPD_G,
-         DATA_WIDTH_G => 66)
+         DATA_WIDTH_G => 64)
       port map (
          rst                => dspRst,
          -- Write Interface
@@ -143,15 +143,29 @@ begin
          din(31 downto 0)   => r.config.burstCnt,
          din(47 downto 32)  => r.config.bufferLength,
          din(63 downto 48)  => r.config.idleValue,
-         din(64)            => r.config.continuous,
-         din(65)            => r.config.enabled,
          -- Read interface
          rd_clk             => dspClk,
          dout(31 downto 0)  => config.burstCnt,
          dout(47 downto 32) => config.bufferLength,
-         dout(63 downto 48) => config.idleValue,
-         dout(64)           => config.continuous,
-         dout(65)           => config.enabled);
+         dout(63 downto 48) => config.idleValue);
+
+   U_enabled : entity surf.Synchronizer
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk     => dspClk,
+         rst     => dspRst,
+         dataIn  => r.config.enabled,
+         dataOut => config.enabled);
+
+   U_continuous : entity surf.Synchronizer
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk     => dspClk,
+         rst     => dspRst,
+         dataIn  => r.config.continuous,
+         dataOut => config.continuous);
 
    U_burst : entity surf.SynchronizerOneShot
       generic map (
