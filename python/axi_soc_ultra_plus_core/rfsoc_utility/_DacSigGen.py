@@ -185,3 +185,11 @@ class DacSigGen(pr.Device):
 
             # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
             self.BufferLength.set(int(index/smplPerCycle)-1)
+
+            # Toggle flags (if flags already active)
+            Enabled = self.Enabled.get()
+            Continuous = self.Continuous.get()
+            self.Enabled.set(0x0)
+            self.Continuous.set(0x0)
+            self.Enabled.set(Enabled)
+            self.Continuous.set(Continuous)
