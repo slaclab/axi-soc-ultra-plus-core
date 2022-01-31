@@ -9,6 +9,7 @@ if { $::env(PRJ_PART) != "XCZU49DR-FFVF1760-2-E" } {
 # Load shared source code
 loadRuckusTcl "$::DIR_PATH/../../shared"
 loadConstraints -dir "$::DIR_PATH/xdc"
+loadSource -dir "$::DIR_PATH/rtl"
 
 # Set the board part
 set_property board_part xilinx.com:zcu216:part0:2.0 [current_project]
