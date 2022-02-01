@@ -28,6 +28,7 @@ use unisim.vcomponents.all;
 entity Hardware is
    generic (
       TPD_G            : time := 1 ns;
+      AXIL_CLK_FREQ_G  : real;
       AXIL_BASE_ADDR_G : slv(31 downto 0));
    port (
       --------------------------
@@ -124,7 +125,7 @@ begin
          TPD_G          => TPD_G,
          I2C_SCL_FREQ_G => 400.0E+3,    -- units of Hz
          DEVICE_MAP_G   => I2C_CONFIG_C,
-         AXI_CLK_FREQ_G => AXIL_CLK_FREQ_C)
+         AXI_CLK_FREQ_G => AXIL_CLK_FREQ_G)
       port map (
          -- I2C Ports
          i2ci           => i2ci,
