@@ -9,7 +9,9 @@ if { $::env(PRJ_PART) != "XCZU49DR-FFVF1760-2-E" } {
 # Load shared source code
 loadRuckusTcl "$::DIR_PATH/../../shared"
 loadConstraints -dir "$::DIR_PATH/xdc"
-loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
+
+# Load the common source code used by both ZCU208 and ZCU216
+loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/../XilinxZcu208/rtl"
 
 # Set the board part
 set_property board_part xilinx.com:zcu216:part0:2.0 [current_project]

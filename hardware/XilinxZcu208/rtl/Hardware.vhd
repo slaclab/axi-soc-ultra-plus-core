@@ -34,7 +34,6 @@ entity Hardware is
       --------------------------
       --       Ports
       --------------------------
-      lmkSync         : out   sl;
       clkMuxSel       : out   slv(1 downto 0);
       i2c1Scl         : inout sl;
       i2c1Sda         : inout sl;
@@ -85,9 +84,6 @@ architecture top_level of Hardware is
 
 begin
 
-   lmkSync   <= '0';
-   clkMuxSel <= "10";                   -- b10: SDO = LMK_MUXOUT
-
    -----------------------------------------
    -- TCA9548APWR I2C MUX + AxiLite Crossbar
    -----------------------------------------
@@ -98,7 +94,7 @@ begin
          MUX_DECODE_MAP_G   => I2C_MUX_DECODE_MAP_TCA9548_C,
          I2C_MUX_ADDR_G     => b"1110_100",
          I2C_SCL_FREQ_G     => 400.0E+3,  -- units of Hz
-         AXIL_CLK_FREQ_G    => 156.25E+6,
+         AXIL_CLK_FREQ_G    => AXIL_CLK_FREQ_G,
          -- AXI-Lite Crossbar Generics
          NUM_MASTER_SLOTS_G => 8,
          MASTERS_CONFIG_G   => XBAR_I2C_CONFIG_C)
@@ -120,24 +116,41 @@ begin
          i2ci              => i2ci,
          i2co              => i2coVec(8));
 
-   U_I2C_CLK104 : entity surf.AxiI2cRegMasterCore
+   U_I2C_CLK104 : entity surf.Sc18Is602Core
       generic map (
-         TPD_G          => TPD_G,
-         I2C_SCL_FREQ_G => 400.0E+3,    -- units of Hz
-         DEVICE_MAP_G   => I2C_CONFIG_C,
-         AXI_CLK_FREQ_G => AXIL_CLK_FREQ_G)
+         TPD_G             => TPD_G,
+         I2C_BASE_ADDR_G   => "111",    -- A[2:0] all tied to VCC
+         I2C_SCL_FREQ_G    => 400.0E+3,  -- units of Hz
+         SDO_MUX_SEL_MAP_G => (
+            0              => "11",  -- SC18IS602BIPW.SS0_B=IDTQS3VH253QG8.I3A (unused)
+            1              => "10",  -- SC18IS602BIPW.SS1_B=IDTQS3VH253QG8.I2A (LMK)
+            2              => "01",  -- SC18IS602BIPW.SS2_B=IDTQS3VH253QG8.I1A (DAC LMX)
+            3              => "00"),  -- SC18IS602BIPW.SS3_B=IDTQS3VH253QG8.I0A (ADC LMX)
+         ADDRESS_SIZE_G    => (         -- Units of bits
+            0              => 7,        -- unused
+            1              => 15,       -- LMK
+            2              => 7,        -- DAC LMX
+            3              => 7),       -- ADC LMX
+         DATA_SIZE_G       => (         -- Units of bits
+            0              => 8,        -- unused
+            1              => 8,        -- LMK
+            2              => 16,       -- DAC LMX
+            3              => 16),      -- ADC LMX
+         AXIL_CLK_FREQ_G   => AXIL_CLK_FREQ_G)
       port map (
          -- I2C Ports
-         i2ci           => i2ci,
-         i2co           => i2coVec(5),
+         i2ci            => i2ci,
+         i2co            => i2coVec(5),
+         -- Optional MUX select for SDO
+         sdoMuxSel       => clkMuxSel,
          -- AXI-Lite Register Interface
-         axiReadMaster  => i2cReadMasters(5),
-         axiReadSlave   => i2cReadSlaves(5),
-         axiWriteMaster => i2cWriteMasters(5),
-         axiWriteSlave  => i2cWriteSlaves(5),
+         axilReadMaster  => i2cReadMasters(5),
+         axilReadSlave   => i2cReadSlaves(5),
+         axilWriteMaster => i2cWriteMasters(5),
+         axilWriteSlave  => i2cWriteSlaves(5),
          -- Clocks and Resets
-         axiClk         => axilClk,
-         axiRst         => axilRst);
+         axilClk         => axilClk,
+         axilRst         => axilRst);
 
    process(i2cReadMasters, i2cWriteMasters, i2coVec)
       variable tmp : i2c_out_type;
