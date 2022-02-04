@@ -16,16 +16,24 @@ import math
 # Class for streaming RX
 class RingBufferProcessor(pr.DataReceiver):
     # Init method must call the parent class init
-    def __init__( self, hidden=True, **kwargs):
+    def __init__( self,
+            hidden=True,
+            maxSize    = 2**14,
+            sampleRate = 5.0E+9, # Units of Hz
+            maxAve     = 16,
+        **kwargs):
         pr.Device.__init__(self, hidden=hidden, **kwargs)
         ris.Slave.__init__(self)
 
+        # Configurable variables
+        self._maxSize  = maxSize
+        self._timeBin  = (1.0E+9/sampleRate) # Units of ns
+        self._maxAve   = maxAve
+
+        # Init variables
         self._rxEnable = False
-        self._maxSize  = 2**14
+        self._freqBin  = ((0.5E+3/self._timeBin)/float(self._maxSize>>1)) # Units of MHz
         self._adcLsb   = 500.0/float(2**15) # units of mV
-        self._timeBin  = 0.2 # Units of Hz (5GHz sampling)
-        self._freqBin  = (2500.0/float(self._maxSize>>1)) # Units of Hz (5GHz sampling)
-        self._maxAve   = 16
         self._idx      = 0
         self._aveSize  = 1
 
