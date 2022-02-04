@@ -10,14 +10,22 @@
 
 import pyrogue as pr
 
-import surf.devices.ti as ti
+import surf.devices.ti  as ti
+import surf.devices.nxp as nxp
 
 class Hardware(pr.Device):
     def __init__(self,**kwargs):
         super().__init__(**kwargs)
 
         self.add(ti.Lmk04828(
-            name   = 'Lmk',
-            offset = 0x05_02_0000,
-            expand = True,
+            name            = 'Lmk',
+            offset          = 0x05_02_0000,
+            allowHexFileRst = False,
+            expand          = True,
+        ))
+
+        self.add(nxp.Sc18Is602(
+            name   = 'I2cToSpi',
+            offset = 0x05_08_0000,
+            # expand = True,
         ))
