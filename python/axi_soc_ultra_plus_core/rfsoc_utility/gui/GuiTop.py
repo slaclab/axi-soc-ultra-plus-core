@@ -29,6 +29,7 @@ class GuiTop(Display):
         self.sizeX  = None
         self.sizeY  = None
         self.title  = None
+        self.numCh  = None
 
         for a in args:
             if 'sizeX=' in a:
@@ -37,6 +38,8 @@ class GuiTop(Display):
                 self.sizeY = int(a.split('=')[1])
             if 'title=' in a:
                 self.title = a.split('=')[1]
+            if 'numCh=' in a:
+                self.numCh = int(a.split('=')[1])
 
         if self.title is None:
             self.title = "Rogue Server: {}".format(os.getenv('ROGUE_SERVERS'))
@@ -45,6 +48,8 @@ class GuiTop(Display):
             self.sizeX = 800
         if self.sizeY is None:
             self.sizeY = 1000
+        if self.numCh is None:
+            self.numCh = 8
 
         self.setWindowTitle(self.title)
 
@@ -63,11 +68,11 @@ class GuiTop(Display):
         self.tab.addTab(var,'Debug Tree')
 
         # ADC Live Display (Tab Index=2)
-        adcDisplay = gui.LiveDisplay(parent=None, init_channel=Channel, dispType='Adc')
+        adcDisplay = gui.LiveDisplay(parent=None, init_channel=Channel, dispType='Adc', numCh=self.numCh)
         self.tab.addTab(adcDisplay,'ADC Waveforms')
 
         # DAC Live Display (Tab Index=3)
-        dacDisplay = gui.LiveDisplay(parent=None, init_channel=Channel, dispType='Dac')
+        dacDisplay = gui.LiveDisplay(parent=None, init_channel=Channel, dispType='Dac', numCh=self.numCh)
         self.tab.addTab(dacDisplay,'DAC Waveforms')
 
         # Set the default Tab view

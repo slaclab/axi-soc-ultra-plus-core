@@ -18,12 +18,13 @@ from pyrogue.pydm.data_plugins.rogue_plugin import nodeFromAddress
 from pyrogue.pydm.widgets import PyRogueLineEdit
 
 class LiveDisplay(PyDMFrame):
-    def __init__(self, parent=None, init_channel=None, dispType='Adc'):
+    def __init__(self, parent=None, init_channel=None, dispType='Adc', numCh=8):
         PyDMFrame.__init__(self, parent, init_channel)
         self._node     = None
         self._dispType = dispType
-        self.color     = ["white","red", "dodgerblue","forestgreen","yellow","magenta","turquoise","deeppink"]
-        self.path      = [f'{self.channel}.{self._dispType}Processor[{i}]' for i in range(8)]
+        self.numCh     = numCh
+        self.color     = ["white","red", "dodgerblue","forestgreen","yellow","magenta","turquoise","deeppink","white","red", "dodgerblue","forestgreen","yellow","magenta","turquoise","deeppink"]
+        self.path      = [f'{self.channel}.{self._dispType}Processor[{i}]' for i in range(self.numCh)]
         self.idx       = 0
 
     def resetScales(self):
@@ -112,7 +113,7 @@ class LiveDisplay(PyDMFrame):
         chSel = PyDMSpinbox()
         chSel.writeOnPress = True
         chSel.setMinimum(0)
-        chSel.setMaximum(7)
+        chSel.setMaximum(self.numCh-1)
         chSel.setEnabled(True)
         chSel.valueChanged.connect(self.changePlotCh)
         fl.addWidget(chSel)

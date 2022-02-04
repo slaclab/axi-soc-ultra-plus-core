@@ -25,12 +25,15 @@ set_property -dict { PACKAGE_PIN D9 IOSTANDARD LVCMOS18 DRIVE 8 } [get_ports { i
 
 ##############################################################################
 
+# ADC_CLK_P/N_226
 set_property PACKAGE_PIN BA5 [get_ports { adcClkP }]
 set_property PACKAGE_PIN BB5 [get_ports { adcClkN }]
 
+# DAC_CLK_P/N_230
 set_property PACKAGE_PIN B5 [get_ports { dacClkP }]
 set_property PACKAGE_PIN A5 [get_ports { dacClkN }]
 
+# SYSREF_P/N_228
 set_property PACKAGE_PIN D2 [get_ports { sysRefP }]
 set_property PACKAGE_PIN D1 [get_ports { sysRefN }]
 
