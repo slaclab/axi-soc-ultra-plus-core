@@ -31,7 +31,6 @@ class RingBufferProcessor(pr.DataReceiver):
         self._maxAve   = maxAve
 
         # Init variables
-        self._rxEnable = False
         self._freqBin  = ((0.5E+3/self._timeBin)/float(self._maxSize>>1)) # Units of MHz
         self._adcLsb   = 500.0/float(2**15) # units of mV
         self._idx      = 0
@@ -139,34 +138,33 @@ class RingBufferProcessor(pr.DataReceiver):
 
     # Method which is called when a frame is received
     def process(self,frame):
-        if self.RxEnable.get():
-            # Get payload size (int16)
-            size = (frame.getPayload() >>1)
+        # Get payload size (int16)
+        size = (frame.getPayload() >>1)
 
-            # Check if too big
-            size = self._maxSize if (size >= self._maxSize) else size
+        # Check if too big
+        size = self._maxSize if (size >= self._maxSize) else size
 
-            # To access the data we need to create a byte array to hold the data
-            fullData = bytearray(size<<1)
+        # To access the data we need to create a byte array to hold the data
+        fullData = bytearray(size<<1)
 
-            # Next we read the frame data into the byte array, from offset 0
-            frame.read(fullData,0)
+        # Next we read the frame data into the byte array, from offset 0
+        frame.read(fullData,0)
 
-            # Get data from frame
-            data = np.frombuffer(fullData, dtype='int16', count=size)
-            self.Data.set(data,write=True)
+        # Get data from frame
+        data = np.frombuffer(fullData, dtype='int16', count=size)
+        self.Data.set(data,write=True)
 
-            # Calculate the FFT
-            freq = np.fft.fft(data)/float(self._maxSize)
-            freq = freq[range(self._maxSize>>1)]
+        # Calculate the FFT
+        freq = np.fft.fft(data)/float(self._maxSize)
+        freq = freq[range(self._maxSize>>1)]
 
-            # Prevent warning message when for divide by zero encountered in log10
-            # Checking for inf later to fix this in the display
-            np.seterr(divide = 'ignore')
+        # Prevent warning message when for divide by zero encountered in log10
+        # Checking for inf later to fix this in the display
+        np.seterr(divide = 'ignore')
 
-            # Calculate the average magnitude
-            mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
-            if sum(np.isinf(mag)) == 0:
-                self._mag[self._idx] = mag
-                magnitude = self.running_mean(self._mag)
-                self.Magnitude.set(magnitude,write=True)
+        # Calculate the average magnitude
+        mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
+        if sum(np.isinf(mag)) == 0:
+            self._mag[self._idx] = mag
+            magnitude = self.running_mean(self._mag)
+            self.Magnitude.set(magnitude,write=True)
