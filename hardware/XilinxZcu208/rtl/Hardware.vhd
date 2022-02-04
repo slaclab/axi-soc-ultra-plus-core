@@ -120,7 +120,7 @@ begin
       generic map (
          TPD_G             => TPD_G,
          I2C_BASE_ADDR_G   => "111",    -- A[2:0] all tied to VCC
-         I2C_SCL_FREQ_G    => 40.0E+3,  -- units of Hz
+         I2C_SCL_FREQ_G    => 30.0E+3,  -- units of Hz
          SDO_MUX_SEL_MAP_G => (
             0              => "11",  -- SC18IS602BIPW.SS0_B=IDTQS3VH253QG8.I3A (unused)
             1              => "10",  -- SC18IS602BIPW.SS1_B=IDTQS3VH253QG8.I2A (LMK)
