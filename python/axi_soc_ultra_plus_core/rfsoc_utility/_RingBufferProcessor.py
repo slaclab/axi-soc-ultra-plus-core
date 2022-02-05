@@ -17,10 +17,10 @@ import math
 class RingBufferProcessor(pr.DataReceiver):
     # Init method must call the parent class init
     def __init__( self,
-            hidden=True,
             maxSize    = 2**14,
             sampleRate = 5.0E+9, # Units of Hz
             maxAve     = 16,
+            hidden     = True,
         **kwargs):
         pr.Device.__init__(self, hidden=hidden, **kwargs)
         ris.Slave.__init__(self)
@@ -43,7 +43,7 @@ class RingBufferProcessor(pr.DataReceiver):
         self.add(pr.LocalVariable(
             name        = 'RxEnable',
             description = 'Frame Rx Enable',
-            value       = True,
+            value       = False,
         ))
 
         self.add(pr.LocalVariable(
@@ -111,6 +111,10 @@ class RingBufferProcessor(pr.DataReceiver):
         ))
 
         self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float, order='C')
+
+    def _start(self):
+        super()._start()
+        self.RxEnable.set(value=False) # blow off data by default
 
     def _fftAveraging(self,value,changed):
         if changed:

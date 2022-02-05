@@ -182,13 +182,10 @@ begin
 
    U_Mux : entity surf.AxiStreamMux
       generic map (
-         TPD_G                => TPD_G,
-         NUM_SLAVES_G         => 2,
-         MODE_G               => "PASSTHROUGH",
-         ILEAVE_EN_G          => true,
-         ILEAVE_ON_NOTVALID_G => false,
-         ILEAVE_REARB_G       => 128,
-         PIPE_STAGES_G        => 1)
+         TPD_G         => TPD_G,
+         NUM_SLAVES_G  => 2,
+         MODE_G        => "PASSTHROUGH",
+         PIPE_STAGES_G => 1)
       port map (
          -- Clock and reset
          axisClk      => dmaClk,
@@ -204,7 +201,7 @@ begin
       generic map (
          TPD_G              => TPD_G,
          AXIS_CLK_FREQ_G    => DMA_CLK_FREQ_C,
-         DEFAULT_MAX_RATE_G => (NUM_ADC_CH_G+NUM_DAC_CH_G))
+         DEFAULT_MAX_RATE_G => 2*(NUM_ADC_CH_G+NUM_DAC_CH_G)) -- 2 Hz per channel
       port map (
          -- AXI Stream Interface (axisClk domain)
          axisClk         => dmaClk,

@@ -30,10 +30,18 @@ class AppRingBuffer(pr.Device):
             name   = 'Adc',
             offset = 0x0000_0000,
             numCh  = numAdcCh,
+            # expand = True,
         ))
 
         self.add(AppRingBufferEngine(
             name   = 'Dac',
             offset = 0x0001_0000,
             numCh  = numDacCh,
+            # expand = True,
+        ))
+
+        self.add(axi.AxiStreamFrameRateLimiter(
+            name   = 'RateLimiter',
+            offset = 0x0002_0000,
+            # expand = True,
         ))

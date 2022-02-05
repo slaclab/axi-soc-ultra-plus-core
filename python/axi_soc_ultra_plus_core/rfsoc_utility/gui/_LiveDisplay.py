@@ -17,6 +17,8 @@ from qtpy.QtWidgets import QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QDo
 from pyrogue.pydm.data_plugins.rogue_plugin import nodeFromAddress
 from pyrogue.pydm.widgets import PyRogueLineEdit
 
+import pyrogue as pr
+
 class LiveDisplay(PyDMFrame):
     def __init__(self, parent=None, init_channel=None, dispType='Adc', numCh=8):
         PyDMFrame.__init__(self, parent, init_channel)
@@ -26,6 +28,7 @@ class LiveDisplay(PyDMFrame):
         self.color     = ["white","red", "dodgerblue","forestgreen","yellow","magenta","turquoise","deeppink","white","red", "dodgerblue","forestgreen","yellow","magenta","turquoise","deeppink"]
         self.path      = [f'{self.channel}.{self._dispType}Processor[{i}]' for i in range(self.numCh)]
         self.idx       = 0
+        self.RxEnable  = [nodeFromAddress(self.path[i]+'.RxEnable') for i in range(self.numCh)]
 
     def resetScales(self):
         # Reset the auto-ranging
@@ -36,8 +39,14 @@ class LiveDisplay(PyDMFrame):
         self.freqPlot.setMaxYRange(0.0)
 
     def changePlotCh(self, ch):
+        # Disable processing on current channel
+        self.RxEnable[self.idx].set(False)
+
         # Convert float to int
         self.idx = int(ch)
+
+        # Enable processing on new channel
+        self.RxEnable[self.idx].set(True)
 
         # Remove curve items
         self.timePlot.removeChannelAtIndex(0)
@@ -58,6 +67,9 @@ class LiveDisplay(PyDMFrame):
             return
 
         self._node = nodeFromAddress(self.channel)
+
+        # Enable processing on new channel
+        self.RxEnable[self.idx].set(True)
 
         vb = QVBoxLayout()
         self.setLayout(vb)
