@@ -37,7 +37,7 @@ class AxiSocCore(pr.Device):
         self.add(xil.AxiSysMonUltraScale(
             offset         = 0x1_0000,
             XIL_DEVICE_G   = 'ULTRASCALE_PLUS',
-            simpleViewList = ['Temperature', 'VccInt', 'VccAux', 'VccBram', 'VpVn'],
+            simpleViewList = ['Temperature', 'VccInt', 'VccAux', 'VccBram', 'VpVn', 'RawVpVn'],
             expand         = False
         ))
 

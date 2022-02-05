@@ -55,10 +55,11 @@ end AppRingBuffer;
 
 architecture mapping of AppRingBuffer is
 
-   constant ADC_RING_INDEX_C : natural := 0;
-   constant DAC_RING_INDEX_C : natural := 1;
+   constant ADC_RING_INDEX_C   : natural := 0;
+   constant DAC_RING_INDEX_C   : natural := 1;
+   constant RATE_LIMIT_INDEX_C : natural := 2;
 
-   constant NUM_AXIL_MASTERS_C : natural := 2;
+   constant NUM_AXIL_MASTERS_C : natural := 3;
 
    constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_AXIL_MASTERS_C-1 downto 0) := genAxiLiteConfig(NUM_AXIL_MASTERS_C, AXIL_BASE_ADDR_G, 20, 16);
 
@@ -69,6 +70,9 @@ architecture mapping of AppRingBuffer is
 
    signal axisMasters : AxiStreamMasterArray(1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
    signal axisSlaves  : AxiStreamSlaveArray(1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
+
+   signal axisMaster : AxiStreamMasterType := AXI_STREAM_MASTER_INIT_C;
+   signal axisSlave  : AxiStreamSlaveType  := AXI_STREAM_SLAVE_FORCE_C;
 
 begin
 
@@ -178,13 +182,10 @@ begin
 
    U_Mux : entity surf.AxiStreamMux
       generic map (
-         TPD_G                => TPD_G,
-         NUM_SLAVES_G         => 2,
-         MODE_G               => "PASSTHROUGH",
-         ILEAVE_EN_G          => true,
-         ILEAVE_ON_NOTVALID_G => false,
-         ILEAVE_REARB_G       => 128,
-         PIPE_STAGES_G        => 1)
+         TPD_G         => TPD_G,
+         NUM_SLAVES_G  => 2,
+         MODE_G        => "PASSTHROUGH",
+         PIPE_STAGES_G => 1)
       port map (
          -- Clock and reset
          axisClk      => dmaClk,
@@ -193,7 +194,28 @@ begin
          sAxisMasters => axisMasters,
          sAxisSlaves  => axisSlaves,
          -- Master
-         mAxisMaster  => dmaIbMaster,
-         mAxisSlave   => dmaIbSlave);
+         mAxisMaster  => axisMaster,
+         mAxisSlave   => axisSlave);
+
+   U_RateLimiter : entity surf.AxiStreamFrameRateLimiter
+      generic map (
+         TPD_G              => TPD_G,
+         AXIS_CLK_FREQ_G    => DMA_CLK_FREQ_C,
+         DEFAULT_MAX_RATE_G => 2*(NUM_ADC_CH_G+NUM_DAC_CH_G)) -- 2 Hz per channel
+      port map (
+         -- AXI Stream Interface (axisClk domain)
+         axisClk         => dmaClk,
+         axisRst         => dmaRst,
+         sAxisMaster     => axisMaster,
+         sAxisSlave      => axisSlave,
+         mAxisMaster     => dmaIbMaster,
+         mAxisSlave      => dmaIbSlave,
+         -- AXI-Lite Interface (axilClk domain)
+         axilClk         => axilClk,
+         axilRst         => axilRst,
+         axilReadMaster  => axilReadMasters(RATE_LIMIT_INDEX_C),
+         axilReadSlave   => axilReadSlaves(RATE_LIMIT_INDEX_C),
+         axilWriteMaster => axilWriteMasters(RATE_LIMIT_INDEX_C),
+         axilWriteSlave  => axilWriteSlaves(RATE_LIMIT_INDEX_C));
 
 end mapping;

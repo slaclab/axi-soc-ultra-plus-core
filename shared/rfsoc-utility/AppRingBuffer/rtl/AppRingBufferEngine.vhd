@@ -112,14 +112,11 @@ begin
 
    U_Mux : entity surf.AxiStreamMux
       generic map (
-         TPD_G                => TPD_G,
-         NUM_SLAVES_G         => NUM_CH_G,
-         MODE_G               => "ROUTED",
-         TDEST_ROUTES_G       => TDEST_ROUTES_G(NUM_CH_G-1 downto 0),
-         ILEAVE_EN_G          => true,
-         ILEAVE_ON_NOTVALID_G => false,
-         ILEAVE_REARB_G       => 128,
-         PIPE_STAGES_G        => 1)
+         TPD_G          => TPD_G,
+         NUM_SLAVES_G   => NUM_CH_G,
+         MODE_G         => "ROUTED",
+         TDEST_ROUTES_G => TDEST_ROUTES_G(NUM_CH_G-1 downto 0),
+         PIPE_STAGES_G  => 1)
       port map (
          -- Clock and reset
          axisClk      => axisClk,

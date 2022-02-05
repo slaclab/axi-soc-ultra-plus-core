@@ -16,17 +16,17 @@ class SysMonLvAuxDet(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'AdcBus',
             offset       = 0x000,
-            bitSize      = 16,
-            bitOffset    = 0,
+            bitSize      = 12,
+            bitOffset    = 4,
             mode         = 'RO',
             pollInterval = 1,
         ))
 
         self.add(pr.RemoteVariable(
-            name         = 'LvAuxThresh',
+            name         = 'LvAuxThreshRaw',
             offset       = 0x100,
-            bitSize      = 16,
-            bitOffset    = 0,
+            bitSize      = 12,
+            bitOffset    = 4,
             mode         = 'RW',
         ))
 
@@ -36,4 +36,13 @@ class SysMonLvAuxDet(pr.Device):
             bitSize      = 1,
             bitOffset    = 16,
             mode         = 'RW',
+        ))
+
+        self.add(pr.LinkVariable(
+            name         = 'LvAuxThresh',
+            units        = 'V',
+            mode         = 'RO',
+            disp         = '{:1.1f}',
+            dependencies = [self.LvAuxThreshRaw],
+            linkedGet    = lambda: round(self.LvAuxThreshRaw.value() * 244e-6,3)
         ))

@@ -1,9 +1,9 @@
 #-----------------------------------------------------------------------------
-# This file is part of the 'Camera link gateway'. It is subject to
+# This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
 # the license terms in the LICENSE.txt file found in the top-level directory
 # of this distribution and at:
 #    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
-# No part of the 'Camera link gateway', including this file, may be
+# No part of the 'axi-soc-ultra-plus-core', including this file, may be
 # copied, modified, propagated, or distributed except according to the terms
 # contained in the LICENSE.txt file.
 #-----------------------------------------------------------------------------
@@ -167,12 +167,29 @@ class DacSigGen(pr.Device):
 
             # Open the .CSV file
             index = 0
+            firstRead = True
             with open(path, mode='r', encoding='utf-8-sig') as csvfile:
                 reader = csv.reader(csvfile, delimiter=',', quoting=csv.QUOTE_NONE)
                 for row in reader:
-                    for ch in range(len(row)):
-                        self.Waveform[ch].set(value=int(row[ch]),index=index)
+                    if firstRead:
+                        firstRead = False
+                        numCh = len(row)
+                    for ch in range(numCh):
+                        # Update only the shadow variable value (write performance reasons)
+                        self.Waveform[ch].set(value=int(row[ch]),index=index,write=False)
                     index += 1
+
+            # Push all shadow variables to hardware
+            for ch in range(numCh):
+                self.Waveform[ch].write()
 
             # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
             self.BufferLength.set(int(index/smplPerCycle)-1)
+
+            # Toggle flags (if flags already active)
+            Enabled = self.Enabled.get()
+            Continuous = self.Continuous.get()
+            self.Enabled.set(0x0)
+            self.Continuous.set(0x0)
+            self.Enabled.set(Enabled)
+            self.Continuous.set(Continuous)
