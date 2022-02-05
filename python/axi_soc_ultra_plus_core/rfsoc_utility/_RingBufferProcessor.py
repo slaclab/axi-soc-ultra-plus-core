@@ -13,6 +13,9 @@ import pyrogue as pr
 import numpy as np
 import math
 
+import rogue
+rogue.Version.minVersion('5.13.0')
+
 # Class for streaming RX
 class RingBufferProcessor(pr.DataReceiver):
     # Init method must call the parent class init
