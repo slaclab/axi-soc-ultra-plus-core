@@ -9,20 +9,29 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-while getopts p:n:h:x:j: flag
+while getopts p:n:h:x:l:d:t:r:s: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
         n) name=${OPTARG};;
         h) hwType=${OPTARG};;
         x) xsa=${OPTARG};;
-        j) jtag=${OPTARG};;
+        l) numLane=${OPTARG};;
+        d) numDest=${OPTARG};;
+        t) dmaTxBuffCount=${OPTARG};;
+        r) dmaRxBuffCount=${OPTARG};;
+        s) dmaBuffSize=${OPTARG};;
     esac
 done
 echo "Build Output Path: $path";
 echo "Project Name: $name";
 echo "Hardware Type: $hwType";
 echo "XSA File Path: $xsa";
+echo "Number of DMA lanes: $numLane";
+echo "Number of DEST per lane: $numDest";
+echo "Number of DMA TX Buffers: $dmaTxBuffCount";
+echo "Number of DMA RX Buffers: $dmaRxBuffCount";
+echo "DMA Buffer Size: $dmaBuffSize Bytes";
 
 axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
 aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
@@ -64,6 +73,13 @@ cp -rfL $aes_stream_drivers/petalinux/axistreamdma project-spec/meta-user/recipe
 cp -rfL $aes_stream_drivers/petalinux/aximemorymap project-spec/meta-user/recipes-modules/aximemorymap
 echo KERNEL_MODULE_AUTOLOAD = \"axi_stream_dma axi_memory_map\" >> project-spec/meta-user/conf/petalinuxbsp.conf
 echo IMAGE_INSTALL_append = \" axistreamdma aximemorymap\" >> build/conf/local.conf
+
+# Update DMA engine with user configuration
+sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
+sed -i "s/int cfgRxCount0 = 128;/int cfgRxCount0 = $dmaRxBuffCount;/"  project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
+sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
+
+# Build kernel and kernel modules
 petalinux-build -c kernel
 petalinux-build -c axistreamdma
 petalinux-build -c aximemorymap
@@ -83,22 +99,23 @@ petalinux-create -t apps --template install -n roguetcpbridge --enable
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
 echo IMAGE_INSTALL_append = \" roguetcpbridge\" >> build/conf/local.conf
 cp -rf $axi_soc_ultra_plus_core/roguetcpbridge project-spec/meta-user/recipes-apps/.
+
+# Update Application with user configuration
+sed -i "s/default  = 2,/default  = $numLane,/"  project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
+sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
+
+# Build the applications
 petalinux-build -c roguetcpbridge
 
-# Check for JTAG booting
-if [ $jtag != "0" ]
-then
-   echo "Enable JTAG Boot Build: $jtag";
-   # Patch for JTAG booting
-   petalinux-config --silentconfig
-   echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
-   echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
-   echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
-   echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
-   echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
-   echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
-   petalinux-build
-fi
+# Patch for supporting JTAG booting
+petalinux-config --silentconfig
+echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
+petalinux-build
 
 # Finalize the System Image
 petalinux-build
