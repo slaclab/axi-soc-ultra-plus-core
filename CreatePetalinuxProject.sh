@@ -51,9 +51,6 @@ cd $name
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
-## Customize the PMU FW Build Flags to allow EFUSE access
-#sed -i "s/CONFIG_SUBSYSTEM_PMUFW_COMPILER_EXTRA_FLAGS=\"\"/CONFIG_SUBSYSTEM_PMUFW_COMPILER_EXTRA_FLAGS=\"-DENABLE_PM -DENABLE_EFUSE_ACCESS\"/" project-spec/configs/config
-
 # Check if the patch directory exists
 if [ -d "$hwDir/patch" ]
 then
@@ -89,7 +86,7 @@ petalinux-build -c aximemorymap
 
 # Add rogue to petalinux
 petalinux-create -t apps --name rogue --template install
-cp -f $axi_soc_ultra_plus_core/rogue.bb project-spec/meta-user/recipes-apps/rogue/rogue.bb
+cp -f $axi_soc_ultra_plus_core/petalinux-apps/rogue.bb project-spec/meta-user/recipes-apps/rogue/rogue.bb
 echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
@@ -104,7 +101,7 @@ petalinux-build -c rogue
 petalinux-create -t apps --template install -n roguetcpbridge --enable
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
 echo IMAGE_INSTALL_append = \" roguetcpbridge\" >> build/conf/local.conf
-cp -rf $axi_soc_ultra_plus_core/roguetcpbridge project-spec/meta-user/recipes-apps/.
+cp -rf $axi_soc_ultra_plus_core/petalinux-apps/roguetcpbridge project-spec/meta-user/recipes-apps/.
 
 # Update Application with user configuration
 sed -i "s/default  = 2,/default  = $numLane,/"  project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
