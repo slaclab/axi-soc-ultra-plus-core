@@ -51,6 +51,9 @@ cd $name
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
+## Customize the PMU FW Build Flags to allow EFUSE access
+#sed -i "s/CONFIG_SUBSYSTEM_PMUFW_COMPILER_EXTRA_FLAGS=\"\"/CONFIG_SUBSYSTEM_PMUFW_COMPILER_EXTRA_FLAGS=\"-DENABLE_PM -DENABLE_EFUSE_ACCESS\"/" project-spec/configs/config
+
 # Check if the patch directory exists
 if [ -d "$hwDir/patch" ]
 then
