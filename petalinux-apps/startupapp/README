@@ -18,7 +18,7 @@ You will see your application in the "apps --->" submenu.
 
 To install your prebuilt application or script to the target file system
 copy on the host, simply run the command.
-    "petalinux-build -c rootfs/loadfpgabitstream"
+    "petalinux-build -c rootfs/startupapp"
 
 You will also need to rebuild PetaLinux bootable images so that the images
 is updated with the updated target filesystem copy, run this command:

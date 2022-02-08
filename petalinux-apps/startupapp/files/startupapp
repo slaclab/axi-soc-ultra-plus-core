@@ -9,6 +9,16 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-# Load the user's updated .bit file
-echo "fpgautil -b /media/sd-mmcblk0p1/system.bit"
+# Load the user's firmware (PL) .bit file
 fpgautil -b /media/sd-mmcblk0p1/system.bit
+
+# Load the AXI memory map driver
+rmmod -s axi_memory_map
+insmod /lib/modules/$(uname -r)/extra/axi_memory_map.ko
+
+# Load the AXI Stream DMA driver
+rmmod -s axi_stream_dma
+insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
+
+# Load the rogue TCP bridge Application
+/usr/bin/roguetcpbridge 1

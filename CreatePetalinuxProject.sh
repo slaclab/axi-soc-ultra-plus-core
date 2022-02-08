@@ -65,8 +65,8 @@ fi
 cp -f $hwDir/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
 
 # Add the axi-stream-dma & axi_memory_map modules
-petalinux-create -t modules --name axistreamdma --enable
-petalinux-create -t modules --name aximemorymap --enable
+petalinux-create -t modules --name axistreamdma
+petalinux-create -t modules --name aximemorymap
 rm -rf project-spec/meta-user/recipes-modules/axistreamdma
 rm -rf project-spec/meta-user/recipes-modules/aximemorymap
 cp -rfL $aes_stream_drivers/petalinux/axistreamdma project-spec/meta-user/recipes-modules/axistreamdma
@@ -98,7 +98,7 @@ cp build/tmp/work/cortexa72-cortexa53-xilinx-linux/rogue/1.0-r0/build/setup.py b
 petalinux-build -c rogue
 
 # Add rogue TCP memory/stream server
-petalinux-create -t apps --template install -n roguetcpbridge --enable
+petalinux-create -t apps --template install -n roguetcpbridge
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
 echo IMAGE_INSTALL_append = \" roguetcpbridge\" >> build/conf/local.conf
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/roguetcpbridge project-spec/meta-user/recipes-apps/.
@@ -107,8 +107,15 @@ cp -rf $axi_soc_ultra_plus_core/petalinux-apps/roguetcpbridge project-spec/meta-
 sed -i "s/default  = 2,/default  = $numLane,/"  project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 
+# Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
+petalinux-create -t apps --template install -n startupapp --enable
+echo CONFIG_startupapp=y >> project-spec/configs/rootfs_config
+echo IMAGE_INSTALL_append = \" startupapp\" >> build/conf/local.conf
+cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startupapp project-spec/meta-user/recipes-apps/.
+
 # Build the applications
 petalinux-build -c roguetcpbridge
+petalinux-build -c startupapp
 
 # Patch for supporting JTAG booting
 petalinux-config --silentconfig
