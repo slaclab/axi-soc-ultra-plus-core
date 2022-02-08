@@ -7,6 +7,9 @@
 &gem3 {
 	local-mac-address = [08 00 56 00 00 00];
 };
+&sdhci1 {
+	disable-wp;
+};
 / {
 	axi_stream_dma_0@b0000000 {
 		compatible = "axi_stream_dma";
