@@ -71,7 +71,6 @@ rm -rf project-spec/meta-user/recipes-modules/axistreamdma
 rm -rf project-spec/meta-user/recipes-modules/aximemorymap
 cp -rfL $aes_stream_drivers/petalinux/axistreamdma project-spec/meta-user/recipes-modules/axistreamdma
 cp -rfL $aes_stream_drivers/petalinux/aximemorymap project-spec/meta-user/recipes-modules/aximemorymap
-echo KERNEL_MODULE_AUTOLOAD = \"axi_stream_dma axi_memory_map\" >> project-spec/meta-user/conf/petalinuxbsp.conf
 echo IMAGE_INSTALL_append = \" axistreamdma aximemorymap\" >> build/conf/local.conf
 
 # Update DMA engine with user configuration
