@@ -21,4 +21,4 @@ insmod /lib/modules/$(uname -r)/extra/axi_memory_map.ko
 insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 
 # Load the rogue TCP bridge Application
-/usr/bin/roguetcpbridge 1
+/usr/bin/roguetcpbridge
