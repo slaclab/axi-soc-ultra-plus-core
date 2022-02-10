@@ -33,6 +33,7 @@ entity AxiSocUltraPlusCore is
       BUILD_INFO_G             : BuildInfoType;
       EXT_AXIL_MASTER_G        : boolean                     := false;
       SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0)            := x"FFFF";
+      DESC_MEMORY_TYPE_G       : string                      := "ultra";
       DMA_BURST_BYTES_G        : positive range 256 to 4096  := 256;
       DMA_SIZE_G               : positive range 1 to 8       := 1);
    port (
@@ -214,6 +215,7 @@ begin
          ROGUE_SIM_EN_G       => ROGUE_SIM_EN_G,
          ROGUE_SIM_PORT_NUM_G => ROGUE_SIM_PORT_NUM_G,
          ROGUE_SIM_CH_COUNT_G => ROGUE_SIM_CH_COUNT_G,
+         DESC_MEMORY_TYPE_G   => DESC_MEMORY_TYPE_G,
          DMA_SIZE_G           => DMA_SIZE_G,
          DMA_BURST_BYTES_G    => DMA_BURST_BYTES_G)
       port map (
