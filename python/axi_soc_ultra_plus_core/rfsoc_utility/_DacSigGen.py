@@ -156,6 +156,16 @@ class DacSigGen(pr.Device):
             value        = '',
         ))
 
+        @self.command(hidden=True)
+        def RefreshDacFsm():
+            # Toggle flags (if flags already active)
+            Enabled = self.Enabled.get()
+            Continuous = self.Continuous.get()
+            self.Enabled.set(0x0)
+            self.Continuous.set(0x0)
+            self.Enabled.set(Enabled)
+            self.Continuous.set(Continuous)
+
         @self.command(value='',description='Load the .CSV',)
         def LoadCsvFile(arg):
             # Check if non-empty argument
@@ -187,9 +197,5 @@ class DacSigGen(pr.Device):
             self.BufferLength.set(int(index/smplPerCycle)-1)
 
             # Toggle flags (if flags already active)
-            Enabled = self.Enabled.get()
-            Continuous = self.Continuous.get()
-            self.Enabled.set(0x0)
-            self.Continuous.set(0x0)
-            self.Enabled.set(Enabled)
-            self.Continuous.set(Continuous)
+            self.RefreshDacFsm()
+
