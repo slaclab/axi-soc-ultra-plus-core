@@ -22,7 +22,7 @@ class RingBufferProcessor(pr.DataReceiver):
     def __init__( self,
             maxSize    = 2**14,
             sampleRate = 5.0E+9, # Units of Hz
-            maxAve     = 16,
+            maxAve     = 4,
             hidden     = True,
         **kwargs):
         pr.Device.__init__(self, hidden=hidden, **kwargs)
