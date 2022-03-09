@@ -28,6 +28,8 @@ class RingBufferProcessor(pr.DataReceiver):
         pr.Device.__init__(self, hidden=hidden, **kwargs)
         ris.Slave.__init__(self)
 
+        self._enableOnStart = True
+
         # Configurable variables
         self._maxSize  = maxSize
         self._timeBin  = (1.0E+9/sampleRate) # Units of ns
