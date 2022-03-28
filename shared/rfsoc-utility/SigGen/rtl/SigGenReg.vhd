@@ -1,7 +1,7 @@
 -------------------------------------------------------------------------------
 -- Company    : SLAC National Accelerator Laboratory
 -------------------------------------------------------------------------------
--- Description: DacSigGen Registers
+-- Description: SigGen Registers
 -------------------------------------------------------------------------------
 -- This file is part of 'axi-soc-ultra-plus-core'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
@@ -22,9 +22,9 @@ use surf.StdRtlPkg.all;
 use surf.AxiLitePkg.all;
 
 library axi_soc_ultra_plus_core;
-use axi_soc_ultra_plus_core.DacSigGenPkg.all;
+use axi_soc_ultra_plus_core.SigGenPkg.all;
 
-entity DacSigGenReg is
+entity SigGenReg is
    generic (
       TPD_G              : time     := 1 ns;
       NUM_CH_G           : positive := 1;
@@ -34,8 +34,8 @@ entity DacSigGenReg is
       -- Control/Status Interface (dataClk domain)
       dspClk          : in  sl;
       dspRst          : in  sl;
-      config          : out DacSigGenConfigType;
-      status          : in  DacSigGenStatusType;
+      config          : out SigGenConfigType;
+      status          : in  SigGenStatusType;
       -- AXI-Lite interface (axilClk domain)
       axilClk         : in  sl;
       axilRst         : in  sl;
@@ -43,13 +43,13 @@ entity DacSigGenReg is
       axilReadSlave   : out AxiLiteReadSlaveType;
       axilWriteMaster : in  AxiLiteWriteMasterType;
       axilWriteSlave  : out AxiLiteWriteSlaveType);
-end DacSigGenReg;
+end SigGenReg;
 
-architecture rtl of DacSigGenReg is
+architecture rtl of SigGenReg is
 
    type RegType is record
       fifoWr         : sl;
-      config         : DacSigGenConfigType;
+      config         : SigGenConfigType;
       axilReadSlave  : AxiLiteReadSlaveType;
       axilWriteSlave : AxiLiteWriteSlaveType;
    end record;
@@ -63,7 +63,7 @@ architecture rtl of DacSigGenReg is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
-   signal statusSync : DacSigGenStatusType;
+   signal statusSync : SigGenStatusType;
 
 begin
 
@@ -88,7 +88,7 @@ begin
       axiSlaveRegisterR(axilEp, x"00", 0, toSlv(NUM_CH_G, 8));
       axiSlaveRegisterR(axilEp, x"00", 8, toSlv(RAM_ADDR_WIDTH_G, 8));
       axiSlaveRegisterR(axilEp, x"00", 16, toSlv(SAMPLE_PER_CYCLE_G, 8));
-      axiSlaveRegisterR(axilEp, x"00", 24, toSlv(DAC_BIT_WIDTH_C, 8));
+      axiSlaveRegisterR(axilEp, x"00", 24, toSlv(SIG_GEN_BIT_WIDTH_C, 8));
       axiSlaveRegisterR(axilEp, x"04", 0, statusSync.burstCnt);
 
       axiSlaveRegister (axilEp, x"08", 0, v.config.burstCnt);

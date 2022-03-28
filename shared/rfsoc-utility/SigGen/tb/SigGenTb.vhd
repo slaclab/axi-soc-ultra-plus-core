@@ -1,7 +1,7 @@
 -------------------------------------------------------------------------------
 -- Company    : SLAC National Accelerator Laboratory
 -------------------------------------------------------------------------------
--- Description: Simulation Testbed for testing the DacSigGen module
+-- Description: Simulation Testbed for testing the SigGen module
 -------------------------------------------------------------------------------
 -- This file is part of 'axi-soc-ultra-plus-core'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
@@ -22,11 +22,11 @@ use surf.StdRtlPkg.all;
 use surf.AxiLitePkg.all;
 
 library axi_soc_ultra_plus_core;
-use axi_soc_ultra_plus_core.DacSigGenPkg.all;
+use axi_soc_ultra_plus_core.SigGenPkg.all;
 
-entity DacSigGenTb is end DacSigGenTb;
+entity SigGenTb is end SigGenTb;
 
-architecture testbed of DacSigGenTb is
+architecture testbed of SigGenTb is
 
    constant TPD_G : time := 1 ns;
 
@@ -68,7 +68,7 @@ begin
    -----------------------
    -- Module to be tested
    -----------------------
-   U_DUT : entity axi_soc_ultra_plus_core.DacSigGen
+   U_DUT : entity axi_soc_ultra_plus_core.SigGen
       generic map (
          TPD_G              => TPD_G,
          NUM_CH_G           => 1,

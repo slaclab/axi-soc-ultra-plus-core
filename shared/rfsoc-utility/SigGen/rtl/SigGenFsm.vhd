@@ -1,7 +1,7 @@
 -------------------------------------------------------------------------------
 -- Company    : SLAC National Accelerator Laboratory
 -------------------------------------------------------------------------------
--- Description: DacSigGen FSM
+-- Description: SigGen FSM
 -------------------------------------------------------------------------------
 -- This file is part of 'axi-soc-ultra-plus-core'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
@@ -21,9 +21,9 @@ library surf;
 use surf.StdRtlPkg.all;
 
 library axi_soc_ultra_plus_core;
-use axi_soc_ultra_plus_core.DacSigGenPkg.all;
+use axi_soc_ultra_plus_core.SigGenPkg.all;
 
-entity DacSigGenFsm is
+entity SigGenFsm is
    generic (
       TPD_G              : time     := 1 ns;
       NUM_CH_G           : positive := 1;
@@ -34,17 +34,17 @@ entity DacSigGenFsm is
       dspClk    : in  sl;
       dspRst    : in  sl;
       -- Control/Status Interface
-      config    : in  DacSigGenConfigType;
-      status    : out DacSigGenStatusType;
+      config    : in  SigGenConfigType;
+      status    : out SigGenStatusType;
       -- Memory Interface
       ramAddr   : out slv(RAM_ADDR_WIDTH_G-1 downto 0);
       ramData   : in  Slv256Array(NUM_CH_G-1 downto 0);
       -- DAC Interface
       dspDacIn  : in  Slv256Array(NUM_CH_G-1 downto 0);
       dspDacOut : out Slv256Array(NUM_CH_G-1 downto 0));
-end DacSigGenFsm;
+end SigGenFsm;
 
-architecture rtl of DacSigGenFsm is
+architecture rtl of SigGenFsm is
 
    type StateType is (
       IDLE_S,
@@ -56,7 +56,7 @@ architecture rtl of DacSigGenFsm is
       ramAddr   : slv(RAM_ADDR_WIDTH_G-1 downto 0);
       cnt       : slv(RAM_ADDR_WIDTH_G-1 downto 0);
       cntSize   : slv(RAM_ADDR_WIDTH_G-1 downto 0);
-      status    : DacSigGenStatusType;
+      status    : SigGenStatusType;
       state     : StateType;
    end record;
 
@@ -65,7 +65,7 @@ architecture rtl of DacSigGenFsm is
       ramAddr   => (others => '0'),
       cnt       => (others => '0'),
       cntSize   => (others => '0'),
-      status    => DAC_SIG_GEN_STATUS_INIT_C,
+      status    => SIG_GEN_STATUS_INIT_C,
       state     => IDLE_S);
 
    signal r   : RegType := REG_INIT_C;
@@ -99,7 +99,7 @@ begin
             -- Load IDLE value
             for i in 0 to SAMPLE_PER_CYCLE_G-1 loop
                for j in 0 to NUM_CH_G-1 loop
-                  v.dspDacOut(j)(DAC_BIT_WIDTH_C*i+DAC_BIT_WIDTH_C-1 downto DAC_BIT_WIDTH_C*i) := config.idleValue;
+                  v.dspDacOut(j)(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
                end loop;
             end loop;
 
