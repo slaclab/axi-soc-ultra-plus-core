@@ -57,8 +57,8 @@ architecture mapping of SigGen is
    signal ramAddr : slv(RAM_ADDR_WIDTH_G-1 downto 0);
    signal ramData : Slv256Array(NUM_CH_G-1 downto 0) := (others => (others => '0'));
 
-   signal config : SigGenConfigType := DAC_SIG_GEN_CONFIG_INIT_C;
-   signal status : SigGenStatusType := DAC_SIG_GEN_STATUS_INIT_C;
+   signal config : SigGenConfigType := SIG_GEN_CONFIG_INIT_C;
+   signal status : SigGenStatusType := SIG_GEN_STATUS_INIT_C;
 
 begin
 

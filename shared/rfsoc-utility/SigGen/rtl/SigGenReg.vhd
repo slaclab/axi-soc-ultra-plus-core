@@ -56,7 +56,7 @@ architecture rtl of SigGenReg is
 
    constant REG_INIT_C : RegType := (
       fifoWr         => '0',
-      config         => DAC_SIG_GEN_CONFIG_INIT_C,
+      config         => SIG_GEN_CONFIG_INIT_C,
       axilReadSlave  => AXI_LITE_READ_SLAVE_INIT_C,
       axilWriteSlave => AXI_LITE_WRITE_SLAVE_INIT_C);
 
