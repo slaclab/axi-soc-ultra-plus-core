@@ -1,0 +1,25 @@
+From e85e00bdb9385fa45331de4c923b6c75f6561ce0 Mon Sep 17 00:00:00 2001
+From: Larry Ruckman <ruckman@slac.stanford.edu>
+Date: Sun, 10 Jul 2022 13:35:15 -0700
+Subject: [PATCH] ENABLE_EFUSE_ACCESS=0x1
+
+---
+ lib/sw_apps/zynqmp_pmufw/src/xpfw_config.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/sw_apps/zynqmp_pmufw/src/xpfw_config.h b/lib/sw_apps/zynqmp_pmufw/src/xpfw_config.h
+index bf20b42c10..c1fcf240a2 100644
+--- a/lib/sw_apps/zynqmp_pmufw/src/xpfw_config.h
++++ b/lib/sw_apps/zynqmp_pmufw/src/xpfw_config.h
+@@ -179,7 +179,7 @@ extern "C" {
+ #endif
+ 
+ #ifndef ENABLE_EFUSE_ACCESS
+-#define ENABLE_EFUSE_ACCESS					(0U)
++#define ENABLE_EFUSE_ACCESS					(1U)
+ #endif
+ 
+ #ifndef XPU_INTR_DEBUG_PRINT_ENABLE_VAL
+-- 
+2.25.1
+
