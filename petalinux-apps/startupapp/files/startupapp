@@ -3,7 +3,7 @@
 ## This file is part of 'axi-soc-ultra-plus-core'.
 ## It is subject to the license terms in the LICENSE.txt file found in the
 ## top-level directory of this distribution and at:
-##    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
+##	 https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
 ## No part of 'axi-soc-ultra-plus-core', including this file,
 ## may be copied, modified, propagated, or distributed except according to
 ## the terms contained in the LICENSE.txt file.
@@ -11,6 +11,7 @@
 
 # Unmount the kernel partition
 umount /media/sd-mmcblk0p2
+rm -r /media/sd-mmcblk0p2
 
 # Kill any stale runtime applications
 killall python3
@@ -19,6 +20,20 @@ sleep 5
 # Remove kernel drivers in-case they are already loaded
 rmmod -s axi_memory_map
 rmmod -s axi_stream_dma
+
+# Check if mac file exists in SD boot partition
+if [ -f "/media/sd-mmcblk0p1/mac" ]
+then
+	# Set the MAC address with file
+	ip link set dev eth0 down
+	ip link set dev eth0 address $(cat /media/sd-mmcblk0p1/mac)
+	ip link set dev eth0 up
+	/etc/init.d/networking restart
+# Else set the MAC from efuse values
+else
+	# Place holder for future support (https://jira.slac.stanford.edu/browse/ESRFOC-10)
+	sleep 1
+fi
 
 # Load the user's firmware (PL) .bit file
 fpgautil -b /media/sd-mmcblk0p1/system.bit
