@@ -126,7 +126,7 @@ echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
 
 # Check if the patch directory exists
-if [ -d "$hwDir/rootfs_config" ]
+if [ -f "$hwDir/rootfs_config" ]
 then
    cat $hwDir/rootfs_config >> project-spec/configs/rootfs_config
 fi
