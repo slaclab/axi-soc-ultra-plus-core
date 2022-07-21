@@ -1,9 +1,9 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x23A30C2731E53221",
+      "boundary_crc": "0xE7D16F78EFCB6FCD",
       "device": "xczu49dr-ffvf1760-2-e",
-      "gen_directory": "../../../../SimpleZcu216Example_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
+      "gen_directory": "../../../../SimpleZcu216Example_project.gen/sources_1/bd/2022",
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
@@ -13,7 +13,8 @@
     "design_tree": {
       "axi_protocol_convert_0": "",
       "axi_protocol_convert_1": "",
-      "zynq_ultra_ps_e_0": ""
+      "zynq_ultra_ps_e_0": "",
+      "xlslice_0": ""
     },
     "interface_ports": {
       "axiLite": {
@@ -482,6 +483,11 @@
       "pmuErrorToPl": {
         "direction": "O",
         "left": "46",
+        "right": "0"
+      },
+      "fanEnableL": {
+        "direction": "O",
+        "left": "0",
         "right": "0"
       }
     },
@@ -1345,7 +1351,10 @@
             "value": "1"
           },
           "PSU__TTC0__WAVEOUT__ENABLE": {
-            "value": "0"
+            "value": "1"
+          },
+          "PSU__TTC0__WAVEOUT__IO": {
+            "value": "EMIO"
           },
           "PSU__TTC1__CLOCK__ENABLE": {
             "value": "0"
@@ -1532,6 +1541,26 @@
             }
           }
         }
+      },
+      "xlslice_0": {
+        "vlnv": "xilinx.com:ip:xlslice:1.0",
+        "xci_name": "AxiSocUltraPlusCpuCore_xlslice_0_0",
+        "xci_path": "ip/AxiSocUltraPlusCpuCore_xlslice_0_0/AxiSocUltraPlusCpuCore_xlslice_0_0.xci",
+        "inst_hier_path": "xlslice_0",
+        "parameters": {
+          "DIN_FROM": {
+            "value": "2"
+          },
+          "DIN_TO": {
+            "value": "2"
+          },
+          "DIN_WIDTH": {
+            "value": "3"
+          },
+          "DOUT_WIDTH": {
+            "value": "1"
+          }
+        }
       }
     },
     "interface_nets": {
@@ -1594,6 +1623,18 @@
         "ports": [
           "pmuErrorFromPl",
           "zynq_ultra_ps_e_0/pmu_error_from_pl"
+        ]
+      },
+      "xlslice_0_Dout": {
+        "ports": [
+          "xlslice_0/Dout",
+          "fanEnableL"
+        ]
+      },
+      "zynq_ultra_ps_e_0_emio_ttc0_wave_o": {
+        "ports": [
+          "zynq_ultra_ps_e_0/emio_ttc0_wave_o",
+          "xlslice_0/Din"
         ]
       },
       "zynq_ultra_ps_e_0_pl_clk0": {
