@@ -37,6 +37,9 @@ entity AxiSocUltraPlusReg is
       SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0);
       DMA_SIZE_G               : positive range 1 to 16      := 1);
    port (
+      -- AUX Clock and Reset
+      auxClk              : in  sl;     -- 100 MHz
+      auxRst              : in  sl;
       -- Internal AXI4 Interfaces (axiClk domain)
       axiClk              : in  sl;
       axiRst              : in  sl;
@@ -162,6 +165,9 @@ begin
             SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
             AXIL_BASE_ADDR_G         => AXI_CROSSBAR_MASTERS_CONFIG_C(SYSMON_INDEX_C).baseAddr)
          port map (
+            -- AUX Clock and Reset
+            auxClk          => auxClk,
+            auxRst          => auxRst,
             -- Over Temp or LVAUX Error Detect
             sysmonError     => sysmonError,
             -- SYSMON Ports
@@ -249,10 +255,12 @@ begin
          TPD_G           => TPD_G,
          BUILD_INFO_G    => BUILD_INFO_G,
          CLK_PERIOD_G    => DMA_CLK_PERIOD_C,
+         USE_SLOWCLK_G   => true,
          EN_DEVICE_DNA_G => true,
          XIL_DEVICE_G    => "ULTRASCALE_PLUS",
          EN_ICAP_G       => false)
       port map (
+         slowClk        => auxClk,
          -- AXI-Lite Interface
          axiClk         => axiClk,
          axiRst         => axiRst,
