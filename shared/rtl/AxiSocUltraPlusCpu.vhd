@@ -49,6 +49,7 @@ entity AxiSocUltraPlusCpu is
       -- PMU Interface
       pmuErrorFromPl     : in  slv(3 downto 0);
       pmuErrorToPl       : out slv(46 downto 0);
+      fanEnableL         : out sl;
       -- Interrupt Interface
       dmaIrq             : in  sl);
 end AxiSocUltraPlusCpu;
@@ -60,6 +61,7 @@ architecture mapping of AxiSocUltraPlusCpu is
          dmaClk          : in  std_logic;
          dmaIrq          : in  std_logic;
          dmaRstL         : in  std_logic;
+         fanEnableL      : out std_logic_vector (0 to 0);
          plClk           : out std_logic;
          plRstL          : out std_logic;
          pmuErrorFromPl  : in  std_logic_vector (3 downto 0);
@@ -260,6 +262,7 @@ begin
          -- PMU Interface
          pmuErrorFromPl               => pmuErrorFromPl,
          pmuErrorToPl                 => pmuErrorToPl,
+         fanEnableL(0)                => fanEnableL,
          -- Reference Clock and reset
          plClk                        => plClk,
          plRstL                       => plRstL);

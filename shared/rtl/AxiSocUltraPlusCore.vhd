@@ -71,6 +71,7 @@ entity AxiSocUltraPlusCore is
       -- PMU Interface
       pmuErrorFromPl  : in  slv(3 downto 0)        := (others => '0');
       pmuErrorToPl    : out slv(46 downto 0);
+      fanEnableL      : out sl;
       -- Over Temp or LVAUX Error Detect
       sysmonError     : out sl;
       -- SYSMON Ports
@@ -160,6 +161,7 @@ begin
             -- PMU Interface
             pmuErrorFromPl     => pmuErrorFromPl,
             pmuErrorToPl       => pmuErrorToPl,
+            fanEnableL         => fanEnableL,
             -- Interrupt Interface
             dmaIrq             => dmaIrq);
 

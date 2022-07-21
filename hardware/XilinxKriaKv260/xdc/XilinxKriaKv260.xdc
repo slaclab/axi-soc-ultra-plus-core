@@ -15,6 +15,8 @@ set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN ENABLE [current_design]
 set_property -dict { PACKAGE_PIN R13 IOSTANDARD ANALOG } [get_ports { vPIn }]
 set_property -dict { PACKAGE_PIN T12 IOSTANDARD ANALOG } [get_ports { vNIn }]
 
+set_property PACKAGE_PIN A12 [get_ports { fanEnableL }] ;# fanEnableL = HDA20 = som240_1_c24: Bank  45 VCCO - som240_1_b13 - IO_L11P_AD9P_45
+
 set_property PACKAGE_PIN G11 [get_ports { hda[0]  }] ;# HDA00=som240_1_d16: Bank  45 VCCO - som240_1_b13 - IO_L5P_HDGC_45
 set_property PACKAGE_PIN F10 [get_ports { hda[1]  }] ;# HDA01=som240_1_d17: Bank  45 VCCO - som240_1_b13 - IO_L5N_HDGC_45
 set_property PACKAGE_PIN J11 [get_ports { hda[2]  }] ;# HDA02=som240_1_d18: Bank  45 VCCO - som240_1_b13 - IO_L1P_AD15P_45
@@ -35,8 +37,6 @@ set_property PACKAGE_PIN E12 [get_ports { hda[16] }] ;# HDA16=som240_1_b21: Bank
 set_property PACKAGE_PIN D11 [get_ports { hda[17] }] ;# HDA17=som240_1_b22: Bank  45 VCCO - som240_1_b13 - IO_L8N_HDGC_45
 set_property PACKAGE_PIN B11 [get_ports { hda[18] }] ;# HDA18=som240_1_c22: Bank  45 VCCO - som240_1_b13 - IO_L10P_AD10P_45
 set_property PACKAGE_PIN A10 [get_ports { hda[19] }] ;# HDA19=som240_1_c23: Bank  45 VCCO - som240_1_b13 - IO_L10N_AD10N_45
-set_property PACKAGE_PIN A12 [get_ports { hda[20] }] ;# HDA20=som240_1_c24: Bank  45 VCCO - som240_1_b13 - IO_L11P_AD9P_45
-
 
 ##############################################################################
 
