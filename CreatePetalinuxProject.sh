@@ -124,9 +124,15 @@ echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
-petalinux-build
+
+# Check if the hardware has custom packages that need installed
+if [ -f "$hwDir/rootfs_config" ]
+then
+   cat $hwDir/rootfs_config >> project-spec/configs/rootfs_config
+fi
 
 # Finalize the System Image
+petalinux-build
 petalinux-build
 
 # Create boot files

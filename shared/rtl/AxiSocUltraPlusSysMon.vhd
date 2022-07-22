@@ -30,6 +30,9 @@ entity AxiSocUltraPlusSysMon is
       SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0);
       AXIL_BASE_ADDR_G         : slv(31 downto 0));
    port (
+      -- AUX Clock and Reset
+      auxClk          : in  sl;         -- 100 MHz
+      auxRst          : in  sl;
       -- Over Temp or LVAUX Error Detect
       sysmonError     : out sl;
       -- SYSMON Ports
@@ -49,10 +52,15 @@ architecture mapping of AxiSocUltraPlusSysMon is
 
    constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(1 downto 0) := genAxiLiteConfig(2, AXIL_BASE_ADDR_G, 16, 12);
 
-   signal axilReadMasters  : AxiLiteReadMasterArray(1 downto 0);
-   signal axilReadSlaves   : AxiLiteReadSlaveArray(1 downto 0)  := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
-   signal axilWriteMasters : AxiLiteWriteMasterArray(1 downto 0);
-   signal axilWriteSlaves  : AxiLiteWriteSlaveArray(1 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
+   signal auxReadMasters  : AxiLiteReadMasterArray(1 downto 0);
+   signal auxReadSlaves   : AxiLiteReadSlaveArray(1 downto 0)  := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
+   signal auxWriteMasters : AxiLiteWriteMasterArray(1 downto 0);
+   signal auxWriteSlaves  : AxiLiteWriteSlaveArray(1 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
+
+   signal auxReadMaster  : AxiLiteReadMasterType;
+   signal auxReadSlave   : AxiLiteReadSlaveType  := AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
+   signal auxWriteMaster : AxiLiteWriteMasterType;
+   signal auxWriteSlave  : AxiLiteWriteSlaveType := AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
 
    component AxiSocUltraPlusSysMonCore
       port (
@@ -102,7 +110,7 @@ architecture mapping of AxiSocUltraPlusSysMon is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
-   signal axilRstL    : sl;
+   signal auxRstL     : sl;
    signal overTemp    : sl;
    signal stuckBusDet : sl;
    signal adcData     : slv(15 downto 0);
@@ -112,7 +120,28 @@ architecture mapping of AxiSocUltraPlusSysMon is
 
 begin
 
-   axilRstL <= not(axilRst);
+   U_AxiLiteAsync : entity surf.AxiLiteAsync
+      generic map (
+         TPD_G           => TPD_G,
+         COMMON_CLK_G    => false,
+         NUM_ADDR_BITS_G => 32)
+      port map (
+         -- Slave Interface
+         sAxiClk         => axilClk,
+         sAxiClkRst      => axilRst,
+         sAxiReadMaster  => axilReadMaster,
+         sAxiReadSlave   => axilReadSlave,
+         sAxiWriteMaster => axilWriteMaster,
+         sAxiWriteSlave  => axilWriteSlave,
+         -- Master Interface
+         mAxiClk         => auxClk,
+         mAxiClkRst      => auxRst,
+         mAxiReadMaster  => auxReadMaster,
+         mAxiReadSlave   => auxReadSlave,
+         mAxiWriteMaster => auxWriteMaster,
+         mAxiWriteSlave  => auxWriteSlave);
+
+   auxRstL <= not(auxRst);
 
    U_XBAR : entity surf.AxiLiteCrossbar
       generic map (
@@ -121,38 +150,38 @@ begin
          NUM_MASTER_SLOTS_G => 2,
          MASTERS_CONFIG_G   => AXIL_CONFIG_C)
       port map (
-         axiClk              => axilClk,
-         axiClkRst           => axilRst,
-         sAxiWriteMasters(0) => axilWriteMaster,
-         sAxiWriteSlaves(0)  => axilWriteSlave,
-         sAxiReadMasters(0)  => axilReadMaster,
-         sAxiReadSlaves(0)   => axilReadSlave,
-         mAxiWriteMasters    => axilWriteMasters,
-         mAxiWriteSlaves     => axilWriteSlaves,
-         mAxiReadMasters     => axilReadMasters,
-         mAxiReadSlaves      => axilReadSlaves);
+         axiClk              => auxClk,
+         axiClkRst           => auxRst,
+         sAxiWriteMasters(0) => auxWriteMaster,
+         sAxiWriteSlaves(0)  => auxWriteSlave,
+         sAxiReadMasters(0)  => auxReadMaster,
+         sAxiReadSlaves(0)   => auxReadSlave,
+         mAxiWriteMasters    => auxWriteMasters,
+         mAxiWriteSlaves     => auxWriteSlaves,
+         mAxiReadMasters     => auxReadMasters,
+         mAxiReadSlaves      => auxReadSlaves);
 
    SysMonCore_Inst : AxiSocUltraPlusSysMonCore
       port map (
-         s_axi_aclk      => axilClk,
-         s_axi_aresetn   => axilRstL,
-         s_axi_awaddr    => axilWriteMasters(0).awaddr(12 downto 0),
-         s_axi_awvalid   => axilWriteMasters(0).awvalid,
-         s_axi_awready   => axilWriteSlaves(0).awready,
-         s_axi_wdata     => axilWriteMasters(0).wdata,
-         s_axi_wstrb     => axilWriteMasters(0).wstrb,
-         s_axi_wvalid    => axilWriteMasters(0).wvalid,
-         s_axi_wready    => axilWriteSlaves(0).wready,
-         s_axi_bresp     => axilWriteSlaves(0).bresp,
-         s_axi_bvalid    => axilWriteSlaves(0).bvalid,
-         s_axi_bready    => axilWriteMasters(0).bready,
-         s_axi_araddr    => axilReadMasters(0).araddr(12 downto 0),
-         s_axi_arvalid   => axilReadMasters(0).arvalid,
-         s_axi_arready   => axilReadSlaves(0).arready,
-         s_axi_rdata     => axilReadSlaves(0).rdata,
-         s_axi_rresp     => axilReadSlaves(0).rresp,
-         s_axi_rvalid    => axilReadSlaves(0).rvalid,
-         s_axi_rready    => axilReadMasters(0).rready,
+         s_axi_aclk      => auxClk,
+         s_axi_aresetn   => auxRstL,
+         s_axi_awaddr    => auxWriteMasters(0).awaddr(12 downto 0),
+         s_axi_awvalid   => auxWriteMasters(0).awvalid,
+         s_axi_awready   => auxWriteSlaves(0).awready,
+         s_axi_wdata     => auxWriteMasters(0).wdata,
+         s_axi_wstrb     => auxWriteMasters(0).wstrb,
+         s_axi_wvalid    => auxWriteMasters(0).wvalid,
+         s_axi_wready    => auxWriteSlaves(0).wready,
+         s_axi_bresp     => auxWriteSlaves(0).bresp,
+         s_axi_bvalid    => auxWriteSlaves(0).bvalid,
+         s_axi_bready    => auxWriteMasters(0).bready,
+         s_axi_araddr    => auxReadMasters(0).araddr(12 downto 0),
+         s_axi_arvalid   => auxReadMasters(0).arvalid,
+         s_axi_arready   => auxReadSlaves(0).arready,
+         s_axi_rdata     => auxReadSlaves(0).rdata,
+         s_axi_rresp     => auxReadSlaves(0).rresp,
+         s_axi_rvalid    => auxReadSlaves(0).rvalid,
+         s_axi_rready    => auxReadMasters(0).rready,
          ip2intc_irpt    => open,
          vp              => vPIn,
          vn              => vNIn,
@@ -175,12 +204,12 @@ begin
          NUM_READ_REG_G  => 1)
       port map (
          -- AXI-Lite Bus
-         axiClk           => axilClk,
-         axiClkRst        => axilRst,
-         axiReadMaster    => axilReadMasters(1),
-         axiReadSlave     => axilReadSlaves(1),
-         axiWriteMaster   => axilWriteMasters(1),
-         axiWriteSlave    => axilWriteSlaves(1),
+         axiClk           => auxClk,
+         axiClkRst        => auxRst,
+         axiReadMaster    => auxReadMasters(1),
+         axiReadSlave     => auxReadSlaves(1),
+         axiWriteMaster   => auxWriteMasters(1),
+         axiWriteSlave    => auxWriteSlaves(1),
          -- User Read/Write registers
          writeRegister(0) => writeReg,
          readRegister(0)  => readReg);
@@ -188,13 +217,13 @@ begin
    U_WTD : entity surf.WatchDogRst
       generic map(
          TPD_G      => TPD_G,
-         DURATION_G => getTimeRatio(DMA_CLK_FREQ_C, 0.2))  -- 1 s timeout
+         DURATION_G => getTimeRatio(AUX_CLK_FREQ_C, 0.2))  -- 1 s timeout
       port map (
-         clk    => axilClk,
+         clk    => auxClk,
          monIn  => r.busChangeDet,
          rstOut => stuckBusDet);
 
-   comb : process (adcData, axilRst, lvauxThresh, overTemp, r, stuckBusDet,
+   comb : process (adcData, auxRst, lvauxThresh, overTemp, r, stuckBusDet,
                    writeReg) is
       variable v      : RegType;
       variable i      : natural;
@@ -228,7 +257,7 @@ begin
       sysmonError <= overTemp or stuckBusDet or r.lvauxTrip;
 
       -- Reset
-      if (axilRst = '1') then
+      if (auxRst = '1') then
          v := REG_INIT_C;
       end if;
 
@@ -237,9 +266,9 @@ begin
 
    end process comb;
 
-   seq : process (axilClk) is
+   seq : process (auxClk) is
    begin
-      if rising_edge(axilClk) then
+      if rising_edge(auxClk) then
          r <= rin after TPD_G;
       end if;
    end process seq;

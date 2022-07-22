@@ -22,7 +22,11 @@ import argparse
 
 # rogue.Logging.setLevel(rogue.Logging.Debug)
 
-#################################################################
+##############################################################################
+## Refer to https://jira.slac.stanford.edu/browse/ESROGUE-549 if you want to
+## have more than 100 TCP streams.  That JIRA ticket explains how to configure
+## the kernel to support all 2048 possible lanes (8 DMA lanes x 256 TDEST)
+##############################################################################
 
 if __name__ == "__main__":
 

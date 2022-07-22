@@ -1,6 +1,11 @@
 # Load RUCKUS environment and library
 source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 
+# Check for Vivado version
+if { [VersionCheck 2021.2 "mustBeExact"] < 0 } {
+   exit -1
+}
+
 # Check for valid FPGA
 if { $::env(PRJ_PART) != "xczu48dr-ffvg1517-1-e" && $::env(PRJ_PART) != "xqzu48dr-fsrg1517-1M-m" } {
    puts "\n\nERROR: PRJ_PART must be either xczu48dr-ffvg1517-1-e or xqzu48dr-fsrg1517-1M-m in the Makefile\n\n"; exit -1

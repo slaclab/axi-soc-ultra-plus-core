@@ -28,8 +28,10 @@ entity AxiSocUltraPlusCpu is
       TPD_G : time := 1 ns);
    port (
       -- Clock and Reset
-      axiClk             : out sl;
+      axiClk             : out sl;      -- 250 MHz
       axiRst             : out sl;
+      auxClk             : out sl;      -- 100 MHz
+      auxRst             : out sl;
       -- Slave AXI4 Interface
       dmaReadMaster      : in  AxiReadMasterType;
       dmaReadSlave       : out AxiReadSlaveType;
@@ -47,6 +49,7 @@ entity AxiSocUltraPlusCpu is
       -- PMU Interface
       pmuErrorFromPl     : in  slv(3 downto 0);
       pmuErrorToPl       : out slv(46 downto 0);
+      fanEnableL         : out sl;
       -- Interrupt Interface
       dmaIrq             : in  sl);
 end AxiSocUltraPlusCpu;
@@ -58,6 +61,7 @@ architecture mapping of AxiSocUltraPlusCpu is
          dmaClk          : in  std_logic;
          dmaIrq          : in  std_logic;
          dmaRstL         : in  std_logic;
+         fanEnableL      : out std_logic_vector (0 to 0);
          plClk           : out std_logic;
          plRstL          : out std_logic;
          pmuErrorFromPl  : in  std_logic_vector (3 downto 0);
@@ -258,6 +262,7 @@ begin
          -- PMU Interface
          pmuErrorFromPl               => pmuErrorFromPl,
          pmuErrorToPl                 => pmuErrorToPl,
+         fanEnableL(0)                => fanEnableL,
          -- Reference Clock and reset
          plClk                        => plClk,
          plRstL                       => plRstL);
@@ -269,19 +274,22 @@ begin
          INPUT_BUFG_G      => true,
          FB_BUFG_G         => true,
          RST_IN_POLARITY_G => '0',      -- Active LOW reset
-         NUM_CLOCKS_G      => 1,
+         NUM_CLOCKS_G      => 2,
          -- MMCM attributes
          CLKIN_PERIOD_G    => 4.0,      -- 250 MHz
-         CLKFBOUT_MULT_G   => 5,        -- 1.25 GHz = 5 x 250 MHz
-         CLKOUT0_DIVIDE_G  => 5)        -- 250 MHz = 1.25GHz/5
+         CLKFBOUT_MULT_G   => 4,        -- 1 GHz = 4 x 250 MHz
+         CLKOUT0_DIVIDE_G  => 4,        -- 250 MHz = 1 GHz / 4
+         CLKOUT1_DIVIDE_G  => 10)       -- 100 MHz = 1 GHz / 10
       port map(
          -- Clock Input
          clkIn     => plClk,
          rstIn     => plRstL,
          -- Clock Outputs
          clkOut(0) => dmaClk,
+         clkOut(1) => auxClk,
          -- Reset Outputs
-         rstOut(0) => dmaRst);
+         rstOut(0) => dmaRst,
+         rstOut(1) => auxRst);
 
    dmaRstL <= not(dmaRst);
 

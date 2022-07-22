@@ -40,8 +40,11 @@ entity AxiSocUltraPlusCore is
       ------------------------
       --  Top Level Interfaces
       ------------------------
+      -- AUX Clock and Reset
+      auxClk          : out sl;         -- 100 MHz
+      auxRst          : out sl;
       -- DMA Interfaces  (dmaClk domain)
-      dmaClk          : out sl;
+      dmaClk          : out sl;         -- 250 MHz
       dmaRst          : out sl;
       dmaBuffGrpPause : out slv(7 downto 0);
       dmaObMasters    : out AxiStreamMasterArray(DMA_SIZE_G-1 downto 0);
@@ -68,6 +71,7 @@ entity AxiSocUltraPlusCore is
       -- PMU Interface
       pmuErrorFromPl  : in  slv(3 downto 0)        := (others => '0');
       pmuErrorToPl    : out slv(46 downto 0);
+      fanEnableL      : out sl;
       -- Over Temp or LVAUX Error Detect
       sysmonError     : out sl;
       -- SYSMON Ports
@@ -94,7 +98,9 @@ architecture mapping of AxiSocUltraPlusCore is
 
    signal sysClock    : sl;
    signal sysReset    : sl;
-   signal systemReset : sl;
+   signal systemReset : slv(1 downto 0);
+   signal auxClock    : sl;
+   signal auxReset    : sl;
    signal cardReset   : sl;
    signal dmaIrq      : sl;
 
@@ -102,15 +108,27 @@ begin
 
    dmaClk <= sysClock;
 
-   U_Rst : entity surf.RstPipeline
+   U_dmaRst : entity surf.RstPipeline
       generic map (
          TPD_G => TPD_G)
       port map (
          clk    => sysClock,
-         rstIn  => systemReset,
+         rstIn  => systemReset(0),
          rstOut => dmaRst);
 
-   systemReset <= sysReset or cardReset;
+   systemReset(0) <= sysReset or cardReset;
+
+   auxClk <= auxClock;
+
+   U_auxRst : entity surf.RstPipeline
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk    => auxClock,
+         rstIn  => systemReset(1),
+         rstOut => auxRst);
+
+   systemReset(1) <= auxReset or cardReset;
 
    ----------
    -- AXI CPU
@@ -124,6 +142,8 @@ begin
             -- Clock and Reset
             axiClk             => sysClock,
             axiRst             => sysReset,
+            auxClk             => auxClock,
+            auxRst             => auxReset,
             -- Slave AXI4 Interface
             dmaReadMaster      => dmaReadMaster,
             dmaReadSlave       => dmaReadSlave,
@@ -141,6 +161,7 @@ begin
             -- PMU Interface
             pmuErrorFromPl     => pmuErrorFromPl,
             pmuErrorToPl       => pmuErrorToPl,
+            fanEnableL         => fanEnableL,
             -- Interrupt Interface
             dmaIrq             => dmaIrq);
 
@@ -158,6 +179,16 @@ begin
             clkP => sysClock,
             rst  => sysReset);
 
+      -- Generate local 100 MHz clock
+      U_auxClock : entity surf.ClkRst
+         generic map (
+            CLK_PERIOD_G      => 10 ns,  -- 100 MHz
+            RST_START_DELAY_G => 0 ns,
+            RST_HOLD_TIME_G   => 1000 ns)
+         port map (
+            clkP => auxClock,
+            rst  => auxReset);
+
    end generate;
 
    ---------------
@@ -173,6 +204,9 @@ begin
          SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
          DMA_SIZE_G               => DMA_SIZE_G)
       port map (
+         -- AUX Clock and Reset
+         auxClk              => auxClock,
+         auxRst              => auxReset,
          -- Internal AXI4 Interfaces (axiClk domain)
          axiClk              => sysClock,
          axiRst              => sysReset,
@@ -199,7 +233,7 @@ begin
          appWriteSlave       => appWriteSlave,
          -- Application Force reset
          cardResetOut        => cardReset,
-         cardResetIn         => systemReset,
+         cardResetIn         => systemReset(0),
          -- Over Temp or LVAUX Error Detect
          sysmonError         => sysmonError,
          -- SYSMON Ports

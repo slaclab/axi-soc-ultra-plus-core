@@ -1,7 +1,7 @@
 -------------------------------------------------------------------------------
 -- Company    : SLAC National Accelerator Laboratory
 -------------------------------------------------------------------------------
--- Description: DacSigGen Module
+-- Description: SigGen Module
 -------------------------------------------------------------------------------
 -- This file is part of 'axi-soc-ultra-plus-core'.
 -- It is subject to the license terms in the LICENSE.txt file found in the
@@ -20,9 +20,9 @@ use surf.StdRtlPkg.all;
 use surf.AxiLitePkg.all;
 
 library axi_soc_ultra_plus_core;
-use axi_soc_ultra_plus_core.DacSigGenPkg.all;
+use axi_soc_ultra_plus_core.SigGenPkg.all;
 
-entity DacSigGen is
+entity SigGen is
    generic (
       TPD_G              : time     := 1 ns;
       NUM_CH_G           : positive := 1;
@@ -43,9 +43,9 @@ entity DacSigGen is
       axilWriteSlave  : out AxiLiteWriteSlaveType;
       axilReadMaster  : in  AxiLiteReadMasterType;
       axilReadSlave   : out AxiLiteReadSlaveType);
-end DacSigGen;
+end SigGen;
 
-architecture mapping of DacSigGen is
+architecture mapping of SigGen is
 
    constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_CH_G downto 0) := genAxiLiteConfig(NUM_CH_G+1, AXIL_BASE_ADDR_G, 21, 16);
 
@@ -57,8 +57,8 @@ architecture mapping of DacSigGen is
    signal ramAddr : slv(RAM_ADDR_WIDTH_G-1 downto 0);
    signal ramData : Slv256Array(NUM_CH_G-1 downto 0) := (others => (others => '0'));
 
-   signal config : DacSigGenConfigType := DAC_SIG_GEN_CONFIG_INIT_C;
-   signal status : DacSigGenStatusType := DAC_SIG_GEN_STATUS_INIT_C;
+   signal config : SigGenConfigType := SIG_GEN_CONFIG_INIT_C;
+   signal status : SigGenStatusType := SIG_GEN_STATUS_INIT_C;
 
 begin
 
@@ -90,13 +90,13 @@ begin
             SYNTH_MODE_G   => "xpm",
             READ_LATENCY_G => 2,
             ADDR_WIDTH_G   => RAM_ADDR_WIDTH_G,
-            DATA_WIDTH_G   => (DAC_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G))  -- units of bits
+            DATA_WIDTH_G   => (SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G))  -- units of bits
          port map (
             -- RAM Interface (dataClk domain)
             clk            => dspClk,
             rst            => dspRst,
             addr           => ramAddr,
-            dout           => ramData(i)(DAC_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0),
+            dout           => ramData(i)(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0),
             -- AXI-Lite interface (axilClk domain)
             axiClk         => axilClk,
             axiRst         => axilRst,
@@ -106,7 +106,7 @@ begin
             axiWriteSlave  => axilWriteSlaves(i+1));
    end generate GEN_VEC;
 
-   U_Reg : entity axi_soc_ultra_plus_core.DacSigGenReg
+   U_Reg : entity axi_soc_ultra_plus_core.SigGenReg
       generic map (
          TPD_G              => TPD_G,
          NUM_CH_G           => NUM_CH_G,
@@ -126,7 +126,7 @@ begin
          axilWriteMaster => axilWriteMasters(0),
          axilWriteSlave  => axilWriteSlaves(0));
 
-   U_Fsm : entity axi_soc_ultra_plus_core.DacSigGenFsm
+   U_Fsm : entity axi_soc_ultra_plus_core.SigGenFsm
       generic map (
          TPD_G              => TPD_G,
          NUM_CH_G           => NUM_CH_G,

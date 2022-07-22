@@ -25,6 +25,10 @@ package AxiSocUltraPlusPkg is
    constant DMA_CLK_FREQ_C   : real := 250.0E+6;              -- units of Hz
    constant DMA_CLK_PERIOD_C : real := (1.0/DMA_CLK_FREQ_C);  -- units of seconds
 
+   -- Aux Clock Frequency/Period
+   constant AUX_CLK_FREQ_C   : real := 100.0E+6;              -- units of Hz
+   constant AUX_CLK_PERIOD_C : real := (1.0/AUX_CLK_FREQ_C);  -- units of seconds
+
    -- Application Address Offset
    constant APP_ADDR_OFFSET_C : slv(31 downto 0) := x"8000_0000";
 

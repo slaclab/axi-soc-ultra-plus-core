@@ -12,7 +12,7 @@ import pyrogue as pr
 import click
 import csv
 
-class DacSigGen(pr.Device):
+class SigGen(pr.Device):
     def __init__(self,
             numCh        = 8,  # Must match NUM_CH_G config
             ramWidth     = 10, # Must match RAM_ADDR_WIDTH_G config
