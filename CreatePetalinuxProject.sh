@@ -37,6 +37,13 @@ axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
 aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
 
+if awk "BEGIN {exit !($PETALINUX_VER >= 2022.1)}"; then
+   IMAGE_INSTALL_append="IMAGE_INSTALL:append"
+else
+   IMAGE_INSTALL_append="IMAGE_INSTALL_append"
+fi
+
+echo "$IMAGE_INSTALL_append"
 echo "$axi_soc_ultra_plus_core"
 echo "$aes_stream_drivers"
 
@@ -71,7 +78,7 @@ rm -rf project-spec/meta-user/recipes-modules/axistreamdma
 rm -rf project-spec/meta-user/recipes-modules/aximemorymap
 cp -rfL $aes_stream_drivers/petalinux/axistreamdma project-spec/meta-user/recipes-modules/axistreamdma
 cp -rfL $aes_stream_drivers/petalinux/aximemorymap project-spec/meta-user/recipes-modules/aximemorymap
-echo IMAGE_INSTALL_append = \" axistreamdma aximemorymap\" >> build/conf/local.conf
+echo $IMAGE_INSTALL_append = \" axistreamdma aximemorymap\" >> build/conf/local.conf
 
 # Update DMA engine with user configuration
 sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
@@ -99,7 +106,7 @@ petalinux-build -c rogue
 # Add rogue TCP memory/stream server
 petalinux-create -t apps --template install -n roguetcpbridge
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
-echo IMAGE_INSTALL_append = \" roguetcpbridge\" >> build/conf/local.conf
+echo $IMAGE_INSTALL_append = \" roguetcpbridge\" >> build/conf/local.conf
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/roguetcpbridge project-spec/meta-user/recipes-apps/.
 
 # Update Application with user configuration
@@ -109,7 +116,7 @@ sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-a
 # Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
 petalinux-create -t apps --template install -n startupapp --enable
 echo CONFIG_startupapp=y >> project-spec/configs/rootfs_config
-echo IMAGE_INSTALL_append = \" startupapp\" >> build/conf/local.conf
+echo $IMAGE_INSTALL_append = \" startupapp\" >> build/conf/local.conf
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startupapp project-spec/meta-user/recipes-apps/.
 
 # Build the applications
