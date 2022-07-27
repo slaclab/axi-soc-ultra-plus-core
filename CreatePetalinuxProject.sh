@@ -98,11 +98,6 @@ echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
 petalinux-build -c rogue
 
-# Known bug in rogue where we need to copy the setup.py and re-run the rogue builds again
-# Issue is documented here: https://jira.slac.stanford.edu/browse/ESROGUE-523
-cp build/tmp/work/cortexa72-cortexa53-xilinx-linux/rogue/1.0-r0/build/setup.py build/tmp/work/cortexa72-cortexa53-xilinx-linux/rogue/1.0-r0/rogue-*/.
-petalinux-build -c rogue
-
 # Add rogue TCP memory/stream server
 petalinux-create -t apps --template install -n roguetcpbridge
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
