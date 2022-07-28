@@ -120,13 +120,15 @@ petalinux-build -c startupapp
 
 # Patch for supporting JTAG booting
 petalinux-config --silentconfig
+echo CONFIG_packagegroup-petalinux-jupyter=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-qtconsole=y >> project-spec/configs/rootfs_config
+echo CONFIG_nano=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-jupyter=y >> project-spec/configs/rootfs_config
 
 # Check if the hardware has custom packages that need installed
 if [ -f "$hwDir/rootfs_config" ]
