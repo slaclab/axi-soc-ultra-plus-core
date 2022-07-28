@@ -48,6 +48,11 @@ then
 	# Start the user's runtime Application
 	/media/sd-mmcblk0p1/runtimeApp
 else
+
 	# Start the the rogue TCP bridge Application
-	/usr/bin/roguetcpbridge
+	/usr/bin/roguetcpbridge &
+
+	# Launch jupyter
+	cd /home/root; jupyter notebook --ip=0.0.0.0 --no-browser --allow-root --NotebookApp.token='' &
+
 fi
