@@ -93,7 +93,6 @@ petalinux-build -c aximemorymap
 # Add rogue to petalinux
 petalinux-create -t apps --name rogue --template install
 cp -f $axi_soc_ultra_plus_core/petalinux-apps/rogue.bb project-spec/meta-user/recipes-apps/rogue/rogue.bb
-echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
 petalinux-build -c rogue
@@ -120,15 +119,21 @@ petalinux-build -c startupapp
 
 # Patch for supporting JTAG booting
 petalinux-config --silentconfig
+
+# Load commonly used packages
 echo CONFIG_packagegroup-petalinux-jupyter=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-qtconsole=y >> project-spec/configs/rootfs_config
 echo CONFIG_nano=y >> project-spec/configs/rootfs_config
+echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-parse=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-click=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-pyserial=y >> project-spec/configs/rootfs_config
 
 # Check if the hardware has custom packages that need installed
 if [ -f "$hwDir/rootfs_config" ]

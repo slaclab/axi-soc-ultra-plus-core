@@ -9,19 +9,6 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-# Check if drivers already load
-if [ -f "/proc/axi_stream_dma_0" ]
-then
-	# Kill any stale runtime applications
-	killall python3
-	sleep 5
-	# Remove kernel drivers in-case they are already loaded
-	rmmod -s axi_memory_map
-	rmmod -s axi_stream_dma
-else
-	false
-fi
-
 # Check if mac file exists in SD boot partition
 if [ -f "/media/sd-mmcblk0p1/mac" ]
 then
@@ -36,7 +23,20 @@ else
 	false
 fi
 
-# Load the user's firmware (PL) .bit file
+# Check if drivers already load before loading 2nd stage bitstream
+if [ -f "/proc/axi_stream_dma_0" ]
+then
+	# Kill any stale runtime applications
+	killall python3
+	sleep 5
+	# Remove kernel drivers in-case they are already loaded
+	rmmod -s axi_memory_map
+	rmmod -s axi_stream_dma
+else
+	false
+fi
+
+# Load the user's firmware (PL) .bit file (A.K.A. "2nd stage boot")
 fpgautil -b /media/sd-mmcblk0p1/system.bit
 
 # Load custom kernel driver
@@ -46,9 +46,9 @@ insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 # Check if user's runtime application exists
 if [ -f "/media/sd-mmcblk0p2/runtimeApp" ]
 then
-	# Start the user's runtime Application
-	/media/sd-mmcblk0p1/runtimeApp
+	# Start the user's custom runtime Application
+	/media/sd-mmcblk0p2/runtimeApp
 else
-	# Start the the rogue TCP bridge Application
+	# Else start the generic rogue TCP bridge Application
 	/usr/bin/roguetcpbridge &
 fi
