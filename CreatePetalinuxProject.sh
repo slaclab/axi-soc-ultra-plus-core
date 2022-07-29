@@ -124,6 +124,7 @@ petalinux-config --silentconfig
 echo CONFIG_packagegroup-petalinux-jupyter=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-qtconsole=y >> project-spec/configs/rootfs_config
 echo CONFIG_nano=y >> project-spec/configs/rootfs_config
+echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
