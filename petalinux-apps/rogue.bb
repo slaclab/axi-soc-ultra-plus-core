@@ -2,8 +2,8 @@
 # This file is the rogue recipe.
 #
 
-ROGUE_VERSION = "5.13.0"
-ROGUE_MD5SUM  = "e7d8da39b2017e9a5ef05b7851fcabc7"
+ROGUE_VERSION = "5.14.0"
+ROGUE_MD5SUM  = "ba8146e03f60e463a2aa3d978c1dc46e"
 
 SUMMARY = "Rogue Application"
 SECTION = "PETALINUX/apps"
@@ -27,6 +27,7 @@ FILES_${PN} += "/usr/lib/*"
 
 do_configure() {
    cmake_do_configure
+   bbplain $(cp -vH ${WORKDIR}/build/setup.py ${S}/.)
 }
 
 do_install() {
