@@ -43,11 +43,17 @@ fpgautil -b /media/sd-mmcblk0p1/system.bit
 insmod /lib/modules/$(uname -r)/extra/axi_memory_map.ko
 insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 
+# Rename the user space partition from /media/sd-mmcblk0p2 to /u1
+umount /media/sd-mmcblk0p2
+rm -r /media/sd-mmcblk0p2
+mkdir -p /u1
+mount /dev/mmcblk0p2 /u1
+
 # Check if user's runtime application exists
-if [ -f "/media/sd-mmcblk0p2/runtimeApp" ]
+if [ -f "/u1/runtimeApp" ]
 then
 	# Start the user's custom runtime Application
-	/media/sd-mmcblk0p2/runtimeApp
+	/u1/runtimeApp
 else
 	# Else start the generic rogue TCP bridge Application
 	/usr/bin/roguetcpbridge &
