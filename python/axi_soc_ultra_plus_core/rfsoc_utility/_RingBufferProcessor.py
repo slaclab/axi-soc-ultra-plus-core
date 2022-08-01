@@ -100,7 +100,7 @@ class RingBufferProcessor(pr.DataReceiver):
             name        = 'Magnitude',
             description = 'Magnitude Frame Container',
             typeStr     = 'Float[np]',
-            value       = np.zeros(shape=self._maxSize, dtype=np.float, order='C'),
+            value       = np.zeros(shape=(self._maxSize>>1), dtype=np.float, order='C'),
             hidden      = True,
         ))
 
