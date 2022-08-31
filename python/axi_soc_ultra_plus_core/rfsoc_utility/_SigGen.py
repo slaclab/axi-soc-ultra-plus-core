@@ -134,7 +134,7 @@ class SigGen(pr.Device):
             self.add(pr.RemoteVariable(
                 name         = ('Waveform[%d]' % i),
                 description  = 'Waveform data 16-bit samples',
-                offset       = (0x1_0000+i*0x1_0000),
+                offset       = (0x4_0000+i*0x4_0000), # 18-bit address stride
                 bitSize      = 16 * smplPerCycle*(2**ramWidth),
                 bitOffset    = 0,
                 numValues    = smplPerCycle*(2**ramWidth),

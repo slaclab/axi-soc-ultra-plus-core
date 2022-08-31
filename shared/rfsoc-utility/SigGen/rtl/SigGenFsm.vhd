@@ -26,22 +26,66 @@ use axi_soc_ultra_plus_core.SigGenPkg.all;
 entity SigGenFsm is
    generic (
       TPD_G              : time     := 1 ns;
-      NUM_CH_G           : positive := 1;
       RAM_ADDR_WIDTH_G   : positive := 10;
       SAMPLE_PER_CYCLE_G : positive := 16);
    port (
       -- Clock and Reset
-      dspClk    : in  sl;
-      dspRst    : in  sl;
+      dspClk      : in  sl;
+      dspRst      : in  sl;
       -- Control/Status Interface
-      config    : in  SigGenConfigType;
-      status    : out SigGenStatusType;
+      config      : in  SigGenConfigType;
+      status      : out SigGenStatusType;
       -- Memory Interface
-      ramAddr   : out slv(RAM_ADDR_WIDTH_G-1 downto 0);
-      ramData   : in  Slv256Array(NUM_CH_G-1 downto 0);
+      ramAddr     : out slv(RAM_ADDR_WIDTH_G-1 downto 0);
+      ramData0    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData1    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData2    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData3    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData4    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData5    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData6    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData7    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData8    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData9    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData10   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData11   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData12   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData13   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData14   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramData15   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
       -- DAC Interface
-      dspDacIn  : in  Slv256Array(NUM_CH_G-1 downto 0);
-      dspDacOut : out Slv256Array(NUM_CH_G-1 downto 0));
+      dspDacIn0   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn1   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn2   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn3   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn4   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn5   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn6   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn7   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn8   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn9   : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn10  : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn11  : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn12  : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn13  : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn14  : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacIn15  : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut0  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut1  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut2  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut3  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut4  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut5  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut6  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut7  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut8  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut9  : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut10 : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut11 : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut12 : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut13 : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut14 : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut15 : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0));
 end SigGenFsm;
 
 architecture rtl of SigGenFsm is
@@ -52,28 +96,64 @@ architecture rtl of SigGenFsm is
       MOVE_S);
 
    type RegType is record
-      dspDacOut : Slv256Array(NUM_CH_G-1 downto 0);
-      ramAddr   : slv(RAM_ADDR_WIDTH_G-1 downto 0);
-      cnt       : slv(RAM_ADDR_WIDTH_G-1 downto 0);
-      cntSize   : slv(RAM_ADDR_WIDTH_G-1 downto 0);
-      status    : SigGenStatusType;
-      state     : StateType;
+      dspDacOut0  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut1  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut2  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut3  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut4  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut5  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut6  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut7  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut8  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut9  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut10 : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut11 : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut12 : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut13 : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut14 : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      dspDacOut15 : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
+      ramAddr     : slv(RAM_ADDR_WIDTH_G-1 downto 0);
+      cnt         : slv(RAM_ADDR_WIDTH_G-1 downto 0);
+      cntSize     : slv(RAM_ADDR_WIDTH_G-1 downto 0);
+      status      : SigGenStatusType;
+      state       : StateType;
    end record;
 
    constant REG_INIT_C : RegType := (
-      dspDacOut => (others => (others => '0')),
-      ramAddr   => (others => '0'),
-      cnt       => (others => '0'),
-      cntSize   => (others => '0'),
-      status    => SIG_GEN_STATUS_INIT_C,
-      state     => IDLE_S);
+      dspDacOut0  => (others => '0'),
+      dspDacOut1  => (others => '0'),
+      dspDacOut2  => (others => '0'),
+      dspDacOut3  => (others => '0'),
+      dspDacOut4  => (others => '0'),
+      dspDacOut5  => (others => '0'),
+      dspDacOut6  => (others => '0'),
+      dspDacOut7  => (others => '0'),
+      dspDacOut8  => (others => '0'),
+      dspDacOut9  => (others => '0'),
+      dspDacOut10 => (others => '0'),
+      dspDacOut11 => (others => '0'),
+      dspDacOut12 => (others => '0'),
+      dspDacOut13 => (others => '0'),
+      dspDacOut14 => (others => '0'),
+      dspDacOut15 => (others => '0'),
+      ramAddr     => (others => '0'),
+      cnt         => (others => '0'),
+      cntSize     => (others => '0'),
+      status      => SIG_GEN_STATUS_INIT_C,
+      state       => IDLE_S);
 
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
 begin
 
-   comb : process (config, dspDacIn, dspRst, r, ramData) is
+   comb : process (config, dspDacIn0, dspDacIn1, dspDacIn10, dspDacIn11,
+                   dspDacIn12, dspDacIn13, dspDacIn14, dspDacIn15, dspDacIn2,
+                   dspDacIn3, dspDacIn4, dspDacIn5, dspDacIn6, dspDacIn7,
+                   dspDacIn8, dspDacIn9, dspRst, r, ramData0, ramData1,
+                   ramData10, ramData11, ramData12, ramData13, ramData14,
+                   ramData15, ramData2, ramData3, ramData4, ramData5, ramData6,
+                   ramData7, ramData8, ramData9) is
       variable v : RegType;
       variable i : natural;
       variable j : natural;
@@ -98,9 +178,22 @@ begin
 
             -- Load IDLE value
             for i in 0 to SAMPLE_PER_CYCLE_G-1 loop
-               for j in 0 to NUM_CH_G-1 loop
-                  v.dspDacOut(j)(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
-               end loop;
+               v.dspDacOut0(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut1(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut2(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut3(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut4(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut5(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut6(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut7(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut8(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut9(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i)  := config.idleValue;
+               v.dspDacOut10(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
+               v.dspDacOut11(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
+               v.dspDacOut12(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
+               v.dspDacOut13(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
+               v.dspDacOut14(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
+               v.dspDacOut15(SIG_GEN_BIT_WIDTH_C*i+SIG_GEN_BIT_WIDTH_C-1 downto SIG_GEN_BIT_WIDTH_C*i) := config.idleValue;
             end loop;
 
             -- Check for start or continuous flags
@@ -134,7 +227,22 @@ begin
          ----------------------------------------------------------------------
          when MOVE_S =>
             -- Move the RAM data
-            v.dspDacOut := ramData;
+            v.dspDacOut0  := ramData0;
+            v.dspDacOut1  := ramData1;
+            v.dspDacOut2  := ramData2;
+            v.dspDacOut3  := ramData3;
+            v.dspDacOut4  := ramData4;
+            v.dspDacOut5  := ramData5;
+            v.dspDacOut6  := ramData6;
+            v.dspDacOut7  := ramData7;
+            v.dspDacOut8  := ramData8;
+            v.dspDacOut9  := ramData9;
+            v.dspDacOut10 := ramData10;
+            v.dspDacOut11 := ramData11;
+            v.dspDacOut12 := ramData12;
+            v.dspDacOut13 := ramData13;
+            v.dspDacOut14 := ramData14;
+            v.dspDacOut15 := ramData15;
 
             -- Set the flag
             v.status.dacGenValid := '1';
@@ -177,15 +285,45 @@ begin
       -- DSP reset or User Reset or not enabled mode
       if (dspRst = '1') or (config.reset = '1') or (config.enabled = '0') then
          -- Reset the registers
-         v           := REG_INIT_C;
+         v             := REG_INIT_C;
          -- Pass through the data
-         v.dspDacOut := dspDacIn;
+         v.dspDacOut0  := dspDacIn0;
+         v.dspDacOut1  := dspDacIn1;
+         v.dspDacOut2  := dspDacIn2;
+         v.dspDacOut3  := dspDacIn3;
+         v.dspDacOut4  := dspDacIn4;
+         v.dspDacOut5  := dspDacIn5;
+         v.dspDacOut6  := dspDacIn6;
+         v.dspDacOut7  := dspDacIn7;
+         v.dspDacOut8  := dspDacIn8;
+         v.dspDacOut9  := dspDacIn9;
+         v.dspDacOut10 := dspDacIn10;
+         v.dspDacOut11 := dspDacIn11;
+         v.dspDacOut12 := dspDacIn12;
+         v.dspDacOut13 := dspDacIn13;
+         v.dspDacOut14 := dspDacIn14;
+         v.dspDacOut15 := dspDacIn15;
       end if;
 
       -- Outputs
-      dspDacOut <= r.dspDacOut;
-      ramAddr   <= r.ramAddr;
-      status    <= r.status;
+      dspDacOut0  <= r.dspDacOut0;
+      dspDacOut1  <= r.dspDacOut1;
+      dspDacOut2  <= r.dspDacOut2;
+      dspDacOut3  <= r.dspDacOut3;
+      dspDacOut4  <= r.dspDacOut4;
+      dspDacOut5  <= r.dspDacOut5;
+      dspDacOut6  <= r.dspDacOut6;
+      dspDacOut7  <= r.dspDacOut7;
+      dspDacOut8  <= r.dspDacOut8;
+      dspDacOut9  <= r.dspDacOut9;
+      dspDacOut10 <= r.dspDacOut10;
+      dspDacOut11 <= r.dspDacOut11;
+      dspDacOut12 <= r.dspDacOut12;
+      dspDacOut13 <= r.dspDacOut13;
+      dspDacOut14 <= r.dspDacOut14;
+      dspDacOut15 <= r.dspDacOut15;
+      ramAddr     <= r.ramAddr;
+      status      <= r.status;
 
       -- Register the variable for next clock cycle
       rin <= v;

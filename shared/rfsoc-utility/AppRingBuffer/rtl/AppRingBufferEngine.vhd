@@ -25,11 +25,12 @@ use axi_soc_ultra_plus_core.AxiSocUltraPlusPkg.all;
 
 entity AppRingBufferEngine is
    generic (
-      TPD_G            : time                   := 1 ns;
-      NUM_CH_G         : positive               := 8;
-      RAM_ADDR_WIDTH_G : positive               := 10;
-      TDEST_ROUTES_G   : Slv8Array(15 downto 0) := (others => x"00");
-      AXIL_BASE_ADDR_G : slv(31 downto 0));
+      TPD_G              : time                   := 1 ns;
+      NUM_CH_G           : positive               := 8;
+      SAMPLE_PER_CYCLE_G : positive               := 16;
+      RAM_ADDR_WIDTH_G   : positive               := 10;
+      TDEST_ROUTES_G     : Slv8Array(15 downto 0) := (others => x"00");
+      AXIL_BASE_ADDR_G   : slv(31 downto 0));
    port (
       -- AXI-Stream Interface (axisClk domain)
       axisClk         : in  sl;
@@ -39,7 +40,22 @@ entity AppRingBufferEngine is
       -- DATA Interface (dataClk domain)
       dataClk         : in  sl;
       dataRst         : in  sl;
-      dataValues      : in  Slv256Array(NUM_CH_G-1 downto 0);
+      data0           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data1           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data2           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data3           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data4           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data5           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data6           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data7           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data8           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data9           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data10          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data11          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data12          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data13          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data14          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      data15          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       -- AXI-Lite Interface (axilClk domain)
       axilClk         : in  sl;
       axilRst         : in  sl;
@@ -51,6 +67,8 @@ end AppRingBufferEngine;
 
 architecture mapping of AppRingBufferEngine is
 
+   type RingBuffArray is array (natural range <>) of slv(16*SAMPLE_PER_CYCLE_G-1 downto 0);
+
    constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_CH_G-1 downto 0) := genAxiLiteConfig(NUM_CH_G, AXIL_BASE_ADDR_G, 16, 12);
 
    signal axilReadMasters  : AxiLiteReadMasterArray(NUM_CH_G-1 downto 0);
@@ -61,7 +79,26 @@ architecture mapping of AppRingBufferEngine is
    signal axisMasters : AxiStreamMasterArray(NUM_CH_G-1 downto 0);
    signal axisSlaves  : AxiStreamSlaveArray(NUM_CH_G-1 downto 0);
 
+   signal dataValues : RingBuffArray(15 downto 0);
+
 begin
+
+   dataValues(0)  <= data0;
+   dataValues(1)  <= data1;
+   dataValues(2)  <= data2;
+   dataValues(3)  <= data3;
+   dataValues(4)  <= data4;
+   dataValues(5)  <= data5;
+   dataValues(6)  <= data6;
+   dataValues(7)  <= data7;
+   dataValues(8)  <= data8;
+   dataValues(9)  <= data9;
+   dataValues(10) <= data10;
+   dataValues(11) <= data11;
+   dataValues(12) <= data12;
+   dataValues(13) <= data13;
+   dataValues(14) <= data14;
+   dataValues(15) <= data15;
 
    U_XBAR : entity surf.AxiLiteCrossbar
       generic map (
@@ -87,7 +124,7 @@ begin
          generic map (
             TPD_G               => TPD_G,
             SYNTH_MODE_G        => "xpm",
-            DATA_BYTES_G        => (256/8),
+            DATA_BYTES_G        => ((16*SAMPLE_PER_CYCLE_G)/8),
             RAM_ADDR_WIDTH_G    => RAM_ADDR_WIDTH_G,
             -- AXI Stream Configurations
             GEN_SYNC_FIFO_G     => false,
