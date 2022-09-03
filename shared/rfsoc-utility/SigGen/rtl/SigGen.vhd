@@ -66,6 +66,8 @@ entity SigGen is
       dspDacOut14     : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
       dspDacOut15     : out slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
       sigGenActive    : out sl;         -- Use to sync with other modules
+      extTrigIn       : in  sl                                                     := '0';
+      extTrigOut      : out sl;
       -- AXI-Lite Interface (axilClk domain)
       axilClk         : in  sl;
       axilRst         : in  sl;
@@ -207,6 +209,9 @@ begin
          -- Control/Status Interface
          config      => config,
          status      => status,
+         -- External Trigger Interface
+         extTrigIn   => extTrigIn,
+         extTrigOut  => extTrigOut,
          -- Memory Interface
          ramAddr     => ramAddr,
          ramData0    => ramData(0),

@@ -56,6 +56,7 @@ entity AppRingBufferEngine is
       data13          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       data14          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       data15          : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      extTrigIn       : in  sl                                    := '0';
       -- AXI-Lite Interface (axilClk domain)
       axilClk         : in  sl;
       axilRst         : in  sl;
@@ -133,6 +134,7 @@ begin
             -- Data to store in ring buffer (dataClk domain)
             dataClk         => dataClk,
             dataValue       => dataValues(i),
+            extTrig         => extTrigIn,
             -- AXI-Lite interface (axilClk domain)
             axilClk         => axilClk,
             axilRst         => axilRst,

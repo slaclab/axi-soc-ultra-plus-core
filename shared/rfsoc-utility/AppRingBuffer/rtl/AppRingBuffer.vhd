@@ -76,6 +76,7 @@ entity AppRingBuffer is
       dspDac13        : in  slv(16*DAC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspDac14        : in  slv(16*DAC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspDac15        : in  slv(16*DAC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      extTrigIn       : in  sl                                        := '0';
       -- AXI-Lite Interface (axilClk domain)
       axilClk         : in  sl;
       axilRst         : in  sl;
@@ -176,6 +177,7 @@ begin
             data13          => dspAdc13,
             data14          => dspAdc14,
             data15          => dspAdc15,
+            extTrigIn       => extTrigIn,
             -- AXI-Lite Interface (axilClk domain)
             axilClk         => axilClk,
             axilRst         => axilRst,
@@ -235,6 +237,7 @@ begin
             data13          => dspDac13,
             data14          => dspDac14,
             data15          => dspDac15,
+            extTrigIn       => extTrigIn,
             -- AXI-Lite Interface (axilClk domain)
             axilClk         => axilClk,
             axilRst         => axilRst,

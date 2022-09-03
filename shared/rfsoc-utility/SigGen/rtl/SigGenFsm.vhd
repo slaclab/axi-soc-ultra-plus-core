@@ -35,6 +35,9 @@ entity SigGenFsm is
       -- Control/Status Interface
       config      : in  SigGenConfigType;
       status      : out SigGenStatusType;
+      -- External Trigger Interface
+      extTrigIn   : in  sl;
+      extTrigout  : out sl;
       -- Memory Interface
       ramAddr     : out slv(RAM_ADDR_WIDTH_G-1 downto 0);
       ramData0    : in  slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
@@ -96,6 +99,7 @@ architecture rtl of SigGenFsm is
       MOVE_S);
 
    type RegType is record
+      extTrigout  : sl;
       dspDacOut0  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
       dspDacOut1  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
       dspDacOut2  : slv(SIG_GEN_BIT_WIDTH_C*SAMPLE_PER_CYCLE_G-1 downto 0);
@@ -120,6 +124,7 @@ architecture rtl of SigGenFsm is
    end record;
 
    constant REG_INIT_C : RegType := (
+      extTrigout  => '0',
       dspDacOut0  => (others => '0'),
       dspDacOut1  => (others => '0'),
       dspDacOut2  => (others => '0'),
@@ -150,10 +155,10 @@ begin
    comb : process (config, dspDacIn0, dspDacIn1, dspDacIn10, dspDacIn11,
                    dspDacIn12, dspDacIn13, dspDacIn14, dspDacIn15, dspDacIn2,
                    dspDacIn3, dspDacIn4, dspDacIn5, dspDacIn6, dspDacIn7,
-                   dspDacIn8, dspDacIn9, dspRst, r, ramData0, ramData1,
-                   ramData10, ramData11, ramData12, ramData13, ramData14,
-                   ramData15, ramData2, ramData3, ramData4, ramData5, ramData6,
-                   ramData7, ramData8, ramData9) is
+                   dspDacIn8, dspDacIn9, dspRst, extTrigIn, r, ramData0,
+                   ramData1, ramData10, ramData11, ramData12, ramData13,
+                   ramData14, ramData15, ramData2, ramData3, ramData4,
+                   ramData5, ramData6, ramData7, ramData8, ramData9) is
       variable v : RegType;
       variable i : natural;
       variable j : natural;
@@ -163,6 +168,7 @@ begin
 
       -- Reset flags
       v.status.dacGenValid := '0';
+      v.extTrigout         := '0';
 
       -- Increment the counters
       v.ramAddr := r.ramAddr + 1;
@@ -197,7 +203,7 @@ begin
             end loop;
 
             -- Check for start or continuous flags
-            if (config.burst = '1') or (config.continuous = '1') then
+            if (config.burst = '1') or (config.continuous = '1') or (extTrigIn = '1') then
 
                -- Latch the counter size
                v.cntSize := config.bufferLength(RAM_ADDR_WIDTH_G-1 downto 0);
@@ -219,6 +225,9 @@ begin
 
                -- Reset the counter
                v.cnt := (others => '0');
+
+               -- Set the flag
+               v.extTrigout := '1';
 
                -- Next state
                v.state := MOVE_S;
@@ -253,13 +262,21 @@ begin
                -- Reset the counter
                v.cnt := (others => '0');
 
+               -- Set the flag
+               v.extTrigout := '1';
+
                -- Check for not continuous flags
                if (config.continuous = '0') then
 
                   -- Check if done
                   if (r.status.burstCnt = 0) then
+
+                     -- Reset the flag
+                     v.extTrigout := '0';
+
                      -- Next state
                      v.state := IDLE_S;
+
                   else
                      -- Decrement the counter
                      v.status.burstCnt := r.status.burstCnt - 1;
@@ -306,6 +323,7 @@ begin
       end if;
 
       -- Outputs
+      extTrigout  <= r.extTrigout;
       dspDacOut0  <= r.dspDacOut0;
       dspDacOut1  <= r.dspDacOut1;
       dspDacOut2  <= r.dspDacOut2;
