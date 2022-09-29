@@ -63,6 +63,18 @@ con
 disconnect
 ```
 
+#### following sequence changes to SD0 (2.0) mode
+```bash
+xsct
+connect
+targets -set -nocase -filter {name =~ "*PSU*"}
+stop
+mwr  0xff5e0200 0x3100 
+rst -system
+con
+disconnect
+```
+
 <!--- ######################################################## -->
 
 ### Load the bitstream and kernel via JTAG
