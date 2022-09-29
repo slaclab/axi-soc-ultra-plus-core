@@ -17,9 +17,10 @@ This typically will include BOOT.BIN, image.ub, and boot.scr
 
 ```bash
 sudo mount /dev/sdd1 /u1/boot
-sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/BOOT.BIN /u1/boot/.
-sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/image.ub /u1/boot/.
-sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/boot.scr /u1/boot/.
+sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/system.bit /u1/boot/.
+sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/BOOT.BIN   /u1/boot/.
+sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/image.ub   /u1/boot/.
+sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/boot.scr   /u1/boot/.
 sudo umount /u1/boot
 ```
 
