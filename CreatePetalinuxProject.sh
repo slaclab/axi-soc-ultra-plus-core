@@ -120,6 +120,12 @@ petalinux-build -c startupapp
 # Patch for supporting JTAG booting
 petalinux-config --silentconfig
 
+# Configure users profiles
+if awk "BEGIN {exit !($PETALINUX_VER >= 2022.1)}"; then
+   sed -i "s/CONFIG_ADD_EXTRA_USERS=\"root:root;petalinux::passwd-expire;\"/CONFIG_ADD_EXTRA_USERS=\"root:root;petalinux:petalinux;\"/"  project-spec/configs/rootfs_config
+   echo CONFIG_ROOTFS_ROOT_PASSWD=\"root\" >> project-spec/configs/rootfs_config
+fi
+
 # Load commonly used packages
 echo CONFIG_packagegroup-petalinux-jupyter=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-qtconsole=y >> project-spec/configs/rootfs_config
