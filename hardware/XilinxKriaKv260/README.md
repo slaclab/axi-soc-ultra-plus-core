@@ -8,4 +8,4 @@ MODE2_C2M = R163 = open (remove resistor)
 MODE2_C1M = R164 = open (default)
 MODE2_C0M = R165 = 499 Ohm (default)
 ```
-<img src="KV260_SD_BOOT.png" width="200">
+<img src="KV260_SD_BOOT.png" width="500">
