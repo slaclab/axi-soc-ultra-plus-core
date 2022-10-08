@@ -1,0 +1,74 @@
+#!/bin/sh
+##############################################################################
+## This file is part of 'axi-soc-ultra-plus-core'.
+## It is subject to the license terms in the LICENSE.txt file found in the
+## top-level directory of this distribution and at:
+##	 https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
+## No part of 'axi-soc-ultra-plus-core', including this file,
+## may be copied, modified, propagated, or distributed except according to
+## the terms contained in the LICENSE.txt file.
+##############################################################################
+
+if [ -d "/run/media/mmcblk0p1" ]
+then
+   umount /run/media/mmcblk0p1
+   rm -r  /run/media/mmcblk0p1
+   mkdir -p /media/sd-mmcblk0p1
+   mount /dev/mmcblk0p1 /media/sd-mmcblk0p1
+fi
+
+if [ -d "/run/media/mmcblk0p2" ]
+then
+   umount /run/media/mmcblk0p2
+   rm -r  /run/media/mmcblk0p2
+   mkdir -p /u1
+   mount /dev/mmcblk0p2 /u1
+fi
+
+###########################################################################
+
+# Check if mac file exists in SD boot partition
+if [ -f "/media/sd-mmcblk0p1/mac" ]
+then
+   # Set the MAC address with file
+   ip link set dev eth0 down
+   ip link set dev eth0 address $(cat /media/sd-mmcblk0p1/mac)
+   ip link set dev eth0 up
+   /etc/init.d/networking restart
+fi
+
+###########################################################################
+
+# Check if drivers already load before loading 2nd stage bitstream
+if [ -f "/proc/axi_stream_dma_0" ]
+then
+   # Kill any stale runtime applications
+   killall python3
+   sleep 5
+   # Remove kernel drivers in-case they are already loaded
+   rmmod -s axi_memory_map
+   rmmod -s axi_stream_dma
+fi
+
+###########################################################################
+
+# Load the user's firmware (PL) .bit file (A.K.A. "2nd stage boot")
+fpgautil -b /media/sd-mmcblk0p1/system.bit
+
+# Load custom kernel driver
+insmod /lib/modules/$(uname -r)/extra/axi_memory_map.ko
+insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
+
+###########################################################################
+
+# Check if user's runtime application exists
+if [ -f "/u1/runtimeApp" ]
+then
+   # Start the user's custom runtime Application
+   /u1/runtimeApp
+else
+   # Else start the generic rogue TCP bridge Application
+   /usr/bin/roguetcpbridge
+fi
+
+###########################################################################
