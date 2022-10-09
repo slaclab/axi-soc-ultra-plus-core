@@ -35,11 +35,13 @@ fi
 axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
 aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
+imageDump=${xsa%.*}.petalinux.tar.gz
 
 echo "Build Output Path: $path";
 echo "Project Name: $name";
 echo "Hardware Type: $hwType";
 echo "XSA File Path: $xsa";
+echo "Image File Path: $imageDump";
 echo "Number of DMA lanes: $numLane";
 echo "Number of DEST per lane: $numDest";
 echo "Number of DMA TX Buffers: $dmaTxBuffCount";
@@ -168,5 +170,11 @@ petalinux-build
 
 # Create boot files
 petalinux-package --boot --uboot --fpga --force
+
+# Dump a compressed tarball of all the required build output files
+cd $path/$name/images/ && tar -czf $imageDump linux/system.bit linux/BOOT.BIN linux/image.ub linux/boot.scr
+echo "########################################################################"
+echo "petalinux.tar.gz image path: $imageDump"
+echo "########################################################################"
 
 ##############################################################################
