@@ -173,7 +173,6 @@ class RingBufferProcessor(pr.DataReceiver):
 
         # Calculate the average magnitude
         mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
-        if sum(np.isinf(mag)) == 0:
-            self._mag[self._idx] = mag
-            magnitude = self.running_mean(self._mag)
-            self.Magnitude.set(magnitude,write=True)
+        self._mag[self._idx] = mag
+        magnitude = self.running_mean(self._mag)
+        self.Magnitude.set(magnitude,write=True)
