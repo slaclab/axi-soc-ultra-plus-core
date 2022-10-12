@@ -47,7 +47,7 @@ function Update_MAC_Address(){
       /sbin/ifconfig $eth hw ether $MAC_ID
       /sbin/ifconfig $eth up
       local MAC_addr=$(cat /sys/class/net/$eth/address)
-      echo "MAC address for $eth is updated to $MAC_addr"
+      echo "MAC address for $eth is updated to $MAC_addr based on FRU EEPROM"
    done
 }
 
@@ -55,7 +55,7 @@ function Update_MAC_Address(){
 
 if [ -d "/run/media/mmcblk0p1" ]
 then
-   umount /run/media/mmcblk0p1
+   umount /run/media/mmcblk0p1 > /dev/null 2>&1
    rm -r  /run/media/mmcblk0p1
    mkdir -p /media/sd-mmcblk0p1
    mount /dev/mmcblk0p1 /media/sd-mmcblk0p1
@@ -63,7 +63,7 @@ fi
 
 if [ -d "/run/media/mmcblk0p2" ]
 then
-   umount /run/media/mmcblk0p2
+   umount /run/media/mmcblk0p2 > /dev/null 2>&1
    rm -r  /run/media/mmcblk0p2
    mkdir -p /u1
    mount /dev/mmcblk0p2 /u1
@@ -80,8 +80,12 @@ then
    ip link set dev eth0 up
    /etc/init.d/networking restart
 else
-   # Update the MAC address based on FRU
-   Update_MAC_Address
+   # Check for default SLAC MAC address
+   if [ $(cat /sys/class/net/eth0/address) == "08:00:56:00:00:00" ]
+   then
+      # Update the MAC address based on FRU
+      Update_MAC_Address
+   fi
 fi
 
 ###########################################################################
@@ -90,7 +94,8 @@ fi
 if [ -f "/proc/axi_stream_dma_0" ]
 then
    # Kill any stale runtime applications
-   killall python3
+   killall jupyter > /dev/null 2>&1
+   killall python3 > /dev/null 2>&1
    sleep 5
    # Remove kernel drivers in-case they are already loaded
    rmmod -s axi_memory_map
@@ -111,10 +116,10 @@ insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 # Check if user's runtime application exists
 if [ -f "/u1/runtimeApp" ]
 then
-   # Start the user's custom runtime Application
+   echo "Starting the user's custom runtime Application"
    /u1/runtimeApp
 else
-   # Else start the generic rogue TCP bridge Application
+   echo "Starting the generic rogue TCP bridge Application"
    /usr/bin/roguetcpbridge
 fi
 
