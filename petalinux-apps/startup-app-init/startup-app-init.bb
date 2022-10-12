@@ -19,6 +19,8 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 inherit update-rc.d systemd
 
+RDEPENDS:${PN} += "fru-print python3"
+
 INITSCRIPT_NAME = "startup-app-init"
 INITSCRIPT_PARAMS = "start 99 5 ."
 

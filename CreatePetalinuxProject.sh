@@ -63,6 +63,21 @@ cd $name
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
+# Check if the dts directory exists
+if [ -d "$hwDir/dts_dir" ]
+then
+   cp -rf $hwDir/dts_dir project-spec/.
+fi
+
+# Check if the hardware has custom configuration
+if [ -f "$hwDir/config" ]
+then
+   # Add new configuration
+   cat $hwDir/config >> project-spec/configs/config
+   # Reload the configurations
+   petalinux-config --silentconfig
+fi
+
 ##############################################################################
 
 # Check if the patch directory exists
@@ -165,7 +180,6 @@ fi
 ##############################################################################
 
 # Finalize the System Image
-petalinux-build
 petalinux-build
 
 # Create boot files
