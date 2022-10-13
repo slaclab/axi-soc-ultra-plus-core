@@ -131,6 +131,9 @@ insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 
 ###########################################################################
 
+# Dump AxiVersion Status
+/usr/bin/axiversiondump
+
 # Check if user's runtime application exists
 if [ -f "/u1/runtimeApp" ]
 then

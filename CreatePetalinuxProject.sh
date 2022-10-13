@@ -129,7 +129,7 @@ petalinux-build -c rogue
 
 ##############################################################################
 
-# Add rogue TCP memory/stream server
+# Add rogue TCP memory/stream server application
 petalinux-create -t apps --template install -n roguetcpbridge
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/roguetcpbridge project-spec/meta-user/recipes-apps/.
@@ -141,6 +141,17 @@ sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-a
 
 # Build the application
 petalinux-build -c roguetcpbridge
+
+##############################################################################
+
+# Add rogue AxiVersion Dump application
+petalinux-create -t apps --template install -n axiversiondump
+echo CONFIG_axiversiondump=y >> project-spec/configs/rootfs_config
+cp -rf $axi_soc_ultra_plus_core/petalinux-apps/axiversiondump project-spec/meta-user/recipes-apps/.
+echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
+
+# Build the application
+petalinux-build -c axiversiondump
 
 ##############################################################################
 
