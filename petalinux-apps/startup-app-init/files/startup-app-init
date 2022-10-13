@@ -53,20 +53,38 @@ function Update_MAC_Address(){
 
 ###########################################################################
 
+# Standard SD-memory card interface
 if [ -d "/run/media/mmcblk0p1" ]
 then
+   # Change /run/media/mmcblk0p1 to /media/sd-mmcblk0p1
    umount /run/media/mmcblk0p1 > /dev/null 2>&1
    rm -r  /run/media/mmcblk0p1
    mkdir -p /media/sd-mmcblk0p1
    mount /dev/mmcblk0p1 /media/sd-mmcblk0p1
-fi
 
-if [ -d "/run/media/mmcblk0p2" ]
-then
+   # Change /run/media/mmcblk0p2 to /u1
    umount /run/media/mmcblk0p2 > /dev/null 2>&1
    rm -r  /run/media/mmcblk0p2
    mkdir -p /u1
    mount /dev/mmcblk0p2 /u1
+fi
+
+###########################################################################
+
+# KR260 using USB mounted SD-memory card
+if [ -d "/run/media/sda1" ]
+then
+   # Change /run/media/sda1 to /media/sd-mmcblk0p1
+   umount /run/media/sda1 > /dev/null 2>&1
+   rm -r  /run/media/sda1
+   mkdir -p /media/sd-mmcblk0p1
+   mount /dev/sda1 /media/sd-mmcblk0p1
+
+   # Change /run/media/sda2 to /u1
+   umount /run/media/sda2 > /dev/null 2>&1
+   rm -r  /run/media/sda2
+   mkdir -p /u1
+   mount /dev/sda2 /u1
 fi
 
 ###########################################################################
