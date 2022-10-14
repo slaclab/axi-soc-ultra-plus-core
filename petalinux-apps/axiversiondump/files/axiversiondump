@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+##############################################################################
+## This file is part of 'axi-soc-ultra-plus-core'.
+## It is subject to the license terms in the LICENSE.txt file found in the
+## top-level directory of this distribution and at:
+##    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
+## No part of 'axi-soc-ultra-plus-core', including this file,
+## may be copied, modified, propagated, or distributed except according to
+## the terms contained in the LICENSE.txt file.
+##############################################################################
+
+import rogue
+import rogue.hardware.axi
+import rogue.interfaces.memory
+
+import datetime
+import parse
+import click
+import pyrogue as pr
+
+if __name__ == "__main__":
+
+    #################################################################
+
+    class AxiVersion(pr.Device):
+
+        # Last comment added by rherbst for demonstration.
+        def __init__(self, numUserConstants = 0, **kwargs):
+            super().__init__(**kwargs)
+
+            self.add(pr.RemoteVariable(
+                name         = 'FpgaVersion',
+                description  = 'FPGA Firmware Version Number',
+                offset       = 0x00,
+                bitSize      = 32,
+                bitOffset    = 0x00,
+                base         = pr.UInt,
+                mode         = 'RO',
+                disp         = '{:#08x}',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'UpTimeCnt',
+                description  = 'Number of seconds since last reset',
+                hidden       = True,
+                offset       = 0x08,
+                bitSize      = 32,
+                bitOffset    = 0x00,
+                base         = pr.UInt,
+                mode         = 'RO',
+                disp         = '{:d}',
+                units        = 'seconds',
+                pollInterval = 1,
+            ))
+
+            def parseUpTime(var,read):
+                seconds=var.dependencies[0].get(read=read)
+                if seconds == 0xFFFFFFFF:
+                    click.secho(f'Invalid {var.path} detected', fg='red')
+                    return 'Invalid'
+                else:
+                    return str(datetime.timedelta(seconds=seconds))
+
+            self.add(pr.LinkVariable(
+                name         = 'UpTime',
+                description  = 'Time since power up or last firmware reload',
+                mode         = 'RO',
+                disp         = '{}',
+                variable     = self.UpTimeCnt,
+                linkedGet    = parseUpTime,
+                units        = 'HH:MM:SS',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'DeviceId',
+                description  = 'Device Identification  (configued by generic)',
+                offset       = 0x500,
+                bitSize      = 32,
+                bitOffset    = 0x00,
+                base         = pr.UInt,
+                mode         = 'RO',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'GitHash',
+                description  = 'GIT SHA-1 Hash',
+                offset       = 0x600,
+                bitSize      = 160,
+                bitOffset    = 0x00,
+                base         = pr.UInt,
+                mode         = 'RO',
+                hidden       = True,
+            ))
+
+            self.add(pr.LinkVariable(
+                name         = 'GitHashShort',
+                mode         = 'RO',
+                dependencies = [self.GitHash],
+                linkedGet    = lambda read: f'{(self.GitHash.get(read=read) >> 132):07x}',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'DeviceDna',
+                description  = 'Xilinx Device DNA value burned into FPGA',
+                offset       = 0x700,
+                bitSize      = 128,
+                bitOffset    = 0x00,
+                base         = pr.UInt,
+                mode         = 'RO',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'BuildStamp',
+                description  = 'Firmware Build String',
+                offset       = 0x800,
+                bitSize      = 8*256,
+                bitOffset    = 0x00,
+                base         = pr.String,
+                mode         = 'RO',
+                hidden       = True,
+            ))
+
+            def parseBuildStamp(var,read):
+                buildStamp = var.dependencies[0].get(read=read)
+                if buildStamp is None:
+                    return ''
+                else:
+                    # Strip away the whitespace padding
+                    buildStamp = buildStamp.strip()
+
+                    # Parse the string
+                    p = parse.parse("{ImageName}: {BuildEnv}, {BuildServer}, Built {BuildDate} by {Builder}", buildStamp)
+
+                    # Check if failed
+                    if p is None:
+                        return ''
+                    else:
+                        return p[var.name]
+
+            self.add(pr.LinkVariable(
+                name = 'ImageName',
+                mode = 'RO',
+                linkedGet = parseBuildStamp,
+                variable = self.BuildStamp))
+
+            self.add(pr.LinkVariable(
+                name = 'BuildEnv',
+                mode = 'RO',
+                linkedGet = parseBuildStamp,
+                variable = self.BuildStamp))
+
+            self.add(pr.LinkVariable(
+                name = 'BuildServer',
+                mode = 'RO',
+                linkedGet = parseBuildStamp,
+                variable = self.BuildStamp))
+
+            self.add(pr.LinkVariable(
+                name = 'BuildDate',
+                mode = 'RO',
+                linkedGet = parseBuildStamp,
+                variable = self.BuildStamp))
+
+            self.add(pr.LinkVariable(
+                name = 'Builder',
+                mode = 'RO',
+                linkedGet = parseBuildStamp,
+                variable = self.BuildStamp))
+
+
+            self.add(pr.RemoteVariable(
+                name         = 'DMA_SIZE_G',
+                offset       = 0x400+(4*0),
+                bitSize      = 32,
+                mode         = 'RO',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'DMA_CLK_FREQ_C',
+                offset       = 0x400+(4*1),
+                bitSize      = 32,
+                mode         = 'RO',
+                disp         = '{:d}',
+                units        = 'Hz',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'AppReset',
+                offset       = 0x400+(4*2),
+                bitSize      = 1,
+                bitOffset    = 0,
+                mode         = 'RO',
+                base         = pr.Bool,
+                pollInterval = 1,
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = "AppClkFreq",
+                description  = "Application Clock Frequency",
+                offset       = 0x400+(4*3),
+                units        = 'Hz',
+                disp         = '{:d}',
+                mode         = "RO",
+                pollInterval = 1
+            ))
+
+        def printStatus(self):
+            try:
+                gitHash = self.GitHash.get()
+                print("Path           = {}".format(self.path))
+                print("FwVersion      = {}".format(hex(self.FpgaVersion.get())))
+                print("UpTime         = {}".format(self.UpTime.get()))
+                if (gitHash != 0):
+                    print("GitHash        = {}".format(hex(self.GitHash.get())))
+                else:
+                    print("GitHash      = dirty (uncommitted code)")
+                print("XilinxDnaId    = {}".format(hex(self.DeviceDna.get())))
+                print("FwTarget       = {}".format(self.ImageName.get()))      # Read buildstamp here
+                print("BuildEnv       = {}".format(self.BuildEnv.value()))
+                print("BuildServer    = {}".format(self.BuildServer.value()))
+                print("BuildDate      = {}".format(self.BuildDate.value()))
+                print("Builder        = {}".format(self.Builder.value()))
+                print("DMA_SIZE_G     = {}".format(hex(self.DMA_SIZE_G.get())))
+                print("DMA_CLK_FREQ_C = {} Hz".format(self.DMA_CLK_FREQ_C.get()))
+                print("AppReset       = {}".format(hex(self.AppReset.get())))
+                print("AppClkFreq     = {} Hz".format(self.AppClkFreq.get()))
+            except Exception:
+                print("Failed to get %s status" % self)
+
+    #################################################################
+    
+    class Root(pr.Root):
+
+        def __init__(self,**kwargs):
+
+            # Pass custom value to parent via super function
+            super().__init__(**kwargs)
+
+            # Memory base
+            self.memMap = rogue.hardware.axi.AxiMemMap('/dev/axi_memory_map')
+
+            # Added the device
+            self.add(AxiVersion(
+                memBase = self.memMap,
+                offset  = 0x04_0000_0000,
+            ))
+
+    #################################################################
+    
+    with Root() as root:
+        root.AxiVersion.printStatus()
+        
+    #################################################################

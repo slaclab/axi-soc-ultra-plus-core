@@ -3,26 +3,88 @@
 ## This file is part of 'axi-soc-ultra-plus-core'.
 ## It is subject to the license terms in the LICENSE.txt file found in the
 ## top-level directory of this distribution and at:
-##	 https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
+##    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
 ## No part of 'axi-soc-ultra-plus-core', including this file,
 ## may be copied, modified, propagated, or distributed except according to
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
+function Get_MAC_ID(){
+
+   local output=""
+   local index=$1
+   if [ $index -eq 0 ]; then
+      output="$(fru-print.py -b som -f multirecord MAC_Addr MAC_ID_0)"
+   else
+      output="$(fru-print.py -b cc -f multirecord MAC_Addr PS_MAC_ID_$index)"
+   fi
+   echo $output
+}
+
+function Get_Active_Ethernet(){
+
+   local output=""
+   local num=$1
+   output=$(ls /sys/class/net | grep eth$num)
+
+   if [ -z "$output" ]; then
+      echo "No Ethernet Port Found"
+      exit 1
+   else
+      line=${output:0:4}
+      echo "$line"
+   fi
+}
+
+function Update_MAC_Address(){
+
+   i=$(ls -ld /sys/class/net/eth* | wc -l)
+   while [ $i -gt 0 ]; do
+      i=$(( i - 1 ))
+      local eth=$(Get_Active_Ethernet $i)
+      local MAC_ID=$(Get_MAC_ID $i)
+      /sbin/ifconfig $eth down
+      /sbin/ifconfig $eth hw ether $MAC_ID
+      /sbin/ifconfig $eth up
+      local MAC_addr=$(cat /sys/class/net/$eth/address)
+      echo "MAC address for $eth is updated to $MAC_addr based on FRU EEPROM"
+   done
+}
+
+###########################################################################
+
+# Standard SD-memory card interface
 if [ -d "/run/media/mmcblk0p1" ]
 then
-   umount /run/media/mmcblk0p1
+   # Change /run/media/mmcblk0p1 to /media/sd-mmcblk0p1
+   umount /run/media/mmcblk0p1 > /dev/null 2>&1
    rm -r  /run/media/mmcblk0p1
    mkdir -p /media/sd-mmcblk0p1
    mount /dev/mmcblk0p1 /media/sd-mmcblk0p1
-fi
 
-if [ -d "/run/media/mmcblk0p2" ]
-then
-   umount /run/media/mmcblk0p2
+   # Change /run/media/mmcblk0p2 to /u1
+   umount /run/media/mmcblk0p2 > /dev/null 2>&1
    rm -r  /run/media/mmcblk0p2
    mkdir -p /u1
    mount /dev/mmcblk0p2 /u1
+fi
+
+###########################################################################
+
+# KR260 using USB mounted SD-memory card
+if [ -d "/run/media/sda1" ]
+then
+   # Change /run/media/sda1 to /media/sd-mmcblk0p1
+   umount /run/media/sda1 > /dev/null 2>&1
+   rm -r  /run/media/sda1
+   mkdir -p /media/sd-mmcblk0p1
+   mount /dev/sda1 /media/sd-mmcblk0p1
+
+   # Change /run/media/sda2 to /u1
+   umount /run/media/sda2 > /dev/null 2>&1
+   rm -r  /run/media/sda2
+   mkdir -p /u1
+   mount /dev/sda2 /u1
 fi
 
 ###########################################################################
@@ -35,6 +97,13 @@ then
    ip link set dev eth0 address $(cat /media/sd-mmcblk0p1/mac)
    ip link set dev eth0 up
    /etc/init.d/networking restart
+else
+   # Check for default SLAC MAC address
+   if [ $(cat /sys/class/net/eth0/address) == "08:00:56:00:00:00" ]
+   then
+      # Update the MAC address based on FRU
+      Update_MAC_Address
+   fi
 fi
 
 ###########################################################################
@@ -43,7 +112,8 @@ fi
 if [ -f "/proc/axi_stream_dma_0" ]
 then
    # Kill any stale runtime applications
-   killall python3
+   killall jupyter > /dev/null 2>&1
+   killall python3 > /dev/null 2>&1
    sleep 5
    # Remove kernel drivers in-case they are already loaded
    rmmod -s axi_memory_map
@@ -61,13 +131,16 @@ insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 
 ###########################################################################
 
+# Dump AxiVersion Status
+/usr/bin/axiversiondump
+
 # Check if user's runtime application exists
 if [ -f "/u1/runtimeApp" ]
 then
-   # Start the user's custom runtime Application
+   echo "Starting the user's custom runtime Application"
    /u1/runtimeApp
 else
-   # Else start the generic rogue TCP bridge Application
+   echo "Starting the generic rogue TCP bridge Application"
    /usr/bin/roguetcpbridge
 fi
 
