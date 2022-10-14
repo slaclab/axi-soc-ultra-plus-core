@@ -69,6 +69,12 @@ then
    cp -rf $hwDir/dts_dir project-spec/.
 fi
 
+# Check if the hardware has custom u-boot
+if [ -f "$hwDir/u-boot/platform-top.h" ]
+then
+   cp -rf $hwDir/u-boot/platform-top.h project-spec/meta-user/recipes-bsp/u-boot/files/platform-top.h
+fi
+
 # Check if the hardware has custom configuration
 if [ -f "$hwDir/config" ]
 then
