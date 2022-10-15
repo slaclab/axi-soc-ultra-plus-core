@@ -26,8 +26,8 @@ done
 
 # Check the petalinux version
 if awk "BEGIN {exit !($PETALINUX_VER < 2022.1)}"; then
-  echo "PETALINUX_VER must be >= 2022.1"
-  exit 1
+   echo "PETALINUX_VER must be >= 2022.1"
+   exit 1
 fi
 
 ##############################################################################
@@ -36,6 +36,13 @@ axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
 aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
 imageDump=${xsa%.*}.petalinux.tar.gz
+
+# Check if the dts directory exists
+if [ ! -d "$hwDir" ]
+then
+   echo "hwDir=$hwDir does NOT exist"
+   exit 1
+fi
 
 echo "Build Output Path: $path";
 echo "Project Name: $name";
