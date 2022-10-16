@@ -9,9 +9,6 @@
 		stdout-path = "serial0:115200n8";
 		xlnx,eeprom = &eeprom;
 	};
-};
-
-	};
 
 	gpio-keys {
 		compatible = "gpio-keys";
