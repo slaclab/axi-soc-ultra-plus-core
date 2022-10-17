@@ -82,6 +82,14 @@ then
    cp -rf $hwDir/u-boot/platform-top.h project-spec/meta-user/recipes-bsp/u-boot/files/platform-top.h
 fi
 
+# Customize your user device tree
+cp -f $hwDir/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
+if [ -f "$hwDir/device-tree/device-tree.bbappend" ]
+then
+   # Add new configuration
+   cat $hwDir/device-tree/device-tree.bbappend >> project-spec/meta-user/recipes-bsp/device-tree/device-tree.bbappend
+fi
+
 # Check if the hardware has custom configuration
 if [ -f "$hwDir/config" ]
 then
@@ -102,9 +110,6 @@ then
       cp -f $hwDir/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
    done
 fi
-
-# Customize your user device tree
-cp -f $hwDir/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
 
 # Build kernel
 petalinux-build -c kernel
