@@ -1,0 +1,1 @@
+YAML_DT_BOARD_FLAGS = "{BOARD k26-som}"
