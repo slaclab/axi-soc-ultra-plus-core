@@ -34,6 +34,7 @@ entity AxiSocUltraPlusReg is
       ROGUE_SIM_PORT_NUM_G     : natural range 1024 to 49151 := 8000;
       BUILD_INFO_G             : BuildInfoType;
       EXT_AXIL_MASTER_G        : boolean                     := false;
+      EN_DEVICE_DNA_G          : boolean                     := true;
       SYSMON_ENABLE_G          : boolean                     := true;
       SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0);
       DMA_SIZE_G               : positive range 1 to 16      := 1);
@@ -259,7 +260,7 @@ begin
          BUILD_INFO_G    => BUILD_INFO_G,
          CLK_PERIOD_G    => DMA_CLK_PERIOD_C,
          USE_SLOWCLK_G   => true,
-         EN_DEVICE_DNA_G => true,
+         EN_DEVICE_DNA_G => EN_DEVICE_DNA_G,
          XIL_DEVICE_G    => "ULTRASCALE_PLUS",
          EN_ICAP_G       => false)
       port map (

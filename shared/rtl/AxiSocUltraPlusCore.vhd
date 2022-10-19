@@ -32,6 +32,7 @@ entity AxiSocUltraPlusCore is
       ROGUE_SIM_CH_COUNT_G     : natural range 1 to 256      := 256;
       BUILD_INFO_G             : BuildInfoType;
       EXT_AXIL_MASTER_G        : boolean                     := false;
+      EN_DEVICE_DNA_G          : boolean                     := true;
       SYSMON_ENABLE_G          : boolean                     := true;
       SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0)            := x"FFFF";
       DESC_MEMORY_TYPE_G       : string                      := "ultra";
@@ -202,6 +203,7 @@ begin
          ROGUE_SIM_PORT_NUM_G     => ROGUE_SIM_PORT_NUM_G,
          BUILD_INFO_G             => BUILD_INFO_G,
          EXT_AXIL_MASTER_G        => EXT_AXIL_MASTER_G,
+         EN_DEVICE_DNA_G          => EN_DEVICE_DNA_G,
          SYSMON_ENABLE_G          => SYSMON_ENABLE_G,
          SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
          DMA_SIZE_G               => DMA_SIZE_G)
