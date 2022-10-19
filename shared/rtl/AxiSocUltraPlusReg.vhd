@@ -34,6 +34,7 @@ entity AxiSocUltraPlusReg is
       ROGUE_SIM_PORT_NUM_G     : natural range 1024 to 49151 := 8000;
       BUILD_INFO_G             : BuildInfoType;
       EXT_AXIL_MASTER_G        : boolean                     := false;
+      SYSMON_ENABLE_G          : boolean                     := true;
       SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0);
       DMA_SIZE_G               : positive range 1 to 16      := 1);
    port (
@@ -159,28 +160,30 @@ begin
       axilWriteMaster <= regWriteMaster;
       regWriteSlave   <= axilWriteSlave;
 
-      U_SysMon : entity axi_soc_ultra_plus_core.AxiSocUltraPlusSysMon
-         generic map (
-            TPD_G                    => TPD_G,
-            SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
-            AXIL_BASE_ADDR_G         => AXI_CROSSBAR_MASTERS_CONFIG_C(SYSMON_INDEX_C).baseAddr)
-         port map (
-            -- AUX Clock and Reset
-            auxClk          => auxClk,
-            auxRst          => auxRst,
-            -- Over Temp or LVAUX Error Detect
-            sysmonError     => sysmonError,
-            -- SYSMON Ports
-            vPIn            => vPIn,
-            vNIn            => vNIn,
-            -- AXI-Lite Register Interface
-            axilReadMaster  => axilReadMasters(SYSMON_INDEX_C),
-            axilReadSlave   => axilReadSlaves(SYSMON_INDEX_C),
-            axilWriteMaster => axilWriteMasters(SYSMON_INDEX_C),
-            axilWriteSlave  => axilWriteSlaves(SYSMON_INDEX_C),
-            -- Clocks and Resets
-            axilClk         => axiClk,
-            axilRst         => axiRst);
+      BUILD_SYSMON : if (SYSMON_ENABLE_G) generate
+         U_SysMon : entity axi_soc_ultra_plus_core.AxiSocUltraPlusSysMon
+            generic map (
+               TPD_G                    => TPD_G,
+               SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
+               AXIL_BASE_ADDR_G         => AXI_CROSSBAR_MASTERS_CONFIG_C(SYSMON_INDEX_C).baseAddr)
+            port map (
+               -- AUX Clock and Reset
+               auxClk          => auxClk,
+               auxRst          => auxRst,
+               -- Over Temp or LVAUX Error Detect
+               sysmonError     => sysmonError,
+               -- SYSMON Ports
+               vPIn            => vPIn,
+               vNIn            => vNIn,
+               -- AXI-Lite Register Interface
+               axilReadMaster  => axilReadMasters(SYSMON_INDEX_C),
+               axilReadSlave   => axilReadSlaves(SYSMON_INDEX_C),
+               axilWriteMaster => axilWriteMasters(SYSMON_INDEX_C),
+               axilWriteSlave  => axilWriteSlaves(SYSMON_INDEX_C),
+               -- Clocks and Resets
+               axilClk         => axiClk,
+               axilRst         => axiRst);
+      end generate;
 
    end generate;
 
