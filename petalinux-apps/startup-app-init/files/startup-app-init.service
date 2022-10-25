@@ -1,6 +1,8 @@
 [Unit]
 Description=startup-app-init
-  
+Requires=local-fs.target
+After=local-fs.target
+
 [Service]
 Type=idle
 Restart=always
