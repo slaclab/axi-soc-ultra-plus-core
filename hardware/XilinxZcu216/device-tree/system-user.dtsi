@@ -6,6 +6,15 @@
 		xlnx,eeprom = &eeprom;
 	};
 };
+&i2c1 {
+	i2c-mux@74 {
+		i2c_si570_mgt: i2c@3 {
+			si570_2: clock-generator@5d { /* USER MGT SI570 - u48 */
+				clock-frequency = <156250000>;
+			};
+		};
+	};
+};
 / {
 	axi_stream_dma_0@b0000000 {
 		compatible = "axi_stream_dma";
