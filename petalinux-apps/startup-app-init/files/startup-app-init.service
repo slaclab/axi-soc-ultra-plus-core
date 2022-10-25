@@ -2,7 +2,7 @@
 Description=startup-app-init
   
 [Service]
-Type=simple
+Type=idle
 Restart=always
 ExecStart=/usr/bin/startup-app-init
 StandardOutput=journal+console
