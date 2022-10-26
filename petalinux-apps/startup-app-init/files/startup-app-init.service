@@ -1,8 +1,10 @@
 [Unit]
 Description=startup-app-init
-  
+Requires=local-fs.target systemd-user-sessions
+After=local-fs.target systemd-user-sessions
+
 [Service]
-Type=simple
+Type=idle
 Restart=always
 ExecStart=/usr/bin/startup-app-init
 StandardOutput=journal+console
