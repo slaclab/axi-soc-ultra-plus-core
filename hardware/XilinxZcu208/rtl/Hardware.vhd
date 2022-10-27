@@ -93,7 +93,7 @@ begin
          -- I2C MUX Generics
          MUX_DECODE_MAP_G   => I2C_MUX_DECODE_MAP_TCA9548_C,
          I2C_MUX_ADDR_G     => b"1110_100",
-         I2C_SCL_FREQ_G     => 400.0E+3,  -- units of Hz
+         I2C_SCL_FREQ_G     => 100.0E+3,  -- units of Hz
          AXIL_CLK_FREQ_G    => AXIL_CLK_FREQ_G,
          -- AXI-Lite Crossbar Generics
          NUM_MASTER_SLOTS_G => 8,
