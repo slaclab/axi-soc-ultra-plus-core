@@ -51,7 +51,7 @@ end Hardware;
 
 architecture top_level of Hardware is
 
-   constant XBAR_I2C_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, AXIL_BASE_ADDR_G, 28, 24);
+   constant XBAR_I2C_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, AXIL_BASE_ADDR_G, 24, 20);
 
    constant I2C_CONFIG_C : I2cAxiLiteDevArray(1 downto 0) := (
       0              => MakeI2cAxiLiteDevType(
@@ -96,6 +96,14 @@ architecture top_level of Hardware is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
+   -- attribute dont_touch                    : string;
+   -- attribute dont_touch of r               : signal is "TRUE";
+   -- attribute dont_touch of i2coVec         : signal is "TRUE";
+   -- attribute dont_touch of i2cReadMasters  : signal is "TRUE";
+   -- attribute dont_touch of i2cReadSlaves   : signal is "TRUE";
+   -- attribute dont_touch of i2cWriteMasters : signal is "TRUE";
+   -- attribute dont_touch of i2cWriteSlaves  : signal is "TRUE";
+
 begin
 
    -----------------------------------------
@@ -107,7 +115,7 @@ begin
          -- I2C MUX Generics
          MUX_DECODE_MAP_G   => I2C_MUX_DECODE_MAP_TCA9548_C,
          I2C_MUX_ADDR_G     => b"1110_100",
-         I2C_SCL_FREQ_G     => 100.0E+3,  -- units of Hz
+         I2C_SCL_FREQ_G     => 400.0E+3,  -- units of Hz
          AXIL_CLK_FREQ_G    => AXIL_CLK_FREQ_G,
          -- AXI-Lite Crossbar Generics
          NUM_MASTER_SLOTS_G => 8,
