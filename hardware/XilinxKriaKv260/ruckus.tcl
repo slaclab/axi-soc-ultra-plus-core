@@ -20,5 +20,5 @@ loadConstraints -dir "$::DIR_PATH/xdc"
 set_property board_part xilinx.com:kv260_som:part0:1.3 [current_project]
 
 # Load the block design
-# loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.bd"
-loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.tcl"
+loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.bd"
+# loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.tcl"
