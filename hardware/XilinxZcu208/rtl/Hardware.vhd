@@ -51,7 +51,7 @@ end Hardware;
 
 architecture top_level of Hardware is
 
-   constant XBAR_I2C_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, AXIL_BASE_ADDR_G, 28, 24);
+   constant XBAR_I2C_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, AXIL_BASE_ADDR_G, 24, 20);
 
    constant I2C_CONFIG_C : I2cAxiLiteDevArray(1 downto 0) := (
       0              => MakeI2cAxiLiteDevType(
@@ -80,7 +80,29 @@ architecture top_level of Hardware is
          sda    => '1',
          sdaoen => '1',
          enable => '0'));
-   signal i2co : i2c_out_type;
+
+   type RegType is record
+      i2co : i2c_out_type;
+   end record;
+
+   constant REG_INIT_C : RegType := (
+      i2co      => (
+         scl    => '1',
+         scloen => '1',
+         sda    => '1',
+         sdaoen => '1',
+         enable => '0'));
+
+   signal r   : RegType := REG_INIT_C;
+   signal rin : RegType;
+
+   -- attribute dont_touch                    : string;
+   -- attribute dont_touch of r               : signal is "TRUE";
+   -- attribute dont_touch of i2coVec         : signal is "TRUE";
+   -- attribute dont_touch of i2cReadMasters  : signal is "TRUE";
+   -- attribute dont_touch of i2cReadSlaves   : signal is "TRUE";
+   -- attribute dont_touch of i2cWriteMasters : signal is "TRUE";
+   -- attribute dont_touch of i2cWriteSlaves  : signal is "TRUE";
 
 begin
 
@@ -152,33 +174,51 @@ begin
          axilClk         => axilClk,
          axilRst         => axilRst);
 
-   process(i2cReadMasters, i2cWriteMasters, i2coVec)
-      variable tmp : i2c_out_type;
+   comb : process (axilRst, i2cReadMasters, i2cWriteMasters, i2coVec, r) is
+      variable v : RegType;
    begin
+      -- Latch the current value
+      v := r;
+
       -- Init (Default to I2C MUX endpoint)
-      tmp := i2coVec(8);
+      v.i2co := i2coVec(8);
+
       -- Check for TXN after XBAR/I2C_MUX
       for i in 0 to 7 loop
          if (i2cWriteMasters(i).awvalid = '1') or (i2cReadMasters(i).arvalid = '1') then
-            tmp := i2coVec(i);
+            v.i2co := i2coVec(i);
          end if;
       end loop;
-      -- Return result
-      i2co <= tmp;
+
+      -- Synchronous Reset
+      if (axilRst = '1') then
+         v := REG_INIT_C;
+      end if;
+
+      -- Register the variable for next clock cycle
+      rin <= v;
+
+   end process;
+
+   seq : process (axilClk) is
+   begin
+      if rising_edge(axilClk) then
+         r <= rin after TPD_G;
+      end if;
    end process;
 
    IOBUF_SCL : IOBUF
       port map (
          O  => i2ci.scl,
          IO => i2c1Scl,
-         I  => i2co.scl,
-         T  => i2co.scloen);
+         I  => r.i2co.scl,
+         T  => r.i2co.scloen);
 
    IOBUF_SDA : IOBUF
       port map (
          O  => i2ci.sda,
          IO => i2c1Sda,
-         I  => i2co.sda,
-         T  => i2co.sdaoen);
+         I  => r.i2co.sda,
+         T  => r.i2co.sdaoen);
 
 end top_level;

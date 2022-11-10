@@ -19,13 +19,13 @@ class Hardware(pr.Device):
 
         self.add(ti.Lmk04828(
             name            = 'Lmk',
-            offset          = 0x05_02_0000,
+            offset          = 0x0052_0000,
             allowHexFileRst = False,
             expand          = True,
         ))
 
         self.add(nxp.Sc18Is602(
             name   = 'I2cToSpi',
-            offset = 0x05_08_0000,
+            offset = 0x0058_0000,
             # expand = True,
         ))
