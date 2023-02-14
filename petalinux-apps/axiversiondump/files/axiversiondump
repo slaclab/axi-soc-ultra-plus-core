@@ -213,7 +213,7 @@ if __name__ == "__main__":
                 if (gitHash != 0):
                     print("GitHash        = {}".format(hex(self.GitHash.get())))
                 else:
-                    print("GitHash      = dirty (uncommitted code)")
+                    print("GitHash        = dirty (uncommitted code)")
                 print("XilinxDnaId    = {}".format(hex(self.DeviceDna.get())))
                 print("FwTarget       = {}".format(self.ImageName.get()))      # Read buildstamp here
                 print("BuildEnv       = {}".format(self.BuildEnv.value()))
