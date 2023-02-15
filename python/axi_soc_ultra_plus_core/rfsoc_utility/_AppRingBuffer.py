@@ -26,19 +26,21 @@ class AppRingBuffer(pr.Device):
     def __init__(self,numAdcCh=1,numDacCh=1,**kwargs):
         super().__init__(**kwargs)
 
-        self.add(AppRingBufferEngine(
-            name   = 'Adc',
-            offset = 0x0000_0000,
-            numCh  = numAdcCh,
-            # expand = True,
-        ))
+        if (numAdcCh > 0):
+            self.add(AppRingBufferEngine(
+                name   = 'Adc',
+                offset = 0x0000_0000,
+                numCh  = numAdcCh,
+                # expand = True,
+            ))
 
-        self.add(AppRingBufferEngine(
-            name   = 'Dac',
-            offset = 0x0001_0000,
-            numCh  = numDacCh,
-            # expand = True,
-        ))
+        if (numDacCh > 0):
+            self.add(AppRingBufferEngine(
+                name   = 'Dac',
+                offset = 0x0001_0000,
+                numCh  = numDacCh,
+                # expand = True,
+            ))
 
         self.add(axi.AxiStreamFrameRateLimiter(
             name   = 'RateLimiter',

@@ -135,11 +135,11 @@ class SigGen(pr.Device):
                 name         = ('Waveform[%d]' % i),
                 description  = 'Waveform data 16-bit samples',
                 offset       = (0x4_0000+i*0x4_0000), # 18-bit address stride
-                bitSize      = 16 * smplPerCycle*(2**ramWidth),
+                bitSize      = 32 * smplPerCycle*(2**ramWidth),
                 bitOffset    = 0,
                 numValues    = smplPerCycle*(2**ramWidth),
                 valueBits    = 16,
-                valueStride  = 16,
+                valueStride  = 32,
                 updateNotify = True,
                 bulkOpEn     = False, # FALSE for large variables
                 overlapEn    = False,
