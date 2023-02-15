@@ -15,6 +15,26 @@ set_property -dict { PACKAGE_PIN AB18 IOSTANDARD ANALOG } [get_ports { vNIn }]
 
 ##############################################################################
 
+set_property -dict { PACKAGE_PIN G15 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][0] }]
+set_property -dict { PACKAGE_PIN G16 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][1] }]
+set_property -dict { PACKAGE_PIN H14 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][2] }]
+set_property -dict { PACKAGE_PIN H15 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][3] }]
+set_property -dict { PACKAGE_PIN G13 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][4] }]
+set_property -dict { PACKAGE_PIN H13 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][5] }]
+set_property -dict { PACKAGE_PIN J13 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][6] }]
+set_property -dict { PACKAGE_PIN J14 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][7] }]
+
+set_property -dict { PACKAGE_PIN L17 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][0] }]
+set_property -dict { PACKAGE_PIN M17 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][1] }]
+set_property -dict { PACKAGE_PIN M14 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][2] }]
+set_property -dict { PACKAGE_PIN N14 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][3] }]
+set_property -dict { PACKAGE_PIN M15 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][4] }]
+set_property -dict { PACKAGE_PIN N15 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][5] }]
+set_property -dict { PACKAGE_PIN M16 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][6] }]
+set_property -dict { PACKAGE_PIN N16 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][7] }]
+
+##############################################################################
+
 set_property -dict { PACKAGE_PIN L15 IOSTANDARD LVCMOS18 } [get_ports { lmkSync   }]
 
 set_property -dict { PACKAGE_PIN G10 IOSTANDARD LVCMOS18 } [get_ports { clkMuxSel[0] }]
