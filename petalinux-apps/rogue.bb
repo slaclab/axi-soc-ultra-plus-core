@@ -2,8 +2,8 @@
 # This file is the rogue recipe.
 #
 
-ROGUE_VERSION = "5.14.0"
-ROGUE_MD5SUM  = "ba8146e03f60e463a2aa3d978c1dc46e"
+ROGUE_VERSION = "5.16.1"
+ROGUE_MD5SUM  = "968dcf2dab78654df89a54aab69023a4"
 
 SUMMARY = "Rogue Application"
 SECTION = "PETALINUX/apps"
