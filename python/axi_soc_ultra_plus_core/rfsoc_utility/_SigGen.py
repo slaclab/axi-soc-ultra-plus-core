@@ -23,6 +23,7 @@ class SigGen(pr.Device):
         self.numCh        = numCh
         self.ramWidth     = ramWidth
         self.smplPerCycle = smplPerCycle
+        self.valueStride  = 32 if (smplPerCycle==1) else 16
 
         self.add(pr.RemoteVariable(
             name         = 'NUM_CH_G',
@@ -135,11 +136,11 @@ class SigGen(pr.Device):
                 name         = ('Waveform[%d]' % i),
                 description  = 'Waveform data 16-bit samples',
                 offset       = (0x4_0000+i*0x4_0000), # 18-bit address stride
-                bitSize      = 32 * smplPerCycle*(2**ramWidth),
+                bitSize      = self.valueStride * smplPerCycle*(2**ramWidth),
                 bitOffset    = 0,
                 numValues    = smplPerCycle*(2**ramWidth),
                 valueBits    = 16,
-                valueStride  = 32,
+                valueStride  = self.valueStride,
                 updateNotify = True,
                 bulkOpEn     = False, # FALSE for large variables
                 overlapEn    = False,
