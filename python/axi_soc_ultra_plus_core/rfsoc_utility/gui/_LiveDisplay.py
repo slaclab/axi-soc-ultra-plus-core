@@ -87,8 +87,8 @@ class LiveDisplay(PyDMFrame):
 
         self.timePlot = PyDMWaveformPlot()
         self.timePlot.setLabel("bottom", text='Time (ns)')
-        self.timePlot.setLabel("left",   text='Counts')
-        self.timePlot.addChannel(x_channel=f'{self.path[self.idx]}.Time', y_channel=f'{self.path[self.idx]}.Data', color=self.color[self.idx])
+        # self.timePlot.setLabel("left",   text='Counts')
+        self.timePlot.addChannel(x_channel=f'{self.path[self.idx]}.Time', y_channel=f'{self.path[self.idx]}.Data', name='Counts', color=self.color[self.idx])
         fl.addWidget(self.timePlot)
 
         #-----------------------------------------------------------------------------
@@ -104,8 +104,8 @@ class LiveDisplay(PyDMFrame):
 
         self.freqPlot = PyDMWaveformPlot()
         self.freqPlot.setLabel("bottom", text='Frequency (MHz)')
-        self.freqPlot.setLabel("left",   text='Amplitude (dBFS)')
-        self.freqPlot.addChannel(x_channel=f'{self.path[self.idx]}.Freq', y_channel=f'{self.path[self.idx]}.Magnitude', color=self.color[self.idx])
+        # self.freqPlot.setLabel("left",   text='Amplitude (dBFS)')
+        self.freqPlot.addChannel(x_channel=f'{self.path[self.idx]}.Freq', y_channel=f'{self.path[self.idx]}.Magnitude', name='Amplitude (dBFS)', color=self.color[self.idx])
         self.freqPlot.setAutoRangeY(False)
         self.freqPlot.setMinYRange(-140.0)
         self.freqPlot.setMaxYRange(0.0)
