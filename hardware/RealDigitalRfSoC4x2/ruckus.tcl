@@ -7,6 +7,9 @@ source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 # xhub::refresh_catalog [xhub::get_xstores xilinx_board_store]
 # xhub::install [xhub::get_xitems xilinx.com:xilinx_board_store:rfsoc4x2:1.0]
 #########################################################################################
+# https://github.com/Xilinx/RFSoC-PYNQ
+# hhttp://dev.realdigital.org/hardware/rfsoc-4x2
+#########################################################################################
 
 # Check for version 2022.1 of Vivado (or later)
 if { [VersionCheck 2022.1] < 0 } {exit -1}

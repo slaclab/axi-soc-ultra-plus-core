@@ -16,10 +16,10 @@ set_property -dict { PACKAGE_PIN Y16 IOSTANDARD ANALOG } [get_ports { vNIn }]
 ##############################################################################
 
 # ADC TILE 224
-set_property PACKAGE_PIN AP1 [get_ports { adcP[0] }]
-set_property PACKAGE_PIN AP2 [get_ports { adcN[0] }]
-set_property PACKAGE_PIN AM1 [get_ports { adcP[1] }]
-set_property PACKAGE_PIN AM2 [get_ports { adcN[1] }]
+set_property PACKAGE_PIN AP2 [get_ports { adcP[0] }]
+set_property PACKAGE_PIN AP1 [get_ports { adcN[0] }]
+set_property PACKAGE_PIN AM2 [get_ports { adcP[1] }]
+set_property PACKAGE_PIN AM1 [get_ports { adcN[1] }]
 set_property PACKAGE_PIN AF5 [get_ports { adcClkP[0] }]
 set_property PACKAGE_PIN AF4 [get_ports { adcClkN[0] }]
 
