@@ -10,6 +10,8 @@ source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 # https://github.com/Xilinx/RFSoC-PYNQ
 # hhttp://dev.realdigital.org/hardware/rfsoc-4x2
 #########################################################################################
+# https://casper-toolflow.readthedocs.io/projects/tutorials/en/latest/tutorials/rfsoc/tut_getting_started.html
+#########################################################################################
 
 # Check for version 2022.1 of Vivado (or later)
 if { [VersionCheck 2022.1] < 0 } {exit -1}
