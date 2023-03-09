@@ -39,7 +39,6 @@
 
 &sdhci0 {
 	no-1-8-v;
-	disable-wp;
 };
 
 
@@ -158,11 +157,4 @@
 		shunt-resistor = <10000>;
 	};
 };
-/ {
-	axi_stream_dma_0@b0000000 {
-		compatible = "axi_stream_dma";
-		reg = <0x0 0xb0000000 0x0 0x10000>;
-		interrupts = <0 89 4>;
-		interrupt-parent = <&gic>;
-	};
-};
+
