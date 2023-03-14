@@ -91,24 +91,7 @@
 };
 
 &spi0 {
-	lmk@0 {
-		compatible = "ti,lmk04828";
-		reg = <0x0>;
-		spi-max-frequency = <500000>;
-		num_bytes = <3>;
-	};
-	lmxdac@1 {
-		compatible = "ti,lmx2594";
-		reg = <0x1>;
-		spi-max-frequency = <500000>;
-		num_bytes = <3>;
-	};
-	lmxadc@2 {
-		compatible = "ti,lmx2594";
-		reg = <0x2>;
-		spi-max-frequency = <500000>;
-		num_bytes = <3>;
-	};
+	status = "disabled";
 };
 
 &i2c0 {
