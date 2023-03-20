@@ -15,6 +15,13 @@ set_property -dict { PACKAGE_PIN Y16 IOSTANDARD ANALOG } [get_ports { vNIn }]
 
 ##############################################################################
 
+set_property -dict { PACKAGE_PIN AR11 IOSTANDARD LVCMOS18 } [get_ports { userLed[0] }]
+set_property -dict { PACKAGE_PIN AW10 IOSTANDARD LVCMOS18 } [get_ports { userLed[1] }]
+set_property -dict { PACKAGE_PIN AT11 IOSTANDARD LVCMOS18 } [get_ports { userLed[2] }]
+set_property -dict { PACKAGE_PIN AU10 IOSTANDARD LVCMOS18 } [get_ports { userLed[3] }]
+
+##############################################################################
+
 # ADC TILE 224
 set_property PACKAGE_PIN AP2 [get_ports { adcP[0] }]
 set_property PACKAGE_PIN AP1 [get_ports { adcN[0] }]
