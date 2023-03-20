@@ -3,8 +3,8 @@ source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 
 # Check for submodule tagging
 if { [info exists ::env(OVERRIDE_SUBMODULE_LOCKS)] != 1 || $::env(OVERRIDE_SUBMODULE_LOCKS) == 0 } {
-   if { [SubmoduleCheck {ruckus}             {4.1.6}  ] < 0 } {exit -1}
-   if { [SubmoduleCheck {surf}               {2.29.1} ] < 0 } {exit -1}
+   if { [SubmoduleCheck {ruckus}             {4.7.1}  ] < 0 } {exit -1}
+   if { [SubmoduleCheck {surf}               {2.38.0} ] < 0 } {exit -1}
    if { [SubmoduleCheck {aes-stream-drivers} {5.16.2} ] < 0 } {exit -1}
 } else {
    puts "\n\n*********************************************************"
