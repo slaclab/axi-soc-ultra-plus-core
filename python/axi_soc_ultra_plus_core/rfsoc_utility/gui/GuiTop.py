@@ -29,8 +29,8 @@ class GuiTop(Display):
         self.sizeX  = None
         self.sizeY  = None
         self.title  = None
-        self.numAdcCh  = None
-        self.numDacCh  = None
+        self.numAdcCh = None
+        self.numDacCh = None
 
         for a in args:
             if 'sizeX=' in a:
