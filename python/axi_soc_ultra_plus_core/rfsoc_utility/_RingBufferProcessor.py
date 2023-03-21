@@ -100,7 +100,7 @@ class RingBufferProcessor(pr.DataReceiver):
             name        = 'Magnitude',
             description = 'Magnitude Frame Container',
             typeStr     = 'Float[np]',
-            value       = np.zeros(shape=(self._maxSize>>1), dtype=np.float, order='C'),
+            value       = np.zeros(shape=(self._maxSize>>1), dtype=np.float32, order='C'),
             hidden      = True,
         ))
 
@@ -115,7 +115,7 @@ class RingBufferProcessor(pr.DataReceiver):
             maximum     = self._maxAve,
         ))
 
-        self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float, order='C')
+        self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float32, order='C')
 
     def _start(self):
         super()._start()
@@ -132,7 +132,7 @@ class RingBufferProcessor(pr.DataReceiver):
 
     def running_mean(self,x):
         # Calculate running average
-        retVar = np.sum(x[:self._aveSize], axis=0, dtype=np.float)/float(self._aveSize)
+        retVar = np.sum(x[:self._aveSize], axis=0, dtype=np.float32)/float(self._aveSize)
 
         # Increment counters
         if (self._idx == self.FftAveraging.get()-1):

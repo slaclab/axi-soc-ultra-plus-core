@@ -70,6 +70,12 @@ cd $name
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
+# Check if the meta-user directory exists
+if [ -d "$hwDir/meta-user" ]
+then
+   cp -rf $hwDir/meta-user/* project-spec/meta-user/.
+fi
+
 # Check if the dts directory exists
 if [ -d "$hwDir/dts_dir" ]
 then

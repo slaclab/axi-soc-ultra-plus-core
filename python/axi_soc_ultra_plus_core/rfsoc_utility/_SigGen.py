@@ -179,6 +179,7 @@ class SigGen(pr.Device):
             # Open the .CSV file
             index = 0
             firstRead = True
+            print( f'{self.path}.LoadCsvFile({path})')
             with open(path, mode='r', encoding='utf-8-sig') as csvfile:
                 reader = csv.reader(csvfile, delimiter=',', quoting=csv.QUOTE_NONE)
                 for row in reader:
