@@ -24,6 +24,7 @@ class AxiVersion(axi.AxiVersion):
 
         self.add(pr.RemoteVariable(
             name         = 'DMA_SIZE_G',
+            description  = 'DMA_SIZE_G VHDL generic value',
             offset       = 0x400+(4*0),
             bitSize      = 32,
             mode         = 'RO',
@@ -31,6 +32,7 @@ class AxiVersion(axi.AxiVersion):
 
         self.add(pr.RemoteVariable(
             name         = 'DMA_CLK_FREQ_C',
+            description  = 'DMA_CLK_FREQ_C VHDL generic value',
             offset       = 0x400+(4*1),
             bitSize      = 32,
             mode         = 'RO',
@@ -40,6 +42,7 @@ class AxiVersion(axi.AxiVersion):
 
         self.add(pr.RemoteVariable(
             name         = 'AppReset',
+            description  = 'Application Reset Status',
             offset       = 0x400+(4*2),
             bitSize      = 1,
             bitOffset    = 0,
@@ -49,11 +52,32 @@ class AxiVersion(axi.AxiVersion):
         ))
 
         self.add(pr.RemoteVariable(
-            name         = "AppClkFreq",
-            description  = "Application Clock Frequency",
+            name         = 'AppClkFreq',
+            description  = 'Application Clock Frequency',
             offset       = 0x400+(4*3),
             units        = 'Hz',
             disp         = '{:d}',
-            mode         = "RO",
+            mode         = 'RO',
             pollInterval = 1
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'DspClkFreq',
+            description  = 'DSP Clock Frequency',
+            offset       = 0x400+(4*4),
+            units        = 'Hz',
+            disp         = '{:d}',
+            mode         = 'RO',
+            pollInterval = 1
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'DspReset',
+            description  = 'DSP Reset Status',
+            offset       = 0x400+(4*5),
+            bitSize      = 1,
+            bitOffset    = 0,
+            mode         = 'RO',
+            base         = pr.Bool,
+            pollInterval = 1,
         ))

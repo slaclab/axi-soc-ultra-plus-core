@@ -42,6 +42,9 @@ entity AxiSocUltraPlusCore is
       ------------------------
       --  Top Level Interfaces
       ------------------------
+      -- DSP Clock and Reset Monitoring
+      dspClk          : in  sl;
+      dspRst          : in  sl;
       -- AUX Clock and Reset
       auxClk          : out sl;         -- 100 MHz
       auxRst          : out sl;
@@ -208,6 +211,9 @@ begin
          SYSMON_LVAUX_THRESHOLD_G => SYSMON_LVAUX_THRESHOLD_G,
          DMA_SIZE_G               => DMA_SIZE_G)
       port map (
+         -- DSP Clock and Reset Monitoring
+         dspClk              => dspClk,
+         dspRst              => dspRst,
          -- AUX Clock and Reset
          auxClk              => auxClock,
          auxRst              => auxReset,

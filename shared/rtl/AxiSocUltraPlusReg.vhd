@@ -39,6 +39,9 @@ entity AxiSocUltraPlusReg is
       SYSMON_LVAUX_THRESHOLD_G : slv(15 downto 0);
       DMA_SIZE_G               : positive range 1 to 16      := 1);
    port (
+      -- DSP Clock and Reset Monitoring
+      dspClk              : in  sl;
+      dspRst              : in  sl;
       -- AUX Clock and Reset
       auxClk              : in  sl;     -- 100 MHz
       auxRst              : in  sl;
@@ -124,12 +127,15 @@ architecture mapping of AxiSocUltraPlusReg is
    signal appResetSync : sl;
    signal appClkFreq   : slv(31 downto 0);
 
+   signal dspClkFreq : slv(31 downto 0);
+   signal dspRstSync : sl;
+
 begin
 
    ---------------------------------------------------------------------------------------------
    -- Driver Polls the userValues to determine the firmware's configurations and interrupt state
    ---------------------------------------------------------------------------------------------
-   process(appClkFreq, appResetSync)
+   process(appClkFreq, appResetSync, dspClkFreq, dspRstSync)
       variable i : natural;
    begin
       -- Number of DMA lanes (defined by user)
@@ -144,12 +150,38 @@ begin
       -- Application Clock Frequency
       userValues(3) <= appClkFreq;
 
-      -- Set unused to zero
-      for i in 63 downto 4 loop
-         userValues(i) <= x"00000000";
-      end loop;
+      -- DSP Clock Frequency
+      userValues(4) <= dspClkFreq;
+
+      -- DSP Reset
+      userValues(5)(0) <= dspRstSync;
 
    end process;
+
+   ---------------------------------
+   -- DSP Clock and Reset Monitoring
+   ---------------------------------
+   U_dspClkFreq : entity surf.SyncClockFreq
+      generic map (
+         TPD_G          => TPD_G,
+         REF_CLK_FREQ_G => DMA_CLK_FREQ_C,
+         REFRESH_RATE_G => 1.0,
+         CNT_WIDTH_G    => 32)
+      port map (
+         -- Frequency Measurement (locClk domain)
+         freqOut => dspClkFreq,
+         -- Clocks
+         clkIn   => dspClk,
+         locClk  => axiClk,
+         refClk  => axiClk);
+
+   U_dspRstL : entity surf.Synchronizer
+      generic map (
+         TPD_G => TPD_G)
+      port map (
+         clk     => axiClk,
+         dataIn  => dspRst,
+         dataOut => dspRstSync);
 
    -------------------------
    -- AXI-to-AXI-Lite Bridge
@@ -317,6 +349,8 @@ begin
    appReset <= cardResetIn or appRst;
 
    U_AppResetSync : entity surf.Synchronizer
+      generic map (
+         TPD_G => TPD_G)
       port map (
          clk     => axiClk,
          dataIn  => appReset,
