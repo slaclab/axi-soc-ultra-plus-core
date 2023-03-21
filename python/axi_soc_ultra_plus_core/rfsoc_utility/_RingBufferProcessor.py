@@ -149,7 +149,6 @@ class RingBufferProcessor(pr.DataReceiver):
     def process(self,frame):
         # Get payload size (int16)
         size = (frame.getPayload() >>1)
-        print(f'size={frame.getPayload()}')
 
         # Check if too big
         size = self._maxSize if (size >= self._maxSize) else size
