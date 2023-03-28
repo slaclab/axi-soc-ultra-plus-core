@@ -15,6 +15,12 @@ set_property -dict { PACKAGE_PIN Y16 IOSTANDARD ANALOG } [get_ports { vNIn }]
 
 ##############################################################################
 
+set_property -dict { PACKAGE_PIN B8 IOSTANDARD SUB_LVDS } [get_ports { plClkP }]
+set_property -dict { PACKAGE_PIN B7 IOSTANDARD SUB_LVDS } [get_ports { plClkN }]
+
+set_property -dict { PACKAGE_PIN B10 IOSTANDARD SUB_LVDS } [get_ports { plSysRefP }]
+set_property -dict { PACKAGE_PIN B9  IOSTANDARD SUB_LVDS } [get_ports { plSysRefN }]
+
 set_property -dict { PACKAGE_PIN AU2 IOSTANDARD LVCMOS18 } [get_ports { lmkSync   }]
 
 set_property -dict { PACKAGE_PIN C11 IOSTANDARD LVCMOS12 } [get_ports { clkMuxSel[0] }]
