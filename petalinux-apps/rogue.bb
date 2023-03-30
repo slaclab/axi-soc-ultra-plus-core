@@ -22,8 +22,8 @@ EXTRA_OECMAKE += "-DROGUE_INSTALL=system -DROGUE_VERSION=v${ROGUE_VERSION}"
 
 inherit cmake python3native distutils3
 
-FILES_${PN}-dev += "/usr/include/rogue/*"
-FILES_${PN} += "/usr/lib/*"
+FILES:${PN}-dev += "/usr/include/rogue/*"
+FILES:${PN} += "/usr/lib/*"
 
 do_configure() {
    cmake_do_configure
