@@ -35,6 +35,12 @@ set_property -dict { PACKAGE_PIN N16 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][
 
 ##############################################################################
 
+set_property -dict { PACKAGE_PIN E10 IOSTANDARD SUB_LVDS } [get_ports { plClkP }]
+set_property -dict { PACKAGE_PIN E9  IOSTANDARD SUB_LVDS } [get_ports { plClkN }]
+
+set_property -dict { PACKAGE_PIN E11 IOSTANDARD SUB_LVDS } [get_ports { plSysRefP }]
+set_property -dict { PACKAGE_PIN D11 IOSTANDARD SUB_LVDS } [get_ports { plSysRefN }]
+
 set_property -dict { PACKAGE_PIN L15 IOSTANDARD LVCMOS18 } [get_ports { lmkSync   }]
 
 set_property -dict { PACKAGE_PIN G10 IOSTANDARD LVCMOS18 } [get_ports { clkMuxSel[0] }]
