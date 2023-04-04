@@ -23,6 +23,7 @@ use surf.AxiLitePkg.all;
 
 library axi_soc_ultra_plus_core;
 use axi_soc_ultra_plus_core.AxiSocUltraPlusPkg.all;
+use axi_soc_ultra_plus_core.HardwareTypePkg.all;
 
 library unisim;
 use unisim.vcomponents.all;
@@ -155,6 +156,9 @@ begin
 
       -- DSP Reset
       userValues(5)(0) <= dspRstSync;
+
+      -- Hardware Type
+      userValues(6) <= HW_TYPE_C;
 
    end process;
 

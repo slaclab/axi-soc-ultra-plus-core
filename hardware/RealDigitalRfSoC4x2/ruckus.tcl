@@ -28,8 +28,8 @@ if { $::env(PRJ_PART) != "xczu48dr-ffvg1517-2-e" } {
 loadRuckusTcl "$::DIR_PATH/../../shared"
 loadConstraints -dir "$::DIR_PATH/xdc"
 
-# # Load the common source code
-# loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
+# Load the common source code
+loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 
 # Set the board part
 set_property board_part realdigital.org:rfsoc4x2:part0:1.0 [current_project]

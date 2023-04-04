@@ -13,8 +13,8 @@ if { $::env(PRJ_PART) != "xck26-sfvc784-2lv-c" } {
 loadRuckusTcl "$::DIR_PATH/../../shared"
 loadConstraints -dir "$::DIR_PATH/xdc"
 
-# # Load the common source code
-# loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
+# Load the common source code
+loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 
 # Set the board part
 set_property board_part xilinx.com:kv260_som:part0:1.3 [current_project]
