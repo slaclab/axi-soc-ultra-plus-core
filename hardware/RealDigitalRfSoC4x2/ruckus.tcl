@@ -20,8 +20,8 @@ source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 if { [VersionCheck 2022.1] < 0 } {exit -1}
 
 # Check for valid FPGA
-if { $::env(PRJ_PART) != "xczu48dr-ffvg1517-2-e" } {
-   puts "\n\nERROR: PRJ_PART must be either xczu48dr-ffvg1517-2-e in the Makefile\n\n"; exit -1
+if { $::env(PRJ_PART) != "xczu48dr-ffvg1517-1-e" } {
+   puts "\n\nERROR: PRJ_PART must be either xczu48dr-ffvg1517-1-e in the Makefile\n\n"; exit -1
 }
 
 # Load shared source code
