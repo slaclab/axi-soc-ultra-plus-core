@@ -15,6 +15,32 @@ set_property -dict { PACKAGE_PIN Y16 IOSTANDARD ANALOG } [get_ports { vNIn }]
 
 ##############################################################################
 
+set_property -dict { PACKAGE_PIN AF16 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][0] }]
+set_property -dict { PACKAGE_PIN AG17 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][1] }]
+set_property -dict { PACKAGE_PIN AJ16 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][2] }]
+set_property -dict { PACKAGE_PIN AK17 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][3] }]
+set_property -dict { PACKAGE_PIN AF15 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][4] }]
+set_property -dict { PACKAGE_PIN AF17 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][5] }]
+set_property -dict { PACKAGE_PIN AH17 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][6] }]
+set_property -dict { PACKAGE_PIN AK16 IOSTANDARD LVCMOS18 } [get_ports { pmod[0][7] }]
+
+set_property -dict { PACKAGE_PIN AW13 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][0] }]
+set_property -dict { PACKAGE_PIN AR13 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][1] }]
+set_property -dict { PACKAGE_PIN AU13 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][2] }]
+set_property -dict { PACKAGE_PIN AV13 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][3] }]
+set_property -dict { PACKAGE_PIN AU15 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][4] }]
+set_property -dict { PACKAGE_PIN AP14 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][5] }]
+set_property -dict { PACKAGE_PIN AT15 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][6] }]
+set_property -dict { PACKAGE_PIN AU14 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][7] }]
+
+##############################################################################
+
+set_property -dict { PACKAGE_PIN AN11 IOSTANDARD LVDS } [get_ports { plClkP }]
+set_property -dict { PACKAGE_PIN AP11 IOSTANDARD LVDS } [get_ports { plClkN }]
+
+set_property -dict { PACKAGE_PIN AP18 IOSTANDARD LVDS } [get_ports { plSysRefP }]
+set_property -dict { PACKAGE_PIN AR18 IOSTANDARD LVDS } [get_ports { plSysRefN }]
+
 set_property -dict { PACKAGE_PIN AR11 IOSTANDARD LVCMOS18 } [get_ports { userLed[0] }]
 set_property -dict { PACKAGE_PIN AW10 IOSTANDARD LVCMOS18 } [get_ports { userLed[1] }]
 set_property -dict { PACKAGE_PIN AT11 IOSTANDARD LVCMOS18 } [get_ports { userLed[2] }]
