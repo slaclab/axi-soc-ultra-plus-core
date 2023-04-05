@@ -74,17 +74,23 @@ class Hardware(pr.Device):
         self.GpioPs.LMK_CLK_IN_SEL1_DIR.set(1)
         self.GpioPs.LMK_CLK_IN_SEL0_DIR.set(1)
         self.GpioPs.LMK_RST_DIR.set(1)
+        self.GpioPs.PS_LED1_DIR.set(1)
+        self.GpioPs.PS_LED0_DIR.set(1)
 
         # Configure the PS GPIO OEN
         self.GpioPs.LMK_CLK_IN_SEL1_OEN.set(1)
         self.GpioPs.LMK_CLK_IN_SEL0_OEN.set(1)
         self.GpioPs.LMK_RST_OEN.set(1)
+        self.GpioPs.PS_LED1_OEN.set(1)
+        self.GpioPs.PS_LED0_OEN.set(1)
 
         # Configure the PS GPIO OUT
         self.GpioPs.LMK_CLK_IN_SEL1_OUT.set(0)
         # self.GpioPs.LMK_CLK_IN_SEL0_OUT.set(0) # External reference
         self.GpioPs.LMK_CLK_IN_SEL0_OUT.set(1) # Local 10 MHz reference
         self.GpioPs.LMK_RST_OUT.set(0)
+        self.GpioPs.PS_LED1_OUT.set(1)
+        self.GpioPs.PS_LED0_OUT.set(0)
 
         # Initialize the SPI bridge
         self.SpiBridge.Regs.BAUD_RATE_DIV.setDisp('div256')
