@@ -21,11 +21,32 @@ class Hardware(pr.Device):
             name            = 'Lmk',
             offset          = 0x0052_0000,
             allowHexFileRst = False,
-            expand          = True,
         ))
 
         self.add(nxp.Sc18Is602(
             name   = 'I2cToSpi',
             offset = 0x0058_0000,
-            # expand = True,
         ))
+
+    def _start(self):
+        super()._start()
+
+        # Set the SPI clock rate
+        self.I2cToSpi.SpiClockRate.setDisp('115kHz')
+
+        # Configure the LMK for 4-wire SPI
+        self.Lmk.LmkReg_0x0000.set(value=0x10) # 4-wire SPI
+        self.Lmk.LmkReg_0x015F.set(value=0x3B) # STATUS_LD1 = SPI readback
+
+    def InitClock(self, lmkConfig=None, lmxConfig=[None]):
+
+        # Seems like 1st time after power up that need to load twice
+        for x in range(2):
+
+            # Load the LMK configuration from the TICS Pro software HEX export
+            self.Lmk.enable.set(True)
+            self.Lmk.PwrDwnLmkChip()
+            self.Lmk.PwrUpLmkChip()
+            self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
+            self.Lmk.Init()
+            self.Lmk.enable.set(False)
