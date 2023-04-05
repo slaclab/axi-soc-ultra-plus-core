@@ -81,3 +81,20 @@ class AxiVersion(axi.AxiVersion):
             base         = pr.Bool,
             pollInterval = 1,
         ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'HW_TYPE_C',
+            offset       = 0x400+(4*6),
+            bitSize      = 32,
+            bitOffset    = 0,
+            mode         = 'RO',
+            enum        = {
+                0x00_00_00_00: 'Undefined',
+                0x00_00_00_01: 'XilinxZcu208',
+                0x00_00_00_02: 'XilinxZcu216',
+                0x00_00_00_03: 'XilinxKriaKv260',
+                0x00_00_00_04: 'TrenzTe0835',
+                0x00_00_00_05: 'SlacSpaceRfSocGen2',
+                0x00_00_00_06: 'RealDigitalRfSoC4x2',
+            },
+        ))

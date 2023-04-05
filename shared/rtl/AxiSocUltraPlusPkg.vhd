@@ -49,4 +49,13 @@ package AxiSocUltraPlusPkg is
       TUSER_BITS_C  => 4,
       TUSER_MODE_C  => TUSER_FIRST_LAST_C);
 
+   -- List of PCIe Hardware Types
+   constant HW_TYPE_UNDEFINED_C             : slv(31 downto 0) := x"00_00_00_00";
+   constant HW_TYPE_XILINX_ZCU208_C         : slv(31 downto 0) := x"00_00_00_01"; -- XilinxZcu208
+   constant HW_TYPE_XILINX_ZCU216_C         : slv(31 downto 0) := x"00_00_00_02"; -- XilinxZcu216
+   constant HW_TYPE_XILINX_KV260_C          : slv(31 downto 0) := x"00_00_00_03"; -- XilinxKriaKv260
+   constant HW_TYPE_TRENZ_TE0835_C          : slv(31 downto 0) := x"00_00_00_04"; -- TrenzTe0835
+   constant HW_TYPE_SLAC_SPACE_RFSOC_GEN2_C : slv(31 downto 0) := x"00_00_00_05"; -- SlacSpaceRfSocGen2
+   constant HW_TYPE_REAL_DIGITAL_RFSOC4x2_C : slv(31 downto 0) := x"00_00_00_06"; -- RealDigitalRfSoC4x2
+
 end package AxiSocUltraPlusPkg;
