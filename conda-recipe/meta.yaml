@@ -1,0 +1,29 @@
+package:
+  name: axi_soc_ultra_plus_core
+  version: {{ GIT_DESCRIBE_TAG }}
+
+source:
+   path: ..
+
+build:
+   number: {{ GIT_DESCRIBE_NUMBER|int }}
+   noarch: python
+
+requirements:
+
+   host:
+     - python>=3.7
+     - git
+     - gitpython
+
+   run:
+     - python>=3.7
+     - rogue
+     - numpy
+
+about:
+   home: https://github.com/slaclab/axi-soc-ultra-plus-core
+   license: SLAC Open License
+   license_file: LICENSE.txt
+   summary: Zynq UltraScale+ Devices Register Reference
+
