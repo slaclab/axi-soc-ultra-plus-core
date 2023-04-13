@@ -69,6 +69,22 @@ then
    mount /dev/mmcblk0p2 /u1
 fi
 
+# Standard SD-memory[1] card interface
+if [ -d "/run/media/mmcblk1p1" ]
+then
+   # Change /run/media/mmcblk1p1 to /boot
+   umount /run/media/mmcblk1p1 > /dev/null 2>&1
+   rm -r  /run/media/mmcblk1p1
+   mkdir -p /boot
+   mount /dev/mmcblk1p1 /boot > /dev/null 2>&1
+
+   # Change /run/media/mmcblk1p2 to /u1
+   umount /run/media/mmcblk1p2 > /dev/null 2>&1
+   rm -r  /run/media/mmcblk1p2
+   mkdir -p /u1
+   mount /dev/mmcblk1p2 /u1
+fi
+
 ###########################################################################
 
 # KR260 using USB mounted SD-memory card
