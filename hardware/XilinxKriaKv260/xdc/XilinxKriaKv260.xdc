@@ -15,18 +15,16 @@ set_property BITSTREAM.CONFIG.OVERTEMPSHUTDOWN ENABLE [current_design]
 set_property -dict { PACKAGE_PIN R13 IOSTANDARD ANALOG } [get_ports { vPIn }]
 set_property -dict { PACKAGE_PIN T12 IOSTANDARD ANALOG } [get_ports { vNIn }]
 
-set_property PACKAGE_PIN A12 [get_ports { fanEnableL }] ;# fanEnableL = HDA20 = som240_1_c24: Bank  45 VCCO - som240_1_b13 - IO_L11P_AD9P_45
+set_property -dict { PACKAGE_PIN A12 IOSTANDARD LVCMOS33 } [get_ports { fanEnableL }] ;# fanEnableL = HDA20 = som240_1_c24: Bank  45 VCCO - som240_1_b13 - IO_L11P_AD9P_45
 
-set_property PACKAGE_PIN H12 [get_ports pmod[0]] ;# PMOD pin 1 - som240_1_a17
-set_property PACKAGE_PIN B10 [get_ports pmod[1]] ;# PMOD pin 2 - som240_1_b20
-set_property PACKAGE_PIN E10 [get_ports pmod[2]] ;# PMOD pin 3 - som240_1_d20
-set_property PACKAGE_PIN E12 [get_ports pmod[3]] ;# PMOD pin 4 - som240_1_b21
-set_property PACKAGE_PIN D10 [get_ports pmod[4]] ;# PMOD pin 5 - som240_1_d21
-set_property PACKAGE_PIN D11 [get_ports pmod[5]] ;# PMOD pin 6 - som240_1_b22
-set_property PACKAGE_PIN C11 [get_ports pmod[6]] ;# PMOD pin 7 - som240_1_d22
-set_property PACKAGE_PIN B11 [get_ports pmod[7]] ;# PMOD pin 8 - som240_1_c22
-
-set_property IOSTANDARD LVCMOS33 [get_ports pmod[*]];
+set_property -dict { PACKAGE_PIN H12 IOSTANDARD LVCMOS33 } [get_ports pmod[0]] ;# PMOD pin 1 - som240_1_a17
+set_property -dict { PACKAGE_PIN B10 IOSTANDARD LVCMOS33 } [get_ports pmod[1]] ;# PMOD pin 2 - som240_1_b20
+set_property -dict { PACKAGE_PIN E10 IOSTANDARD LVCMOS33 } [get_ports pmod[2]] ;# PMOD pin 3 - som240_1_d20
+set_property -dict { PACKAGE_PIN E12 IOSTANDARD LVCMOS33 } [get_ports pmod[3]] ;# PMOD pin 4 - som240_1_b21
+set_property -dict { PACKAGE_PIN D10 IOSTANDARD LVCMOS33 } [get_ports pmod[4]] ;# PMOD pin 5 - som240_1_d21
+set_property -dict { PACKAGE_PIN D11 IOSTANDARD LVCMOS33 } [get_ports pmod[5]] ;# PMOD pin 6 - som240_1_b22
+set_property -dict { PACKAGE_PIN C11 IOSTANDARD LVCMOS33 } [get_ports pmod[6]] ;# PMOD pin 7 - som240_1_d22
+set_property -dict { PACKAGE_PIN B11 IOSTANDARD LVCMOS33 } [get_ports pmod[7]] ;# PMOD pin 8 - som240_1_c22
 
 ##############################################################################
 
