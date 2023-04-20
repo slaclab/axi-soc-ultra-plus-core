@@ -36,6 +36,7 @@ axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
 aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
 imageDump=${xsa%.*}.petalinux.tar.gz
+debugStepBuild=false
 
 # Check if the dts directory exists
 if [ ! -d "$hwDir" ]
@@ -136,9 +137,11 @@ sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  project-s
 sed -i "s/int cfgRxCount0 = 128;/int cfgRxCount0 = $dmaRxBuffCount;/"  project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
 sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
 
-# Build kernel modules
-petalinux-build -c axistreamdma
-petalinux-build -c aximemorymap
+if $debugStepBuild; then
+   # Build kernel modules
+   petalinux-build -c axistreamdma
+   petalinux-build -c aximemorymap
+fi
 
 ##############################################################################
 
@@ -148,8 +151,10 @@ cp -f $axi_soc_ultra_plus_core/petalinux-apps/rogue.bb project-spec/meta-user/re
 echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
 
-# Build the application
-petalinux-build -c rogue
+if $debugStepBuild; then
+   # Build the application
+   petalinux-build -c rogue
+fi
 
 ##############################################################################
 
@@ -163,8 +168,10 @@ echo IMAGE_INSTALL:append = \" roguetcpbridge\" >> build/conf/local.conf
 sed -i "s/default  = 2,/default  = $numLane,/"  project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 
-# Build the application
-petalinux-build -c roguetcpbridge
+if $debugStepBuild; then
+   # Build the application
+   petalinux-build -c roguetcpbridge
+fi
 
 ##############################################################################
 
@@ -174,8 +181,10 @@ echo CONFIG_axiversiondump=y >> project-spec/configs/rootfs_config
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/axiversiondump project-spec/meta-user/recipes-apps/.
 echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 
-# Build the application
-petalinux-build -c axiversiondump
+if $debugStepBuild; then
+   # Build the application
+   petalinux-build -c axiversiondump
+fi
 
 ##############################################################################
 
@@ -184,38 +193,31 @@ petalinux-create -t apps --template install -n startup-app-init --enable
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startup-app-init project-spec/meta-user/recipes-apps/.
 echo IMAGE_INSTALL:append = \" startup-app-init\" >> build/conf/local.conf
 
-# Build the application
-petalinux-build -c startup-app-init
+if $debugStepBuild; then
+   # Build the application
+   petalinux-build -c startup-app-init
+fi
 
 ##############################################################################
 
 # Add the P4P python package and its dependences
 cp -f $axi_soc_ultra_plus_core/petalinux-apps/python3-p4p/*.bb components/yocto/layers/meta-openembedded/meta-python/recipes-devtools/python/.
-echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-ply=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-nose2=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-setuptools_dso=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-epicscorelibs=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-pvxslibs=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-p4p=y >> project-spec/configs/rootfs_config
+
+if $debugStepBuild; then
+   # Build the P4P python packages
+   petalinux-build -c python3-epicscorelibs
+   petalinux-build -c python3-pvxslibs
+   petalinux-build -c python3-p4p
+fi
 
 ##############################################################################
 
 # Add commonly used packages
 echo CONFIG_imagefeature-debug-tweaks=y >> project-spec/configs/rootfs_config
-echo CONFIG_packagegroup-petalinux-jupyter=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-qtconsole=y >> project-spec/configs/rootfs_config
 echo CONFIG_nano=y >> project-spec/configs/rootfs_config
 echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-parse=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-click=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-pyserial=y >> project-spec/configs/rootfs_config
 
 # Check if the hardware has custom packages that need installed
 if [ -f "$hwDir/rootfs_config" ]

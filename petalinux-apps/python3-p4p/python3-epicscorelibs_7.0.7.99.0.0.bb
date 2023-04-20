@@ -26,7 +26,6 @@ DEPENDS += " \
 RDEPENDS:${PN} += " \
    python3-setuptools \
    python3-setuptools_dso \
-   python3-setuptools_dso-native \
    python3-numpy \
 "
 

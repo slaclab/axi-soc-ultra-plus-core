@@ -20,8 +20,4 @@ DEPENDS += " \
    python3-setuptools \
 "
 
-RDEPENDS:${PN} += " \
-   python3-setuptools \
-"
-
 BBCLASSEXTEND = "native nativesdk"

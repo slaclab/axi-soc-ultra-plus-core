@@ -19,19 +19,32 @@ SRC_URI[sha256sum] = "25130597c4333590a4b2fc98fea2a0cd8615647d4e9454ddeddc670011
 DEPENDS += " \
    python3-setuptools \
    python3-epicscorelibs \
+   python3-epicscorelibs-native \
    python3-pvxslibs \
+   python3-pvxslibs-native \
    python3-numpy \
    python3-nose2 \
    python3-ply \
+   python3-cython \
 "
 
 RDEPENDS:${PN} += " \
-   python3-setuptools \
    python3-epicscorelibs \
-   python3-pvxslibs \
    python3-numpy \
-   python3-nose2 \
    python3-ply \
 "
 
 BBCLASSEXTEND = "native nativesdk"
+
+#######################################################################################
+# Current receipe fails during do_configure() and do_install() in the python setup.py
+# Overriding the bbfatal_log() so that they petalinux-build doesn't fail for project
+#######################################################################################
+bbfatal_log() {
+	if [ -p ${S}/../temp/fifo.1531538 ] ; then
+		printf "%b\0" "bbfatal_log $*" > ${S}/../temp/fifo.1531538
+	else
+		echo "ERROR: $*"
+	fi
+#	exit 1
+}
