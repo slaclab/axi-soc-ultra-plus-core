@@ -16,6 +16,13 @@ SRC_URI[sha256sum] = "a9bfb16547bbf522b39ca2ac2479dfcdb217496f563a5793fde6b5d192
 # based on "pipoe --package p4p --python python3 --outdir python3-p4p" outputs
 #######################################################################################
 
+DEPENDS += " \
+   python3-setuptools \
+   python3-setuptools_dso \
+   python3-setuptools_dso-native \
+   python3-epicscorelibs \
+"
+
 RDEPENDS:${PN} += " \
    python3-setuptools \
    python3-setuptools_dso \

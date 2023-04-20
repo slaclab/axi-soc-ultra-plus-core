@@ -18,6 +18,10 @@ SRC_URI[sha256sum] = "860a2c4ed32139029f7ba63babe77a6901695d7661ddf4d63f021a9a49
 
 PN="python3-setuptools_dso"
 
+DEPENDS += " \
+   python3-setuptools \
+"
+
 RDEPENDS:${PN} += " \
    python3-setuptools \
 "
