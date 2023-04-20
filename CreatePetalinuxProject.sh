@@ -189,6 +189,16 @@ petalinux-build -c startup-app-init
 
 ##############################################################################
 
+# Add P4P python package and its dependences
+echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-ply=y >> project-spec/configs/rootfs_config
+cp -f $axi_soc_ultra_plus_core/petalinux-apps/python3-p4p/*.bb components/yocto/layers/meta-openembedded/meta-python/recipes-devtools/python/.
+echo CONFIG_python3-nose2=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-setuptools_dso=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-epicscorelibs=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-pvxslibs=y >> project-spec/configs/rootfs_config
+echo CONFIG_python3-p4p=y >> project-spec/configs/rootfs_config
+
 # Load commonly used packages
 echo CONFIG_imagefeature-debug-tweaks=y >> project-spec/configs/rootfs_config
 echo CONFIG_packagegroup-petalinux-jupyter=y >> project-spec/configs/rootfs_config
