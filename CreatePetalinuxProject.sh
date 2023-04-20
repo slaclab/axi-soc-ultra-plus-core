@@ -209,7 +209,6 @@ echo CONFIG_nano=y >> project-spec/configs/rootfs_config
 echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
 echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
