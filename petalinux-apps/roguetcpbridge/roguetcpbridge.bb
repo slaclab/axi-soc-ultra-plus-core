@@ -12,6 +12,10 @@ SRC_URI = "file://roguetcpbridge \
 
 S = "${WORKDIR}"
 
+RDEPENDS:${PN} += " \
+   rogue \
+"
+
 do_install() {
              install -d ${D}/${bindir}
              install -m 0755 ${S}/roguetcpbridge ${D}/${bindir}
