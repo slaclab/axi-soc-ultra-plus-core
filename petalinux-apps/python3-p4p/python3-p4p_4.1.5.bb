@@ -23,9 +23,13 @@ DEPENDS += " \
    python3-pvxslibs \
    python3-pvxslibs-native \
    python3-numpy \
+   python3-numpy-native \
    python3-nose2 \
+   python3-nose2-native \
    python3-ply \
+   python3-ply-native \
    python3-cython \
+   python3-cython-native \
 "
 
 RDEPENDS:${PN} += " \
