@@ -22,8 +22,6 @@ DEPENDS += " \
    python3-setuptools_dso-native \
    python3-epicscorelibs \
    python3-epicscorelibs-native \
-   util-linux-libuuid \
-   util-linux-libuuid-native \
 "
 
 RDEPENDS:${PN} += " \
