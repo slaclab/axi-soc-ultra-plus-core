@@ -198,24 +198,26 @@ echo CONFIG_python3-p4p=y >> project-spec/configs/rootfs_config
 #######################################################################################
 # This prepend overwrite the native libCom.so to target .so to "fix" the incompatible issue
 #######################################################################################
+petalinux-build -c python3-epicscorelibs-native
+petalinux-build -c python3-epicscorelibs
 petalinux-build -c python3-pvxslibs-native
 LIBCOM_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs/usr/lib)
 LIBCOM_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs-native/usr/lib)
-echo LIBCOM_ARM64_SO=$LIBCOM_ARM64_SO
-echo LIBCOM_NATIVE_SO=$LIBCOM_NATIVE_SO
-cp -f build/tmp/libCom.so $LIBCOM_NATIVE_SO
+cp -f $LIBCOM_NATIVE_SO build/.
 cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
 petalinux-build -c python3-pvxslibs
+cp -f build/libCom.so $LIBCOM_NATIVE_SO
 
 # Same "work" around again but for python3-pvxslibs and its libpvxs.so outputs
 petalinux-build -c python3-p4p-native
 LIBPVXS_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs/usr/lib)
 LIBPVXS_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs-native/usr/lib)
-echo LIBPVXS_ARM64_SO=$LIBPVXS_ARM64_SO
-echo LIBPVXS_NATIVE_SO=$LIBPVXS_NATIVE_SO
-cp -f build/tmp/libCom.so $LIBPVXS_NATIVE_SO
+cp -f $LIBPVXS_NATIVE_SO build/.
 cp -f $LIBPVXS_ARM64_SO $LIBPVXS_NATIVE_SO
+cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
 petalinux-build -c python3-p4p
+cp -f build/libCom.so  $LIBCOM_NATIVE_SO
+cp -f build/libpvxs.so $LIBPVXS_NATIVE_SO
 
 ##############################################################################
 
