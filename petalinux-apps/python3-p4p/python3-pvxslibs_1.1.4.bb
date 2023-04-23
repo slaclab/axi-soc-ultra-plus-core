@@ -33,7 +33,3 @@ RDEPENDS:${PN} += " \
 "
 
 BBCLASSEXTEND = "native nativesdk"
-
-do_configure:append() {
-   bbplain $(cp -f ${WORKDIR}/recipe-sysroot/usr/include/linux/in6.h ${WORKDIR}/recipe-sysroot/usr/include/netinet/.)
-}

@@ -35,16 +35,3 @@ RDEPENDS:${PN} += " \
 "
 
 BBCLASSEXTEND = "native nativesdk"
-
-#######################################################################################
-# Current receipe fails during do_configure() and do_install() in the python setup.py
-# Overriding the bbfatal_log() so that they petalinux-build doesn't fail for project
-#######################################################################################
-bbfatal_log() {
-	if [ -p ${S}/../temp/fifo.1531538 ] ; then
-		printf "%b\0" "bbfatal_log $*" > ${S}/../temp/fifo.1531538
-	else
-		echo "ERROR: $*"
-	fi
-#	exit 1
-}
