@@ -136,10 +136,6 @@ sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  project-s
 sed -i "s/int cfgRxCount0 = 128;/int cfgRxCount0 = $dmaRxBuffCount;/"  project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
 sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" project-spec/meta-user/recipes-modules/axistreamdma/files/axistreamdma.c
 
-# Build kernel modules
-petalinux-build -c axistreamdma
-petalinux-build -c aximemorymap
-
 ##############################################################################
 
 # Add rogue to petalinux
@@ -147,9 +143,6 @@ petalinux-create -t apps --name rogue --template install
 cp -f $axi_soc_ultra_plus_core/petalinux-apps/rogue.bb project-spec/meta-user/recipes-apps/rogue/rogue.bb
 echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
-
-# Build the application
-petalinux-build -c rogue
 
 ##############################################################################
 
@@ -163,9 +156,6 @@ echo IMAGE_INSTALL:append = \" roguetcpbridge\" >> build/conf/local.conf
 sed -i "s/default  = 2,/default  = $numLane,/"  project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 
-# Build the application
-petalinux-build -c roguetcpbridge
-
 ##############################################################################
 
 # Add rogue AxiVersion Dump application
@@ -174,43 +164,60 @@ echo CONFIG_axiversiondump=y >> project-spec/configs/rootfs_config
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/axiversiondump project-spec/meta-user/recipes-apps/.
 echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 
-# Build the application
-petalinux-build -c axiversiondump
-
 ##############################################################################
 
 # Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
 petalinux-create -t apps --template install -n startup-app-init --enable
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startup-app-init project-spec/meta-user/recipes-apps/.
-echo IMAGE_INSTALL:append = \" startup-app-init\" >> build/conf/local.conf
-
-# Build the application
-petalinux-build -c startup-app-init
 
 ##############################################################################
 
-# Load commonly used packages
+# Add commonly used packages
 echo CONFIG_imagefeature-debug-tweaks=y >> project-spec/configs/rootfs_config
-echo CONFIG_packagegroup-petalinux-jupyter=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-qtconsole=y >> project-spec/configs/rootfs_config
 echo CONFIG_nano=y >> project-spec/configs/rootfs_config
 echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-logging=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-numpy=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-json=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-pyzmq=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-sqlalchemy=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-pyyaml=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-parse=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-click=y >> project-spec/configs/rootfs_config
-echo CONFIG_python3-pyserial=y >> project-spec/configs/rootfs_config
 
 # Check if the hardware has custom packages that need installed
 if [ -f "$hwDir/rootfs_config" ]
 then
    cat $hwDir/rootfs_config >> project-spec/configs/rootfs_config
 fi
+
+##############################################################################
+
+# Add the P4P python package and its dependences
+cp -f $axi_soc_ultra_plus_core/petalinux-apps/python3-p4p/*.bb components/yocto/layers/meta-openembedded/meta-python/recipes-devtools/python/.
+echo CONFIG_python3-p4p=y >> project-spec/configs/rootfs_config
+
+#######################################################################################
+# python3-setuptools_dso-native (host) has arch=linux-x86_64 and is being used for EPICS_HOST_ARCH
+# The -native package required to make python-setup work, but -native package will have a linux-x86_64 
+# of epicscorelibs/lib/libCom.so used and incompatible with aarch64
+# TODO: Figure out who to get python3-setuptools_dso to set EPICS_HOST_ARCH=aarch64 in future
+#######################################################################################
+# This prepend overwrite the native libCom.so to target .so to "fix" the incompatible issue
+#######################################################################################
+petalinux-build -c python3-epicscorelibs-native
+petalinux-build -c python3-epicscorelibs
+petalinux-build -c python3-pvxslibs-native
+LIBCOM_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs/usr/lib)
+LIBCOM_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs-native/usr/lib)
+cp -f $LIBCOM_NATIVE_SO build/.
+cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
+petalinux-build -c python3-pvxslibs
+cp -f build/libCom.so $LIBCOM_NATIVE_SO
+
+# Same "work" around again but for python3-pvxslibs and its libpvxs.so outputs
+petalinux-build -c python3-p4p-native
+LIBPVXS_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs/usr/lib)
+LIBPVXS_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs-native/usr/lib)
+cp -f $LIBPVXS_NATIVE_SO build/.
+cp -f $LIBPVXS_ARM64_SO $LIBPVXS_NATIVE_SO
+cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
+petalinux-build -c python3-p4p
+cp -f build/libCom.so  $LIBCOM_NATIVE_SO
+cp -f build/libpvxs.so $LIBPVXS_NATIVE_SO
 
 ##############################################################################
 

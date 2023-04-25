@@ -53,14 +53,14 @@ function Update_MAC_Address(){
 
 ###########################################################################
 
-# Standard SD-memory card interface
+# Standard SD-memory[0] card interface
 if [ -d "/run/media/mmcblk0p1" ]
 then
-   # Change /run/media/mmcblk0p1 to /media/sd-mmcblk0p1
+   # Change /run/media/mmcblk0p1 to /boot
    umount /run/media/mmcblk0p1 > /dev/null 2>&1
    rm -r  /run/media/mmcblk0p1
-   mkdir -p /media/sd-mmcblk0p1
-   mount /dev/mmcblk0p1 /media/sd-mmcblk0p1
+   mkdir -p /boot
+   mount /dev/mmcblk0p1 /boot > /dev/null 2>&1
 
    # Change /run/media/mmcblk0p2 to /u1
    umount /run/media/mmcblk0p2 > /dev/null 2>&1
@@ -69,16 +69,32 @@ then
    mount /dev/mmcblk0p2 /u1
 fi
 
+# Standard SD-memory[1] card interface
+if [ -d "/run/media/mmcblk1p1" ]
+then
+   # Change /run/media/mmcblk1p1 to /boot
+   umount /run/media/mmcblk1p1 > /dev/null 2>&1
+   rm -r  /run/media/mmcblk1p1
+   mkdir -p /boot
+   mount /dev/mmcblk1p1 /boot > /dev/null 2>&1
+
+   # Change /run/media/mmcblk1p2 to /u1
+   umount /run/media/mmcblk1p2 > /dev/null 2>&1
+   rm -r  /run/media/mmcblk1p2
+   mkdir -p /u1
+   mount /dev/mmcblk1p2 /u1
+fi
+
 ###########################################################################
 
 # KR260 using USB mounted SD-memory card
 if [ -d "/run/media/sda1" ]
 then
-   # Change /run/media/sda1 to /media/sd-mmcblk0p1
+   # Change /run/media/sda1 to /boot
    umount /run/media/sda1 > /dev/null 2>&1
    rm -r  /run/media/sda1
-   mkdir -p /media/sd-mmcblk0p1
-   mount /dev/sda1 /media/sd-mmcblk0p1
+   mkdir -p /boot
+   mount /dev/sda1 /boot > /dev/null 2>&1
 
    # Change /run/media/sda2 to /u1
    umount /run/media/sda2 > /dev/null 2>&1
@@ -90,11 +106,11 @@ fi
 ###########################################################################
 
 # Check if mac file exists in SD boot partition
-if [ -f "/media/sd-mmcblk0p1/mac" ]
+if [ -f "/boot/mac" ]
 then
    # Set the MAC address with file
    ip link set dev eth0 down
-   ip link set dev eth0 address $(cat /media/sd-mmcblk0p1/mac)
+   ip link set dev eth0 address $(cat /boot/mac)
    ip link set dev eth0 up
    /etc/init.d/networking restart
 else
@@ -107,10 +123,10 @@ else
 fi
 
 # Check if ip file exists in SD boot partition
-if [ -f "/media/sd-mmcblk0p1/ip" ]
+if [ -f "/boot/ip" ]
 then
    # Set the IP address with file
-   ip addr add $(cat /media/sd-mmcblk0p1/ip)/24 dev eth0
+   ip addr add $(cat /boot/ip)/24 dev eth0
 fi
 
 ###########################################################################
@@ -130,10 +146,10 @@ fi
 ###########################################################################
 
 # Load the user's firmware (PL) .bit file (A.K.A. "2nd stage boot")
-if [ -f "/media/sd-mmcblk0p1/system.bit" ]
+if [ -f "/boot/system.bit" ]
 then
    # fpgautil is "flaky" command and sometimes needs multiple retries to be successful
-   while [ ! -z "$(fpgautil -b /media/sd-mmcblk0p1/system.bit | grep failed)" ]
+   while [ ! -z "$(fpgautil -b /boot/system.bit | grep failed)" ]
    do
       sleep 1
    done
