@@ -81,7 +81,7 @@ class GuiTop(Display):
         self.tab.addTab(dacDisplay,'DAC Waveforms')
 
         # Set the default Tab view
-        self.tab.setCurrentIndex(1)
+        self.tab.setCurrentIndex(2)
 
         # Resize the window
         self.resize(self.sizeX, self.sizeY)

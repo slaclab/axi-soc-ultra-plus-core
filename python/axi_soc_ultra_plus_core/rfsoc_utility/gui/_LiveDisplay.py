@@ -53,7 +53,7 @@ class LiveDisplay(PyDMFrame):
         self.freqPlot.removeChannelAtIndex(0)
 
         # Add new curve item with respect to channel select
-        self.timePlot.addChannel(x_channel=f'{self.path[self.idx]}.Time', y_channel=f'{self.path[self.idx]}.Data', color=self.color[self.idx])
+        self.timePlot.addChannel(x_channel=f'{self.path[self.idx]}.Time', y_channel=f'{self.path[self.idx]}.WaveformData', color=self.color[self.idx])
         self.freqPlot.addChannel(x_channel=f'{self.path[self.idx]}.Freq', y_channel=f'{self.path[self.idx]}.Magnitude', color=self.color[self.idx])
 
         # Reset the auto-ranging
@@ -88,7 +88,7 @@ class LiveDisplay(PyDMFrame):
         self.timePlot = PyDMWaveformPlot()
         self.timePlot.setLabel("bottom", text='Time (ns)')
         # self.timePlot.setLabel("left",   text='Counts')
-        self.timePlot.addChannel(x_channel=f'{self.path[self.idx]}.Time', y_channel=f'{self.path[self.idx]}.Data', name='Counts', color=self.color[self.idx])
+        self.timePlot.addChannel(x_channel=f'{self.path[self.idx]}.Time', y_channel=f'{self.path[self.idx]}.WaveformData', name='Counts', color=self.color[self.idx])
         fl.addWidget(self.timePlot)
 
         #-----------------------------------------------------------------------------

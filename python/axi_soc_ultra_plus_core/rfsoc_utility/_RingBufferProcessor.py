@@ -14,21 +14,28 @@ import numpy as np
 import math
 
 import rogue
-rogue.Version.minVersion('5.13.0')
+rogue.Version.minVersion('5.18.3')
 
 # Class for streaming RX
 class RingBufferProcessor(pr.DataReceiver):
     # Init method must call the parent class init
     def __init__( self,
-            maxSize    = 2**14,
-            sampleRate = 5.0E+9, # Units of Hz
-            maxAve     = 4,
-            hidden     = True,
+            maxSize     = 2**14,
+            sampleRate  = 5.0E+9, # Units of Hz
+            maxAve      = 4,
+            liveDisplay = True,
+            hidden      = True,
         **kwargs):
         pr.Device.__init__(self, hidden=hidden, **kwargs)
         ris.Slave.__init__(self)
+        pr.DataReceiver.__init__(self, enableOnStart=True, hideData=True, hidden=hidden, **kwargs)
 
-        self._enableOnStart = True
+        self._liveDisplay = liveDisplay
+
+        # Remove data variable from stream and server
+        self.Data.addToGroup('NoServe')
+        self.Data.addToGroup('NoStream')
+        self.Data.addToGroup('NoStatus')
 
         # Configurable variables
         self._maxSize  = maxSize
@@ -46,33 +53,6 @@ class RingBufferProcessor(pr.DataReceiver):
         freqSteps = np.linspace(0, self._freqBin*((self._maxSize>>1)-1), num=(self._maxSize>>1))
 
         self.add(pr.LocalVariable(
-            name        = 'RxEnable',
-            description = 'Frame Rx Enable',
-            value       = False,
-        ))
-
-        self.add(pr.LocalVariable(
-            name         = 'FrameCount',
-            description  = 'Frame Rx Counter',
-            value        = 0,
-            pollInterval = 1,
-        ))
-
-        self.add(pr.LocalVariable(
-            name         = 'ErrorCount',
-            description  = 'Frame Error Counter',
-            value        = 0,
-            pollInterval = 1,
-        ))
-
-        self.add(pr.LocalVariable(
-            name         = 'ByteCount',
-            description  = 'Byte Rx Counter',
-            value        = 0,
-            pollInterval = 1,
-        ))
-
-        self.add(pr.LocalVariable(
             name        = 'Time',
             description = 'Time steps (ns)',
             typeStr     = 'Float[np]',
@@ -81,41 +61,43 @@ class RingBufferProcessor(pr.DataReceiver):
         ))
 
         self.add(pr.LocalVariable(
-            name        = 'Data',
+            name        = 'WaveformData',
             description = 'Data Frame Container',
             typeStr     = 'Int16[np]',
             value       = np.zeros(shape=self._maxSize, dtype=np.int16, order='C'),
             hidden      = True,
         ))
 
-        self.add(pr.LocalVariable(
-            name        = 'Freq',
-            description = 'Freq steps (ns)',
-            typeStr     = 'Float[np]',
-            value       = freqSteps,
-            hidden      = True,
-        ))
+        if (self._liveDisplay):
 
-        self.add(pr.LocalVariable(
-            name        = 'Magnitude',
-            description = 'Magnitude Frame Container',
-            typeStr     = 'Float[np]',
-            value       = np.zeros(shape=(self._maxSize>>1), dtype=np.float32, order='C'),
-            hidden      = True,
-        ))
+            self.add(pr.LocalVariable(
+                name        = 'Freq',
+                description = 'Freq steps (ns)',
+                typeStr     = 'Float[np]',
+                value       = freqSteps,
+                hidden      = True,
+            ))
 
-        self.add(pr.LocalVariable(
-            name        = 'FftAveraging',
-            description = 'Number of FFTs to average together',
-            localSet    = self._fftAveraging,
-            mode        = 'RW',
-            typeStr     = 'UInt12',
-            value       = self._maxAve,
-            minimum     = 1,
-            maximum     = self._maxAve,
-        ))
+            self.add(pr.LocalVariable(
+                name        = 'Magnitude',
+                description = 'Magnitude Frame Container',
+                typeStr     = 'Float[np]',
+                value       = np.zeros(shape=(self._maxSize>>1), dtype=np.float32, order='C'),
+                hidden      = True,
+            ))
 
-        self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float32, order='C')
+            self.add(pr.LocalVariable(
+                name        = 'FftAveraging',
+                description = 'Number of FFTs to average together',
+                localSet    = self._fftAveraging,
+                mode        = 'RW',
+                typeStr     = 'UInt12',
+                value       = self._maxAve,
+                minimum     = 1,
+                maximum     = self._maxAve,
+            ))
+
+            self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float32, order='C')
 
     def _start(self):
         super()._start()
@@ -147,32 +129,26 @@ class RingBufferProcessor(pr.DataReceiver):
 
     # Method which is called when a frame is received
     def process(self,frame):
-        # Get payload size (int16)
-        size = (frame.getPayload() >>1)
+        with self.root.updateGroup():
+            pr.DataReceiver.process(self,frame)
 
-        # Check if too big
-        size = self._maxSize if (size >= self._maxSize) else size
+            # Get data from frame
+            waveformData = self.Data.value()[:].view(np.int16)
+            self.WaveformData.set(waveformData,write=True)
 
-        # To access the data we need to create a byte array to hold the data
-        fullData = bytearray(size<<1)
+            # Check if live display
+            if (self._liveDisplay):
 
-        # Next we read the frame data into the byte array, from offset 0
-        frame.read(fullData,0)
+                # Calculate the FFT
+                freq = np.fft.fft(waveformData)/float(len(waveformData))
+                freq = freq[range(len(waveformData)//2)]
 
-        # Get data from frame
-        data = np.frombuffer(fullData, dtype='int16', count=size)
-        self.Data.set(data,write=True)
+                # Prevent warning message when for divide by zero encountered in log10
+                # Checking for inf later to fix this in the display
+                np.seterr(divide = 'ignore')
 
-        # Calculate the FFT
-        freq = np.fft.fft(data)/float(self._maxSize)
-        freq = freq[range(self._maxSize>>1)]
-
-        # Prevent warning message when for divide by zero encountered in log10
-        # Checking for inf later to fix this in the display
-        np.seterr(divide = 'ignore')
-
-        # Calculate the average magnitude
-        mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
-        self._mag[self._idx] = mag
-        magnitude = self.running_mean(self._mag)
-        self.Magnitude.set(magnitude,write=True)
+                # Calculate the average magnitude
+                mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
+                self._mag[self._idx] = mag
+                magnitude = self.running_mean(self._mag)
+                self.Magnitude.set(magnitude,write=True)
