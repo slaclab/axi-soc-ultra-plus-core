@@ -15,6 +15,42 @@ set_property -dict { PACKAGE_PIN Y16 IOSTANDARD ANALOG } [get_ports { vNIn }]
 
 ##############################################################################
 
+set_property -dict { PACKAGE_PIN AP5 IOSTANDARD LVCMOS18 } [get_ports { adcio[0] }]
+set_property -dict { PACKAGE_PIN AP6 IOSTANDARD LVCMOS18 } [get_ports { adcio[1] }]
+set_property -dict { PACKAGE_PIN AR6 IOSTANDARD LVCMOS18 } [get_ports { adcio[2] }]
+set_property -dict { PACKAGE_PIN AR7 IOSTANDARD LVCMOS18 } [get_ports { adcio[3] }]
+set_property -dict { PACKAGE_PIN AV7 IOSTANDARD LVCMOS18 } [get_ports { adcio[4] }]
+set_property -dict { PACKAGE_PIN AU7 IOSTANDARD LVCMOS18 } [get_ports { adcio[5] }]
+set_property -dict { PACKAGE_PIN AV8 IOSTANDARD LVCMOS18 } [get_ports { adcio[6] }]
+set_property -dict { PACKAGE_PIN AU8 IOSTANDARD LVCMOS18 } [get_ports { adcio[7] }]
+set_property -dict { PACKAGE_PIN AT6 IOSTANDARD LVCMOS18 } [get_ports { adcio[8] }]
+set_property -dict { PACKAGE_PIN AT7 IOSTANDARD LVCMOS18 } [get_ports { adcio[9] }]
+set_property -dict { PACKAGE_PIN AU5 IOSTANDARD LVCMOS18 } [get_ports { adcio[10] }]
+set_property -dict { PACKAGE_PIN AT5 IOSTANDARD LVCMOS18 } [get_ports { adcio[11] }]
+set_property -dict { PACKAGE_PIN AW3 IOSTANDARD LVCMOS18 } [get_ports { adcio[12] }]
+set_property -dict { PACKAGE_PIN AW4 IOSTANDARD LVCMOS18 } [get_ports { adcio[13] }]
+set_property -dict { PACKAGE_PIN AV2 IOSTANDARD LVCMOS18 } [get_ports { adcio[14] }]
+set_property -dict { PACKAGE_PIN AV3 IOSTANDARD LVCMOS18 } [get_ports { adcio[15] }]
+
+set_property -dict { PACKAGE_PIN A9  IOSTANDARD LVCMOS18 } [get_ports { dacio[0] }]
+set_property -dict { PACKAGE_PIN A10 IOSTANDARD LVCMOS18 } [get_ports { dacio[1] }]
+set_property -dict { PACKAGE_PIN A6  IOSTANDARD LVCMOS18 } [get_ports { dacio[2] }]
+set_property -dict { PACKAGE_PIN A7  IOSTANDARD LVCMOS18 } [get_ports { dacio[3] }]
+set_property -dict { PACKAGE_PIN A5  IOSTANDARD LVCMOS18 } [get_ports { dacio[4] }]
+set_property -dict { PACKAGE_PIN B5  IOSTANDARD LVCMOS18 } [get_ports { dacio[5] }]
+set_property -dict { PACKAGE_PIN C5  IOSTANDARD LVCMOS18 } [get_ports { dacio[6] }]
+set_property -dict { PACKAGE_PIN C6  IOSTANDARD LVCMOS18 } [get_ports { dacio[7] }]
+set_property -dict { PACKAGE_PIN C10 IOSTANDARD LVCMOS18 } [get_ports { dacio[8] }]
+set_property -dict { PACKAGE_PIN D10 IOSTANDARD LVCMOS18 } [get_ports { dacio[9] }]
+set_property -dict { PACKAGE_PIN D6  IOSTANDARD LVCMOS18 } [get_ports { dacio[10] }]
+set_property -dict { PACKAGE_PIN E7  IOSTANDARD LVCMOS18 } [get_ports { dacio[11] }]
+set_property -dict { PACKAGE_PIN E8  IOSTANDARD LVCMOS18 } [get_ports { dacio[12] }]
+set_property -dict { PACKAGE_PIN E9  IOSTANDARD LVCMOS18 } [get_ports { dacio[13] }]
+set_property -dict { PACKAGE_PIN E6  IOSTANDARD LVCMOS18 } [get_ports { dacio[14] }]
+set_property -dict { PACKAGE_PIN F6  IOSTANDARD LVCMOS18 } [get_ports { dacio[15] }]
+
+##############################################################################
+
 set_property -dict { PACKAGE_PIN B8 IOSTANDARD SUB_LVDS } [get_ports { plClkP }]
 set_property -dict { PACKAGE_PIN B7 IOSTANDARD SUB_LVDS } [get_ports { plClkN }]
 
