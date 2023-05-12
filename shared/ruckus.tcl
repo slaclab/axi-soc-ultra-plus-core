@@ -9,7 +9,7 @@ if { [info exists ::env(OVERRIDE_SUBMODULE_LOCKS)] != 1 || $::env(OVERRIDE_SUBMO
 } else {
    puts "\n\n*********************************************************"
    puts "OVERRIDE_SUBMODULE_LOCKS != 0"
-   puts "Ignoring the submodule locks in axi-pcie-core/ruckus.tcl"
+   puts "Ignoring the submodule locks in axi-soc-ultra-plus-core/ruckus.tcl"
    puts "*********************************************************\n\n"
 }
 

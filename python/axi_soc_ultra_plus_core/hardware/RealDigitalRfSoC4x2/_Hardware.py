@@ -127,5 +127,5 @@ class Hardware(pr.Device):
                 self.Lmx[i].enable.set(True)
                 self.Lmx[i].DataBlock.set(value=0x002410,index=0, write=True) # MUXOUT_LD_SEL=readback
                 self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
-                self.Lmx[i].DataBlock.set(value=0x002414,index=0, write=True) # MUXOUT_LD_SEL=LockDetect
+                self.Lmx[i].DataBlock.set(value=0x002414,index=0, write=True, verify=False) # MUXOUT_LD_SEL=LockDetect (change without verifying)
                 self.Lmx[i].enable.set(False)
