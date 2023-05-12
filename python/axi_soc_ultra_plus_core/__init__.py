@@ -20,7 +20,10 @@ def connectionTest(ip):
     except subprocess.CalledProcessError:
         errMsg = f"""
             Failied to ping {ip}
-            Double check the IP address and isc-dhcp-server.service is running
+            Double check that the board is powered up
+            Double check that the board has Ethernet cable connected to NIC or Ethernet switch
+            Double check isc-dhcp-server.service is running
+            Double check the IP address
             """
         click.secho(errMsg, bg='red')
         raise ValueError(errMsg)
