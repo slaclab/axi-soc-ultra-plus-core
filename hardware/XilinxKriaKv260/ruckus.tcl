@@ -20,7 +20,7 @@ loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 set_property board_part xilinx.com:kv260_som:part0:1.3 [current_project]
 
 
-# # Load the block design
+# Load the block design
 if  { $::env(VIVADO_VERSION) >= 2023.1 } {
    set bdVer "2023.1"
 } else {
