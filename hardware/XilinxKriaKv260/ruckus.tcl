@@ -19,6 +19,12 @@ loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 # Set the board part
 set_property board_part xilinx.com:kv260_som:part0:1.3 [current_project]
 
-# Load the block design
-loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.bd"
-# loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.tcl"
+
+# # Load the block design
+if  { $::env(VIVADO_VERSION) >= 2023.1 } {
+   set bdVer "2023.1"
+} else {
+   set bdVer "2022.2"
+}
+loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.bd"
+# loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.tcl"
