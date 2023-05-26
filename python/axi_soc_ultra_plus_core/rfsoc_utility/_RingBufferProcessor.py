@@ -101,7 +101,10 @@ class RingBufferProcessor(pr.DataReceiver):
 
     def _start(self):
         super()._start()
-        self.RxEnable.set(value=False) # blow off data by default
+        if self._liveDisplay:
+            self.RxEnable.set(value=False) # blow off data by default
+        else:
+            self.RxEnable.set(value=True)
 
     def _fftAveraging(self,value,changed):
         if changed:
