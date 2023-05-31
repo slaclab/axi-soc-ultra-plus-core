@@ -227,8 +227,22 @@ petalinux-build
 # Create boot files
 petalinux-package --boot --uboot --fpga --force
 
+##############################################################################
+
+# Default file list
+fileList="linux/system.bit linux/BOOT.BIN linux/image.ub linux/boot.scr"
+
+if [[ -v SOC_IP_STATIC ]]; then
+   # File list with static IP
+   echo $SOC_IP_STATIC>>$path/$name/images/linux/ip
+   fileList="$fileList linux/ip"
+fi
+
 # Dump a compressed tarball of all the required build output files
-cd $path/$name/images/ && tar -czf $imageDump linux/system.bit linux/BOOT.BIN linux/image.ub linux/boot.scr
+cd $path/$name/images/ && tar -czf $imageDump $fileList
+
+echo "########################################################################"
+echo "Release File List: $fileList"
 echo "########################################################################"
 echo "petalinux.tar.gz image path: $imageDump"
 echo "########################################################################"
