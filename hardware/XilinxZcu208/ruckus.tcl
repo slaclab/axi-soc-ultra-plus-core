@@ -15,10 +15,12 @@ loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 set_property board_part xilinx.com:zcu208:part0:2.0 [current_project]
 
 # Load the block design
-if { $::env(VIVADO_VERSION) >= 2022.1 } {
-   loadBlockDesign -path "$::DIR_PATH/bd/2022.1/AxiSocUltraPlusCpuCore.bd"
-   # loadBlockDesign -path "$::DIR_PATH/bd/2022.1/AxiSocUltraPlusCpuCore.tcl"
+if  { $::env(VIVADO_VERSION) >= 2023.1 } {
+   set bdVer "2023.1"
+} elseif  { $::env(VIVADO_VERSION) >= 2022.1 } {
+   set bdVer "2022.1"
 } else {
-   loadBlockDesign -path "$::DIR_PATH/bd/2021.2/AxiSocUltraPlusCpuCore.bd"
-   # loadBlockDesign -path "$::DIR_PATH/bd/2021.2/AxiSocUltraPlusCpuCore.tcl"
+   set bdVer "2021.2"
 }
+loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.bd"
+# loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.tcl"
