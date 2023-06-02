@@ -65,6 +65,9 @@ set_property -dict { PACKAGE_PIN B12 IOSTANDARD LVCMOS12 } [get_ports { clkMuxSe
 set_property -dict { PACKAGE_PIN G10 IOSTANDARD LVCMOS12 DRIVE 8 } [get_ports { i2c1Scl }]
 set_property -dict { PACKAGE_PIN K12 IOSTANDARD LVCMOS12 DRIVE 8 } [get_ports { i2c1Sda }]
 
+set_property -dict { PACKAGE_PIN M20 IOSTANDARD LVDS } [get_ports { sfpRecClkP }]
+set_property -dict { PACKAGE_PIN L21 IOSTANDARD LVDS } [get_ports { sfpRecClkN }]
+
 ##############################################################################
 
 set_property PACKAGE_PIN AB5 [get_ports { adcClkP }]
