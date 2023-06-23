@@ -97,5 +97,6 @@ class AxiVersion(axi.AxiVersion):
                 0x00_00_00_05: 'SlacSpaceRfSocGen2',
                 0x00_00_00_06: 'RealDigitalRfSoC4x2',
                 0x00_00_00_07: 'XilinxZcu111',
+                0x00_00_00_08: 'XilinxZcu670',
             },
         ))
