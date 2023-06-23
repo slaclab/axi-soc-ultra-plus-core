@@ -21,6 +21,8 @@ use surf.AxiLitePkg.all;
 use surf.I2cPkg.all;
 use surf.I2cMuxPkg.all;
 
+library axi_soc_ultra_plus_core;
+
 library unisim;
 use unisim.vcomponents.all;
 
@@ -113,7 +115,7 @@ begin
          -- I2C MUX Generics
          MUX_DECODE_MAP_G   => I2C_MUX_DECODE_MAP_TCA9548_C,
          I2C_MUX_ADDR_G     => b"1110_100",
-         I2C_SCL_FREQ_G     => 400.0E+3,  -- units of Hz
+         I2C_SCL_FREQ_G     => 100.0E+3,  -- units of Hz
          AXIL_CLK_FREQ_G    => AXIL_CLK_FREQ_G,
          -- AXI-Lite Crossbar Generics
          NUM_MASTER_SLOTS_G => 8,
@@ -136,33 +138,14 @@ begin
          i2ci              => i2ci,
          i2co              => i2coVec(8));
 
-   U_I2C_CLK104 : entity surf.Sc18Is602Core
+   U_I2C_SPI : entity axi_soc_ultra_plus_core.Zcu111Sc18Is602
       generic map (
          TPD_G             => TPD_G,
-         I2C_BASE_ADDR_G   => "111",    -- A[2:0] all tied to VCC
-         I2C_SCL_FREQ_G    => 30.0E+3,  -- units of Hz
-         SDO_MUX_SEL_MAP_G => (
-            0              => "11",  -- SC18IS602BIPW.SS0_B=IDTQS3VH253QG8.I3A (DAC LMX)
-            1              => "10",  -- SC18IS602BIPW.SS1_B=IDTQS3VH253QG8.I2A (LMK)
-            2              => "01",  -- SC18IS602BIPW.SS2_B=IDTQS3VH253QG8.I1A (ADC LMX)
-            3              => "00"),  -- SC18IS602BIPW.SS3_B=IDTQS3VH253QG8.I0A (ADC LMX)
-         ADDRESS_SIZE_G    => (         -- Units of bits
-            0              => 7,        -- DAC LMX
-            1              => 15,       -- LMK
-            2              => 7,        -- ADC LMX
-            3              => 7),       -- ADC LMX
-         DATA_SIZE_G       => (         -- Units of bits
-            0              => 16,       -- DAC LMX
-            1              => 8,        -- LMK
-            2              => 16,       -- ADC LMX
-            3              => 16),      -- ADC LMX
          AXIL_CLK_FREQ_G   => AXIL_CLK_FREQ_G)
       port map (
          -- I2C Ports
          i2ci            => i2ci,
          i2co            => i2coVec(5),
-         -- Optional MUX select for SDO
-         sdoMuxSel       => open, -- Unused because driven by GPIO expander on i2c[1] instead
          -- AXI-Lite Register Interface
          axilReadMaster  => i2cReadMasters(5),
          axilReadSlave   => i2cReadSlaves(5),

@@ -62,7 +62,7 @@ begin
       U_TCA6416A : entity surf.AxiI2cRegMaster
          generic map (
             TPD_G          => TPD_G,
-            I2C_SCL_FREQ_G => 400.0E+3,  -- units of Hz
+            I2C_SCL_FREQ_G => 100.0E+3,  -- units of Hz
             DEVICE_MAP_G   => TCA6416A_CONFIG_C,
             AXI_CLK_FREQ_G => AXIL_CLK_FREQ_G)
          port map (
