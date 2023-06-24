@@ -34,6 +34,7 @@ class SigGenLoader(pr.Device):
             ramWidth     = 10, # Must match RAM_ADDR_WIDTH_G config
             smplPerCycle = 16, # Must match SAMPLE_PER_CYCLE_G config
             sampleRate   = 5.0E+9, # Units of Hz
+            defaultFreq  = 200.0E+6, # Units of Hz
         **kwargs):
         super().__init__(**kwargs)
 
@@ -48,7 +49,7 @@ class SigGenLoader(pr.Device):
             name    = 'Frequency',
             typeStr = 'Float[np]',
             units   = 'Hz',
-            value   = 200.0E+6,
+            value   = defaultFreq,
         ))
 
         phase = [90.0, 0.0, 90.0, 0.0, 90.0, 0.0, 90.0, 0.0, 90.0, 0.0, 90.0, 0.0, 90.0, 0.0, 90.0, 0.0]
