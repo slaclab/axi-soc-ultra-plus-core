@@ -57,5 +57,7 @@ package AxiSocUltraPlusPkg is
    constant HW_TYPE_TRENZ_TE0835_C          : slv(31 downto 0) := x"00_00_00_04"; -- TrenzTe0835
    constant HW_TYPE_SLAC_SPACE_RFSOC_GEN2_C : slv(31 downto 0) := x"00_00_00_05"; -- SlacSpaceRfSocGen2
    constant HW_TYPE_REAL_DIGITAL_RFSOC4x2_C : slv(31 downto 0) := x"00_00_00_06"; -- RealDigitalRfSoC4x2
+   constant HW_TYPE_XILINX_ZCU111_C         : slv(31 downto 0) := x"00_00_00_07"; -- XilinxZcu111
+   constant HW_TYPE_XILINX_ZCU670_C         : slv(31 downto 0) := x"00_00_00_08"; -- XilinxZcu670
 
 end package AxiSocUltraPlusPkg;

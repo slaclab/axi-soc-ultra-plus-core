@@ -186,38 +186,38 @@ fi
 
 ##############################################################################
 
-# Add the P4P python package and its dependences
-cp -f $axi_soc_ultra_plus_core/petalinux-apps/python3-p4p/*.bb components/yocto/layers/meta-openembedded/meta-python/recipes-devtools/python/.
-echo CONFIG_python3-p4p=y >> project-spec/configs/rootfs_config
+# # Add the P4P python package and its dependences
+# cp -f $axi_soc_ultra_plus_core/petalinux-apps/python3-p4p/*.bb components/yocto/layers/meta-openembedded/meta-python/recipes-devtools/python/.
+# echo CONFIG_python3-p4p=y >> project-spec/configs/rootfs_config
 
-#######################################################################################
-# python3-setuptools_dso-native (host) has arch=linux-x86_64 and is being used for EPICS_HOST_ARCH
-# The -native package required to make python-setup work, but -native package will have a linux-x86_64 
-# of epicscorelibs/lib/libCom.so used and incompatible with aarch64
-# TODO: Figure out who to get python3-setuptools_dso to set EPICS_HOST_ARCH=aarch64 in future
-#######################################################################################
-# This prepend overwrite the native libCom.so to target .so to "fix" the incompatible issue
-#######################################################################################
-petalinux-build -c python3-epicscorelibs-native
-petalinux-build -c python3-epicscorelibs
-petalinux-build -c python3-pvxslibs-native
-LIBCOM_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs/usr/lib)
-LIBCOM_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs-native/usr/lib)
-cp -f $LIBCOM_NATIVE_SO build/.
-cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
-petalinux-build -c python3-pvxslibs
-cp -f build/libCom.so $LIBCOM_NATIVE_SO
+# #######################################################################################
+# # python3-setuptools_dso-native (host) has arch=linux-x86_64 and is being used for EPICS_HOST_ARCH
+# # The -native package required to make python-setup work, but -native package will have a linux-x86_64 
+# # of epicscorelibs/lib/libCom.so used and incompatible with aarch64
+# # TODO: Figure out who to get python3-setuptools_dso to set EPICS_HOST_ARCH=aarch64 in future
+# #######################################################################################
+# # This prepend overwrite the native libCom.so to target .so to "fix" the incompatible issue
+# #######################################################################################
+# petalinux-build -c python3-epicscorelibs-native
+# petalinux-build -c python3-epicscorelibs
+# petalinux-build -c python3-pvxslibs-nativerm -
+# LIBCOM_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs/usr/lib)
+# LIBCOM_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs-native/usr/lib)
+# cp -f $LIBCOM_NATIVE_SO build/.
+# cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
+# petalinux-build -c python3-pvxslibs
+# cp -f build/libCom.so $LIBCOM_NATIVE_SO
 
-# Same "work" around again but for python3-pvxslibs and its libpvxs.so outputs
-petalinux-build -c python3-p4p-native
-LIBPVXS_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs/usr/lib)
-LIBPVXS_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs-native/usr/lib)
-cp -f $LIBPVXS_NATIVE_SO build/.
-cp -f $LIBPVXS_ARM64_SO $LIBPVXS_NATIVE_SO
-cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
-petalinux-build -c python3-p4p
-cp -f build/libCom.so  $LIBCOM_NATIVE_SO
-cp -f build/libpvxs.so $LIBPVXS_NATIVE_SO
+# # Same "work" around again but for python3-pvxslibs and its libpvxs.so outputs
+# petalinux-build -c python3-p4p-native
+# LIBPVXS_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs/usr/lib)
+# LIBPVXS_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs-native/usr/lib)
+# cp -f $LIBPVXS_NATIVE_SO build/.
+# cp -f $LIBPVXS_ARM64_SO $LIBPVXS_NATIVE_SO
+# cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
+# petalinux-build -c python3-p4p
+# cp -f build/libCom.so  $LIBCOM_NATIVE_SO
+# cp -f build/libpvxs.so $LIBPVXS_NATIVE_SO
 
 ##############################################################################
 
