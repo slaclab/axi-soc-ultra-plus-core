@@ -67,17 +67,17 @@ set_property -dict { PACKAGE_PIN G12 IOSTANDARD LVCMOS12 } [get_ports { clkMuxSe
 
 ##############################################################################
 
-set_property PACKAGE_PIN AD5 [get_ports { adcClkP[0] }]
-set_property PACKAGE_PIN AD4 [get_ports { adcClkN[0] }]
+set_property PACKAGE_PIN AD5 [get_ports { adcClkP[0] }]; # TILE 225 (Si5381A.OUT3)
+set_property PACKAGE_PIN AD4 [get_ports { adcClkN[0] }]; # TILE 225 (Si5381A.OUT3B)
 
-set_property PACKAGE_PIN AB5 [get_ports { adcClkP[1] }]
-set_property PACKAGE_PIN AB4 [get_ports { adcClkN[1] }]
+set_property PACKAGE_PIN AB5 [get_ports { adcClkP[1] }]; # TILE 226 (J8  - SSMP Connector)
+set_property PACKAGE_PIN AB4 [get_ports { adcClkN[1] }]; # TILE 226 (J98 - SSMP Connector)
 
-set_property PACKAGE_PIN L5 [get_ports { dacClkP[0] }]
-set_property PACKAGE_PIN L4 [get_ports { dacClkN[0] }]
+set_property PACKAGE_PIN L5 [get_ports { dacClkP[0] }]; # TILE 227 (Si5381A.OUT0)
+set_property PACKAGE_PIN L4 [get_ports { dacClkN[0] }]; # TILE 227 (Si5381A.OUT0B)
 
-set_property PACKAGE_PIN J5 [get_ports { dacClkP[1] }]
-set_property PACKAGE_PIN J4 [get_ports { dacClkN[1] }]
+set_property PACKAGE_PIN J5 [get_ports { dacClkP[1] }]; # TILE 228 (J99  - SSMP Connector)
+set_property PACKAGE_PIN J4 [get_ports { dacClkN[1] }]; # TILE 228 (J100 - SSMP Connector)
 
 set_property PACKAGE_PIN N5 [get_ports { sysRefP }]
 set_property PACKAGE_PIN N4 [get_ports { sysRefN }]
