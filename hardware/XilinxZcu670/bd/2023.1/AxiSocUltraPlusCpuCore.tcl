@@ -197,6 +197,7 @@ proc create_root_design { parentCell } {
    CONFIG.AWUSER_WIDTH {1} \
    CONFIG.BUSER_WIDTH {0} \
    CONFIG.DATA_WIDTH {128} \
+   CONFIG.FREQ_HZ {250000000} \
    CONFIG.HAS_BRESP {1} \
    CONFIG.HAS_BURST {1} \
    CONFIG.HAS_CACHE {1} \
@@ -225,6 +226,7 @@ proc create_root_design { parentCell } {
   set_property -dict [ list \
    CONFIG.ADDR_WIDTH {40} \
    CONFIG.DATA_WIDTH {32} \
+   CONFIG.FREQ_HZ {250000000} \
    CONFIG.HAS_BURST {0} \
    CONFIG.HAS_CACHE {0} \
    CONFIG.HAS_LOCK {0} \
@@ -237,6 +239,7 @@ proc create_root_design { parentCell } {
   set_property -dict [ list \
    CONFIG.ADDR_WIDTH {40} \
    CONFIG.DATA_WIDTH {32} \
+   CONFIG.FREQ_HZ {250000000} \
    CONFIG.HAS_BURST {0} \
    CONFIG.HAS_CACHE {0} \
    CONFIG.HAS_LOCK {0} \
@@ -646,6 +649,7 @@ Port;FD4A0000;FD4AFFFF;0|FPD;DPDMA;FD4C0000;FD4CFFFF;0|FPD;DDR_XMPU5_CFG;FD05000
   set_property PFM.AXI_PORT {S_AXI_HP1_FPD { memport "S_AXI_HP" sptag "HP1" memory "ps_e HP1_DDR_LOW" } S_AXI_HP2_FPD { memport "S_AXI_HP" sptag "HP2" memory "ps_e HP2_DDR_LOW" } S_AXI_HPC0_FPD { memport "S_AXI_HPC" sptag "HPC0" memory "ps_e HPC0_DDR_LOW" } S_AXI_HPC1_FPD { memport "S_AXI_HPC" sptag "HPC1" memory "ps_e HPC1_DDR_LOW" } } [get_bd_cells /ps_e]
 
 
+  validate_bd_design
   save_bd_design
 }
 # End of create_root_design()
@@ -657,6 +661,4 @@ Port;FD4A0000;FD4AFFFF;0|FPD;DPDMA;FD4C0000;FD4CFFFF;0|FPD;DDR_XMPU5_CFG;FD05000
 
 create_root_design ""
 
-
-common::send_gid_msg -ssname BD::TCL -id 2053 -severity "WARNING" "This Tcl script was generated from a block design that has not been validated. It is possible that design <$design_name> may result in errors during validation."
 

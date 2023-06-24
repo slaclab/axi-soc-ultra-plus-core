@@ -21,5 +21,5 @@ set_property BOARD_PART xilinx.com:zcu670:part0:2.0 [current_project]
 if  { $::env(VIVADO_VERSION) >= 2023.1 } {
    set bdVer "2023.1"
 }
-# loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.bd"
-loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.tcl"
+loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.bd"
+# loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.tcl"
