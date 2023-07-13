@@ -51,13 +51,12 @@ RDEPENDS:${PN} += " \
 FILES:${PN}-dev += "/usr/include/rogue/*"
 FILES:${PN} += "/usr/lib/*"
 
-do_configure() {
+do_configure:prepend() {
    cmake_do_configure
    bbplain $(cp -vH ${WORKDIR}/build/setup.py ${S}/.)
    bbplain $(sed -i "s/..\/python/python/" ${S}/setup.py)
 }
 
-do_install() {
+do_install:prepend() {
    cmake_do_install
-   distutils3_do_install
 }
