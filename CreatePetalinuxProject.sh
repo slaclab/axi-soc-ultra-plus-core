@@ -25,8 +25,9 @@ do
 done
 
 # Check the petalinux version
-if awk "BEGIN {exit !($PETALINUX_VER < 2022.1)}"; then
-   echo "PETALINUX_VER must be >= 2022.1"
+EXPECTED_VERSION="2022.2"
+if awk "BEGIN {exit !($PETALINUX_VER != $EXPECTED_VERSION)}"; then
+   echo "Error: PETALINUX_VER is not set to $EXPECTED_VERSION"
    exit 1
 fi
 

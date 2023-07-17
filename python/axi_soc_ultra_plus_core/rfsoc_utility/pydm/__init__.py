@@ -12,18 +12,15 @@
 import os
 import sys
 import pydm
+import pyrogue
 import pyrogue.pydm.data_plugins.rogue_plugin
 
-def runPyDM(serverList='localhost:9090', root=None, ui=None, title=None,sizeX=800,sizeY=1000,numAdcCh=1,numDacCh=1,maxListExpand=5,maxListSize=100):
+import rogue
+rogue.Version.minVersion('6.0.0')
 
-    if root is not None:
+def runPyDM(serverList='localhost:9090', ui=None, title=None, sizeX=800, sizeY=1000, maxListExpand=5, maxListSize=100, numAdcCh=1, numDacCh=1):
 
-        if not root.running:
-            raise Exception("Attempt to use pydm with root that has not started")
-
-        os.environ['ROGUE_SERVERS'] = 'localhost:{}'.format(root.serverPort)
-    else:
-        os.environ['ROGUE_SERVERS'] = serverList
+    os.environ['ROGUE_SERVERS'] = serverList
 
     if ui is None or ui == '':
         ui = os.path.dirname(os.path.abspath(__file__)) + '/pydmTop.py'
@@ -35,10 +32,10 @@ def runPyDM(serverList='localhost:9090', root=None, ui=None, title=None,sizeX=80
     args.append(f"sizeX={sizeX}")
     args.append(f"sizeY={sizeY}")
     args.append(f"title='{title}'")
-    args.append(f"numAdcCh={numAdcCh}")
-    args.append(f"numDacCh={numDacCh}")
     args.append(f"maxListExpand={maxListExpand}")
     args.append(f"maxListSize={maxListSize}")
+    args.append(f"numAdcCh={numAdcCh}")
+    args.append(f"numDacCh={numDacCh}")
 
     app = pydm.PyDMApplication(ui_file=ui,
                                command_line_args=args,
