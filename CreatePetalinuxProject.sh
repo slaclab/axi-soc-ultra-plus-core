@@ -113,7 +113,7 @@ if [ -d "$hwDir/patch" ]
 then
    # Add the patches to the petalinux project
    for filename in $(ls -p $hwDir/patch); do
-      echo SRC_URI_append = \" file://$filename\" >> project-spec/meta-user/recipes-kernel/linux/linux-xlnx_%.bbappend
+      echo SRC_URI:append = \" file://$filename\" >> project-spec/meta-user/recipes-kernel/linux/linux-xlnx_%.bbappend
       cp -f $hwDir/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
    done
 fi
