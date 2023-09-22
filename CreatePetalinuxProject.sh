@@ -193,7 +193,7 @@ fi
 
 # #######################################################################################
 # # python3-setuptools_dso-native (host) has arch=linux-x86_64 and is being used for EPICS_HOST_ARCH
-# # The -native package required to make python-setup work, but -native package will have a linux-x86_64 
+# # The -native package required to make python-setup work, but -native package will have a linux-x86_64
 # # of epicscorelibs/lib/libCom.so used and incompatible with aarch64
 # # TODO: Figure out who to get python3-setuptools_dso to set EPICS_HOST_ARCH=aarch64 in future
 # #######################################################################################
