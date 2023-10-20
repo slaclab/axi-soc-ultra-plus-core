@@ -31,6 +31,8 @@ entity AppRingBufferEngine is
       RAM_ADDR_WIDTH_G   : positive               := 10;
       MEMORY_TYPE_G      : string                 := "block";
       COMMON_CLK_G       : boolean                := false;  -- true if dataClk=axilClk
+      FIFO_MEMORY_TYPE_G : string                 := "block";
+      FIFO_ADDR_WIDTH_G  : positive               := 9;
       TDEST_ROUTES_G     : Slv8Array(15 downto 0) := (others => x"00");
       AXIL_BASE_ADDR_G   : slv(31 downto 0));
    port (
@@ -132,6 +134,8 @@ begin
             DATA_BYTES_G        => ((16*SAMPLE_PER_CYCLE_G)/8),
             RAM_ADDR_WIDTH_G    => RAM_ADDR_WIDTH_G,
             -- AXI Stream Configurations
+            FIFO_MEMORY_TYPE_G  => FIFO_MEMORY_TYPE_G,
+            FIFO_ADDR_WIDTH_G   => FIFO_ADDR_WIDTH_G,
             GEN_SYNC_FIFO_G     => false,
             AXI_STREAM_CONFIG_G => DMA_AXIS_CONFIG_C)
          port map (
