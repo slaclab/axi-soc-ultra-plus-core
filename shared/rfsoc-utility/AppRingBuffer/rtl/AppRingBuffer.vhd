@@ -34,6 +34,10 @@ entity AppRingBuffer is
       ADC_SAMPLE_PER_CYCLE_G : positive := 16;
       DAC_SAMPLE_PER_CYCLE_G : positive := 16;
       RAM_ADDR_WIDTH_G       : positive := 9;
+      MEMORY_TYPE_G          : string   := "block";
+      COMMON_CLK_G           : boolean  := false;  -- true if dataClk=axilClk
+      FIFO_MEMORY_TYPE_G     : string   := "block";
+      FIFO_ADDR_WIDTH_G      : positive := 9;
       AXIL_BASE_ADDR_G       : slv(31 downto 0));
    port (
       -- DMA Interface (dmaClk domain)
@@ -151,6 +155,10 @@ begin
             NUM_CH_G           => NUM_ADC_CH_G,
             SAMPLE_PER_CYCLE_G => ADC_SAMPLE_PER_CYCLE_G,
             RAM_ADDR_WIDTH_G   => RAM_ADDR_WIDTH_G,
+            MEMORY_TYPE_G      => MEMORY_TYPE_G,
+            COMMON_CLK_G       => COMMON_CLK_G,
+            FIFO_MEMORY_TYPE_G => FIFO_MEMORY_TYPE_G,
+            FIFO_ADDR_WIDTH_G  => FIFO_ADDR_WIDTH_G,
             AXIL_BASE_ADDR_G   => AXIL_CONFIG_C(ADC_RING_INDEX_C).baseAddr)
          port map (
             -- AXI-Stream Interface (axisClk domain)
