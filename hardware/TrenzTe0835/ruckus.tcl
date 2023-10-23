@@ -1,8 +1,8 @@
 # Load RUCKUS environment and library
 source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 
-# Check for version 2022.1 of Vivado (or later)
-if { [VersionCheck 2022.1] < 0 } {exit -1}
+# Check for version 2023.1 of Vivado (or later)
+if { [VersionCheck 2023.1] < 0 } {exit -1}
 
 # Check for valid FPGA
 if { $::env(PRJ_PART) != "xczu47dr-ffve1156-1-e" } {
@@ -20,5 +20,5 @@ loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 # set_property BOARD_PART trenz.biz:te0835_47dr_1e:part0:1.0 [current_project]
 
 # Load the block design
-# loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.bd"
-loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.tcl"
+loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.bd"
+# loadBlockDesign -path "$::DIR_PATH/bd/AxiSocUltraPlusCpuCore.tcl"

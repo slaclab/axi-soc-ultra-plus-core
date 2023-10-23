@@ -5,19 +5,6 @@
 		xlnx,eeprom = &eeprom;
 	};
 };
-&gem3 {
-	local-mac-address = [08 00 56 00 00 00];
-	status = "okay";
-	ethernet_phy0: ethernet-phy@0 {
-		compatible = "marvell,88e1510";
-		device_type = "ethernet-phy";
-		reg = <1>;
-	};
-};
-&sdhci1 {
-	disable-wp;
-	no-1-8-v;
-};
 / {
 	axi_stream_dma_0@b0000000 {
 		compatible = "axi_stream_dma";
@@ -26,89 +13,27 @@
 		interrupt-parent = <&gic>;
 	};
 };
-/* USB  */
-&dwc3_0 {
+/*------------------ ETH PHY --------------------*/
+/* ETH PHY */
+&gem3 {
 	status = "okay";
-	dr_mode = "host";
-	maximum-speed = "high-speed";
-	/delete-property/phy-names;
-	/delete-property/phys;
-	/delete-property/snps,usb3_lpm_capable;
-	snps,dis_u2_susphy_quirk;
-	snps,dis_u3_susphy_quirk;
-};
-
-&usb0 {
-	status = "okay";
-	/delete-property/ clocks;
-	/delete-property/ clock-names;
-	clocks = <0x3 0x20>;
-	clock-names = "bus_clk";
-};
-
-/* QSPI PHY */
-&qspi {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	status = "okay";
-	flash0: flash@0 {
-		compatible = "jedec,spi-nor";
-		reg = <0x0>;
-		#address-cells = <1>;
-		#size-cells = <1>;
+	ethernet_phy0: ethernet-phy@0 {
+		compatible = "marvell,88e1510";
+		device_type = "ethernet-phy";
+		reg = <1>;
 	};
 };
+/*------------------ SD --------------------*/
+/* SDIO */
+&sdhci1 {
+	disable-wp;
+	no-1-8-v;
+};
 
-// This I2C Port can be found in the RFSoC Module TE0835 to control PLL chip SI5395A-A-GM on the
-// RFSoC Module.
-
+/*------------------ I2C --------------------*/
 &i2c1 {
 	eeprom: eeprom@50 {
 		compatible = "atmel,24c08";
 		reg = <0x50>;
-	};
-};
-
-// This I2C Port connects RFSoC FPGA on the RFSoC Module and I2C multiplexer Chip on the carrier
-// board through B2B connector.
-
-&i2c0 {
-
-	// This I2C multiplexer chip can be found in TEB0835 carrier board.
-
-	i2c_mux@70 { /* TCA9544APWR U7 in the carrier board TEB0835 */
-		compatible = "nxp,pca9544";
-		#address-cells = <1>;
-		#size-cells = <0>;
-		reg = <0x70>;
-
-		i2c@0 { /* FireFly_B*/
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0>;
-		};
-		i2c@1 { /* FireFly_A*/
-		#address-cells = <1>;
-		#size-cells = <0>;
-		reg = <1>;
-		};
-		i2c@3 { /* LM96163CISD/NOPB U9 FAN Controller in the carrier board TEB0835*/
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <3>;
-			temp@4c {/* lm96163 - u9*/
-				compatible = "national,lm96163";
-				reg = <0x4c>;
-			};
-			};
-			i2c@4 { /* SI5395A-A-GM U5 DPLL in the carrier board TEB0835*/
-				#address-cells = <1>;
-				#size-cells = <0>;
-				reg = <4>;
-				clock-generator@68{/* SI5395A-A-GM U5 DPLL in the carrier board TEB0835 */
-					compatible = "silabs,si5395";
-					reg = <0x68>;
-			};
-		};
 	};
 };
