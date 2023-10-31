@@ -59,11 +59,11 @@ set_property -dict { PACKAGE_PIN E7  IOSTANDARD LVCMOS18 } [get_ports { dacio[19
 
 ##############################################################################
 
-set_property -dict { PACKAGE_PIN AL16 IOSTANDARD LVDS } [get_ports { plClkP }]
-set_property -dict { PACKAGE_PIN AL15 IOSTANDARD LVDS } [get_ports { plClkN }]
+set_property -dict { PACKAGE_PIN AL16 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports { plClkP }]
+set_property -dict { PACKAGE_PIN AL15 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports { plClkN }]
 
-set_property -dict { PACKAGE_PIN AK17 IOSTANDARD LVDS } [get_ports { plSysRefP }]
-set_property -dict { PACKAGE_PIN AK16 IOSTANDARD LVDS } [get_ports { plSysRefN }]
+set_property -dict { PACKAGE_PIN AK17 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports { plSysRefP }]
+set_property -dict { PACKAGE_PIN AK16 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports { plSysRefN }]
 
 set_property -dict { PACKAGE_PIN AT16 IOSTANDARD LVCMOS18 } [get_ports { i2cScl[0] }]
 set_property -dict { PACKAGE_PIN AW16 IOSTANDARD LVCMOS18 } [get_ports { i2cSda[0] }]
