@@ -23,7 +23,7 @@ class SigGen(pr.Device):
         self.numCh        = numCh
         self.ramWidth     = ramWidth
         self.smplPerCycle = smplPerCycle
-        self.valueStride  = 32 if (smplPerCycle==1) else 16
+        self.valueStride  = 32 if (smplPerCycle%2==1) else 16
 
         self.add(pr.RemoteVariable(
             name         = 'NUM_CH_G',
