@@ -105,6 +105,9 @@ architecture mapping of SigGen is
 
 begin
 
+   assert (isPowerOf2(SAMPLE_PER_CYCLE_G) = true)
+      report "SAMPLE_PER_CYCLE_G must be power of 2" severity failure;
+
    sigGenActive <= status.dacGenValid;
 
    U_XBAR : entity surf.AxiLiteCrossbar

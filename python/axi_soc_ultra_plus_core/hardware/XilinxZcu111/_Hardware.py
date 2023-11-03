@@ -98,23 +98,18 @@ class Hardware(pr.Device):
         else:
             lmxCfg = lmxConfig
 
-        # Seems like 1st time after power up that need to load twice
-        for x in range(2):
+        # Configure the LMK for 4-wire SPI
+        self.Lmk.enable.set(True)
+        self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
+        self.Lmk.enable.set(False)
 
-            # Configure the LMK for 4-wire SPI
-            self.Lmk.enable.set(True)
-            self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
-            self.Lmk.enable.set(False)
+        # Load the LMX configuration from the TICS Pro software HEX export
+        for i in range(3):
 
-            # Load the LMX configuration from the TICS Pro software HEX export
-            for i in range(3):
+            self.Tca6416a.OP[1].set(spiMuxSel[i]) # Set the CLK_SPI_MUX_SEL
 
-                self.Tca6416a.OP[1].set(spiMuxSel[i]) # Set the CLK_SPI_MUX_SEL
-
-                self.Lmx[i].enable.set(True)
-                self.Lmx[i].DataBlock.set(value=0x002410,index=0, write=True) # MUXOUT_LD_SEL=readback
-                self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
-                self.Lmx[i].DataBlock.set(value=0x002414,index=0, write=True, verify=False) # MUXOUT_LD_SEL=LockDetect (change without verifying)
-                self.Lmx[i].enable.set(False)
+            self.Lmx[i].enable.set(True)
+            self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
+            self.Lmx[i].enable.set(False)
 
         self.Tca6416a.enable.set(False)

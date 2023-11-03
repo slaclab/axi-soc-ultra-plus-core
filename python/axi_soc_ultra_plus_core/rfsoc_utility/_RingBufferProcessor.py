@@ -99,6 +99,11 @@ class RingBufferProcessor(pr.DataReceiver):
 
             self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float32, order='C')
 
+        self.add(pr.LocalVariable(
+            name  = 'NewDataReady',
+            value = False,
+        ))
+
     def _start(self):
         super()._start()
         if self._liveDisplay:
@@ -155,3 +160,5 @@ class RingBufferProcessor(pr.DataReceiver):
                 self._mag[self._idx] = mag
                 magnitude = self.running_mean(self._mag)
                 self.Magnitude.set(magnitude,write=True)
+
+            self.NewDataReady.set(True)
