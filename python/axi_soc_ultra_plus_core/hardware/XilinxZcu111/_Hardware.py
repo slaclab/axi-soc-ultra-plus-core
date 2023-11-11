@@ -100,7 +100,8 @@ class Hardware(pr.Device):
 
         # Configure the LMK for 4-wire SPI
         self.Lmk.enable.set(True)
-        self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
+        for x in range(2):
+            self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
         self.Lmk.enable.set(False)
 
         # Load the LMX configuration from the TICS Pro software HEX export
@@ -109,7 +110,8 @@ class Hardware(pr.Device):
             self.Tca6416a.OP[1].set(spiMuxSel[i]) # Set the CLK_SPI_MUX_SEL
 
             self.Lmx[i].enable.set(True)
-            self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
+            for x in range(2):
+                self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
             self.Lmx[i].enable.set(False)
 
         self.Tca6416a.enable.set(False)
