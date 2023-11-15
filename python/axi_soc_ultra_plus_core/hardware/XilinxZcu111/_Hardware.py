@@ -8,6 +8,7 @@
 # contained in the LICENSE.txt file.
 #-----------------------------------------------------------------------------
 
+import time
 import pyrogue as pr
 
 import surf.devices.ti  as ti
@@ -100,9 +101,9 @@ class Hardware(pr.Device):
 
         # Configure the LMK for 4-wire SPI
         self.Lmk.enable.set(True)
-        for x in range(2):
-            self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
+        self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
         self.Lmk.enable.set(False)
+        time.sleep(1.0)
 
         # Load the LMX configuration from the TICS Pro software HEX export
         for i in range(3):
@@ -115,3 +116,5 @@ class Hardware(pr.Device):
             self.Lmx[i].enable.set(False)
 
         self.Tca6416a.enable.set(False)
+        time.sleep(1.0)
+
