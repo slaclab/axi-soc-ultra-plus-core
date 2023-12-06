@@ -59,6 +59,26 @@ set_property -dict { PACKAGE_PIN E7  IOSTANDARD LVCMOS18 } [get_ports { dacio[19
 
 ##############################################################################
 
+set_property -dict { PACKAGE_PIN C17 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][0] }]
+set_property -dict { PACKAGE_PIN M18 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][1] }]
+set_property -dict { PACKAGE_PIN H16 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][2] }]
+set_property -dict { PACKAGE_PIN H17 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][3] }]
+set_property -dict { PACKAGE_PIN J16 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][4] }]
+set_property -dict { PACKAGE_PIN K16 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][5] }]
+set_property -dict { PACKAGE_PIN H15 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][6] }]
+set_property -dict { PACKAGE_PIN J15 IOSTANDARD LVCMOS12 } [get_ports { pmod[0][7] }]
+
+set_property -dict { PACKAGE_PIN L14 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][0] }]
+set_property -dict { PACKAGE_PIN L15 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][1] }]
+set_property -dict { PACKAGE_PIN M13 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][2] }]
+set_property -dict { PACKAGE_PIN N13 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][3] }]
+set_property -dict { PACKAGE_PIN M15 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][4] }]
+set_property -dict { PACKAGE_PIN N15 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][5] }]
+set_property -dict { PACKAGE_PIN M14 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][6] }]
+set_property -dict { PACKAGE_PIN N14 IOSTANDARD LVCMOS12 } [get_ports { pmod[1][7] }]
+
+##############################################################################
+
 set_property -dict { PACKAGE_PIN AL16 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports { plClkP }]
 set_property -dict { PACKAGE_PIN AL15 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports { plClkN }]
 
