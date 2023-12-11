@@ -14,9 +14,9 @@ function Get_MAC_ID(){
    local output=""
    local index=$1
    if [ $index -eq 0 ]; then
-      output="$(fru-print.py -b som -f multirecord MAC_Addr MAC_ID_0)"
+      output="$(fru-print -b som -f multirecord MAC_Addr MAC_ID_0)"
    else
-      output="$(fru-print.py -b cc -f multirecord MAC_Addr PS_MAC_ID_$index)"
+      output="$(fru-print -b cc -f multirecord MAC_Addr PS_MAC_ID_$index)"
    fi
    echo $output
 }

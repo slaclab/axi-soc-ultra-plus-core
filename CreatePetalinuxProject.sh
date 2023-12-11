@@ -25,7 +25,7 @@ do
 done
 
 # Check the petalinux version
-EXPECTED_VERSION="2022.2"
+EXPECTED_VERSION="2023.2"
 if awk "BEGIN {exit !($PETALINUX_VER != $EXPECTED_VERSION)}"; then
    echo "Error: PETALINUX_VER is not set to $EXPECTED_VERSION"
    exit 1
@@ -170,6 +170,11 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 # Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
 petalinux-create -t apps --template install -n startup-app-init --enable
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startup-app-init project-spec/meta-user/recipes-apps/.
+
+##############################################################################
+
+# Add fru-print for Kria KV260/KR260 builds (which was removed in petalinux 2023.1)
+cp -rf $axi_soc_ultra_plus_core/petalinux-apps/fru-print components/yocto/layers/meta-petalinux/recipes-utils/.
 
 ##############################################################################
 
