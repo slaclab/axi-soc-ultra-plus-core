@@ -201,7 +201,7 @@ fi
 # #######################################################################################
 # petalinux-build -c python3-epicscorelibs-native
 # petalinux-build -c python3-epicscorelibs
-# petalinux-build -c python3-pvxslibs-nativerm
+# petalinux-build -c python3-pvxslibs-native
 # LIBCOM_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs/usr/lib)
 # LIBCOM_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs-native/usr/lib)
 # cp -f $LIBCOM_NATIVE_SO build/.
