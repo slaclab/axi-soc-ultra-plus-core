@@ -43,7 +43,8 @@ class LiveDisplay(PyDMFrame):
         self.RxEnable[self.idx].set(False)
 
         # Convert float to int
-        self.idx = int(ch)
+        if int(ch)< self.numCh:
+            self.idx = int(ch)
 
         # Enable processing on new channel
         self.RxEnable[self.idx].set(True)
