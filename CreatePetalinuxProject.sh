@@ -71,18 +71,6 @@ cd $name
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
-# Check if the meta-user directory exists
-if [ -d "$hwDir/petalinux/meta-user" ]
-then
-   cp -rf $hwDir/petalinux/meta-user/* project-spec/meta-user/.
-fi
-
-# Check if the dts directory exists
-if [ -d "$hwDir/petalinux/dts_dir" ]
-then
-   cp -rf $hwDir/petalinux/dts_dir project-spec/.
-fi
-
 # Check if the hardware has custom u-boot
 if [ -f "$hwDir/petalinux/u-boot/platform-top.h" ]
 then
@@ -170,11 +158,6 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 # Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
 petalinux-create -t apps --template install -n startup-app-init --enable
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startup-app-init project-spec/meta-user/recipes-apps/.
-
-##############################################################################
-
-# Add fru-print for Kria KV260/KR260 builds (which was removed in petalinux 2023.1)
-cp -rf $axi_soc_ultra_plus_core/petalinux-apps/fru-print components/yocto/layers/meta-petalinux/recipes-utils/.
 
 ##############################################################################
 

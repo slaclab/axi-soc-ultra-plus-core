@@ -5,8 +5,19 @@
 		stdout-path = "serial1:115200n8";
 	};
 };
+&i2c1 {
+	eeprom: eeprom@50 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0x50>;
+		mac_address: mac-address@83 {
+			reg = <0x83 6>;
+		};
+	};
+};
 &gem3 {
-	local-mac-address = [08 00 56 00 00 00];
+	nvmem-cells = <&mac_address>;
+	nvmem-cell-names = "mac-address";
 };
 &sdhci1 {
 	disable-wp;
