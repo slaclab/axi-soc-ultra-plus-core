@@ -72,36 +72,36 @@ cd $name
 petalinux-config --silentconfig --get-hw-description $xsa
 
 # Check if the meta-user directory exists
-if [ -d "$hwDir/meta-user" ]
+if [ -d "$hwDir/petalinux/meta-user" ]
 then
-   cp -rf $hwDir/meta-user/* project-spec/meta-user/.
+   cp -rf $hwDir/petalinux/meta-user/* project-spec/meta-user/.
 fi
 
 # Check if the dts directory exists
-if [ -d "$hwDir/dts_dir" ]
+if [ -d "$hwDir/petalinux/dts_dir" ]
 then
-   cp -rf $hwDir/dts_dir project-spec/.
+   cp -rf $hwDir/petalinux/dts_dir project-spec/.
 fi
 
 # Check if the hardware has custom u-boot
-if [ -f "$hwDir/u-boot/platform-top.h" ]
+if [ -f "$hwDir/petalinux/u-boot/platform-top.h" ]
 then
-   cp -rf $hwDir/u-boot/platform-top.h project-spec/meta-user/recipes-bsp/u-boot/files/platform-top.h
+   cp -rf $hwDir/petalinux/u-boot/platform-top.h project-spec/meta-user/recipes-bsp/u-boot/files/platform-top.h
 fi
 
 # Customize your user device tree
-cp -f $hwDir/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
-if [ -f "$hwDir/device-tree/device-tree.bbappend" ]
+cp -f $hwDir/petalinux/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
+if [ -f "$hwDir/petalinux/device-tree/device-tree.bbappend" ]
 then
    # Add new configuration
-   cat $hwDir/device-tree/device-tree.bbappend >> project-spec/meta-user/recipes-bsp/device-tree/device-tree.bbappend
+   cat $hwDir/petalinux/device-tree/device-tree.bbappend >> project-spec/meta-user/recipes-bsp/device-tree/device-tree.bbappend
 fi
 
 # Check if the hardware has custom configuration
-if [ -f "$hwDir/config" ]
+if [ -f "$hwDir/petalinux/config" ]
 then
    # Add new configuration
-   cat $hwDir/config >> project-spec/configs/config
+   cat $hwDir/petalinux/config >> project-spec/configs/config
    # Reload the configurations
    petalinux-config --silentconfig
 fi
@@ -109,12 +109,12 @@ fi
 ##############################################################################
 
 # Check if the patch directory exists
-if [ -d "$hwDir/patch" ]
+if [ -d "$hwDir/petalinux/patch" ]
 then
    # Add the patches to the petalinux project
-   for filename in $(ls -p $hwDir/patch); do
+   for filename in $(ls -p $hwDir/petalinux/patch); do
       echo SRC_URI:append = \" file://$filename\" >> project-spec/meta-user/recipes-kernel/linux/linux-xlnx_%.bbappend
-      cp -f $hwDir/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
+      cp -f $hwDir/petalinux/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
    done
 fi
 
@@ -185,9 +185,9 @@ echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 
 # Check if the hardware has custom packages that need installed
-if [ -f "$hwDir/rootfs_config" ]
+if [ -f "$hwDir/petalinux/rootfs_config" ]
 then
-   cat $hwDir/rootfs_config >> project-spec/configs/rootfs_config
+   cat $hwDir/petalinux/rootfs_config >> project-spec/configs/rootfs_config
 fi
 
 ##############################################################################
