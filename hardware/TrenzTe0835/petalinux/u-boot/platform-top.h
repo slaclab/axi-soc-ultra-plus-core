@@ -1,5 +1,10 @@
 #include <configs/xilinx_zynqmp.h>
-#define CONFIG_I2C_EEPROM
-#define CONFIG_SYS_I2C_EEPROM_ADDR 0
-#define CONFIG_SYS_I2C_EEPROM_ADDR_OVERFLOW 0x0
-#define CONFIG_ZYNQ_GEM_I2C_MAC_OFFSET 0xFA
+#define CONFIG_NVMEM 1
+#define CONFIG_I2C_EEPROM 1
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ZynqMP> i2c bus
+// ZynqMP> i2c dev 1
+// ZynqMP> i2c md 0x50 0xFA 0x6
+// 00fa: fc 0f e7 14 a6 6b    .....k
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////

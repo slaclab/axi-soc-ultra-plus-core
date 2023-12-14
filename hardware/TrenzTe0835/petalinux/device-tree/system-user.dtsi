@@ -2,7 +2,6 @@
 	chosen {
 		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw";
 		stdout-path = "serial0:115200n8";
-		xlnx,eeprom = &eeprom;
 	};
 };
 / {
@@ -17,6 +16,8 @@
 /* ETH PHY */
 &gem3 {
 	status = "okay";
+	nvmem-cells = <&mac_address>;
+	nvmem-cell-names = "mac-address";
 	ethernet_phy0: ethernet-phy@0 {
 		compatible = "marvell,88e1510";
 		device_type = "ethernet-phy";
@@ -29,11 +30,15 @@
 	disable-wp;
 	no-1-8-v;
 };
-
 /*------------------ I2C --------------------*/
 &i2c1 {
 	eeprom: eeprom@50 {
+		#address-cells = <1>;
+		#size-cells = <1>;
 		compatible = "atmel,24c08";
 		reg = <0x50>;
+		mac_address: mac-address@FA {
+			reg = <0xFA 6>;
+		};
 	};
 };
