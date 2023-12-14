@@ -180,15 +180,15 @@ cp -rf $axi_soc_ultra_plus_core/petalinux-apps/fru-print components/yocto/layers
 
 # Add commonly used packages
 echo CONFIG_imagefeature-debug-tweaks=y >> project-spec/configs/rootfs_config
-echo CONFIG_nano=y >> project-spec/configs/rootfs_config
-echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_peekpoke=y >> project-spec/configs/rootfs_config
 
-# Check if the hardware has custom packages that need installed
-if [ -f "$hwDir/petalinux/rootfs_config" ]
-then
-   cat $hwDir/petalinux/rootfs_config >> project-spec/configs/rootfs_config
-fi
+echo CONFIG_nano=y >> project-spec/configs/rootfs_config
+echo CONFIG_nano   >> project-spec/configs/rootfsconfigs/user-rootfsconfig
+echo CONFIG_nano   >> project-spec/meta-user/conf/user-rootfsconfig
+
+echo CONFIG_htop=y >> project-spec/configs/rootfs_config
+echo CONFIG_htop   >> project-spec/configs/rootfsconfigs/user-rootfsconfig
+echo CONFIG_htop   >> project-spec/meta-user/conf/user-rootfsconfig
 
 ##############################################################################
 
