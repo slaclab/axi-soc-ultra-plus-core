@@ -3,17 +3,31 @@
 	chosen {
 		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw";
 		stdout-path = "serial0:115200n8";
-		xlnx,eeprom = &eeprom;
 	};
 };
 &i2c1 {
 	i2c-mux@74 {
+		i2c_eeprom: i2c@0 {
+			eeprom: eeprom@54 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				compatible = "atmel,24c128";
+				reg = <0x54>;
+				mac_address: mac-address@23 {
+					reg = <0x23 6>;
+				};
+			};
+		};
 		i2c_si570_mgt: i2c@3 {
 			si570_2: clock-generator@5d { /* USER MGT SI570 - u48 */
 				clock-frequency = <156250000>;
 			};
 		};
 	};
+};
+&gem3 {
+	nvmem-cells = <&mac_address>;
+	nvmem-cell-names = "mac-address";
 };
 / {
 	axi_stream_dma_0@b0000000 {
