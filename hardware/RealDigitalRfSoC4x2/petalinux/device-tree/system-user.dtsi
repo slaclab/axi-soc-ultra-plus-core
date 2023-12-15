@@ -27,6 +27,8 @@
 	phy-mode = "rgmii-id";
 	/* pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gem1_default>; */
+	nvmem-cells = <&mac_address>;
+	nvmem-cell-names = "mac-address";
 	phy0: phy@f {
 		reg = <0xf>;
 		ti,rx-internal-delay = <0x8>;
@@ -139,6 +141,16 @@
 		compatible = "ti,ina220";
 		reg = <0x48>;
 		shunt-resistor = <10000>;
+	};
+};
+&i2c1 {
+	eeprom: eeprom@58 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <0x58>;
+		mac_address: mac-address@9A {
+			reg = <0x9A 6>;
+		};
 	};
 };
 / {
