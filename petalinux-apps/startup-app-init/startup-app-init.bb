@@ -21,7 +21,6 @@ inherit update-rc.d systemd
 
 RDEPENDS:${PN} += " \
    python3 \
-   fru-print \
    axiversiondump \
    roguetcpbridge \
 "

@@ -1,0 +1,34 @@
+/include/ "system-conf.dtsi"
+/ {
+	chosen {
+		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw";
+		stdout-path = "serial1:115200n8";
+	};
+};
+&i2c1 {
+	eeprom: eeprom@50 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "atmel,24c64";
+		reg = <0x50>;
+		mac_address: mac-address@83 {
+			reg = <0x83 6>;
+		};
+	};
+};
+&gem3 {
+	nvmem-cells = <&mac_address>;
+	nvmem-cell-names = "mac-address";
+};
+&sdhci1 {
+	status = "okay";
+	disable-wp;
+};
+/ {
+	axi_stream_dma_0@b0000000 {
+		compatible = "axi_stream_dma";
+		reg = <0x0 0xb0000000 0x0 0x10000>;
+		interrupts = <0 89 4>;
+		interrupt-parent = <&gic>;
+	};
+};

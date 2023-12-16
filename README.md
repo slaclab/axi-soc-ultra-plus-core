@@ -16,12 +16,14 @@ https://xilinx-wiki.atlassian.net/wiki/x/EYMfAQ
 This typically will include BOOT.BIN, image.ub, and boot.scr
 
 ```bash
-sudo mount /dev/sdd1 /u1/boot
-sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/system.bit /u1/boot/.
-sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/BOOT.BIN   /u1/boot/.
-sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/image.ub   /u1/boot/.
-sudo cp /u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/boot.scr   /u1/boot/.
-sudo umount /u1/boot
+sudo mkdir -p boot
+sudo mount /dev/sdd1 boot
+sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/system.bit boot/.
+sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/BOOT.BIN   boot/.
+sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/image.ub   boot/.
+sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/boot.scr   boot/.
+sudo umount boot
+sudo rm -rf boot
 ```
 
 2) For the root file system, the process will depend on the format of your root file system image.
@@ -29,7 +31,7 @@ sudo umount /u1/boot
 `roofts.ext4 -  This is an uncompressed ext4 file system image. To copy the contents to the root partition, you can use the following command: `
 
 ```bash
-sudo dd if=/u1/ruckman/build/petalinux/SpaceRfSocXilinxZcu208DevBoard/images/linux/rootfs.ext4 of=/dev/sdd2
+sudo dd if=<PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/rootfs.ext4 of=/dev/<DEV_NAME>
 ```
 
 
