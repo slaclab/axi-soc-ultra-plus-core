@@ -1,0 +1,1 @@
+YAML_DT_BOARD_FLAGS = "{BOARD zcu208-reva}"

@@ -10,4 +10,4 @@
 ##############################################################################
 
 # Launch jupyter-lab
-cd /u1; jupyter lab --ip=0.0.0.0 --no-browser --allow-root --NotebookApp.token='' &
+cd /app; jupyter lab --ip=0.0.0.0 --no-browser --allow-root --NotebookApp.token='' &

@@ -9,80 +9,38 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-function Get_MAC_ID(){
-
-   local output=""
-   local index=$1
-   if [ $index -eq 0 ]; then
-      output="$(fru-print.py -b som -f multirecord MAC_Addr MAC_ID_0)"
-   else
-      output="$(fru-print.py -b cc -f multirecord MAC_Addr PS_MAC_ID_$index)"
-   fi
-   echo $output
-}
-
-function Get_Active_Ethernet(){
-
-   local output=""
-   local num=$1
-   output=$(ls /sys/class/net | grep eth$num)
-
-   if [ -z "$output" ]; then
-      echo "No Ethernet Port Found"
-      exit 1
-   else
-      line=${output:0:4}
-      echo "$line"
-   fi
-}
-
-function Update_MAC_Address(){
-
-   i=$(ls -ld /sys/class/net/eth* | wc -l)
-   while [ $i -gt 0 ]; do
-      i=$(( i - 1 ))
-      local eth=$(Get_Active_Ethernet $i)
-      local MAC_ID=$(Get_MAC_ID $i)
-      /sbin/ifconfig $eth down
-      /sbin/ifconfig $eth hw ether $MAC_ID
-      /sbin/ifconfig $eth up
-      local MAC_addr=$(cat /sys/class/net/$eth/address)
-      echo "MAC address for $eth is updated to $MAC_addr based on FRU EEPROM"
-   done
-}
-
-###########################################################################
-
 # Standard SD-memory[0] card interface
-if [ -d "/run/media/mmcblk0p1" ]
+if [ -d "/run/media/boot-mmcblk0p1" ]
 then
-   # Change /run/media/mmcblk0p1 to /boot
-   umount /run/media/mmcblk0p1 > /dev/null 2>&1
-   rm -r  /run/media/mmcblk0p1
+   # Change /run/media/boot-mmcblk0p1 to /boot
+   umount /run/media/boot-mmcblk0p1 > /dev/null 2>&1
+   rm -r  /run/media/boot-mmcblk0p1
    mkdir -p /boot
    mount /dev/mmcblk0p1 /boot > /dev/null 2>&1
 
-   # Change /run/media/mmcblk0p2 to /u1
-   umount /run/media/mmcblk0p2 > /dev/null 2>&1
-   rm -r  /run/media/mmcblk0p2
-   mkdir -p /u1
-   mount /dev/mmcblk0p2 /u1
+   # Change /run/media/root-mmcblk0p2 to /app
+   umount /run/media/root-mmcblk0p2 > /dev/null 2>&1
+   rm -r  /run/media/root-mmcblk0p2
+   mkdir -p /app
+   mount /dev/mmcblk0p2 /app
 fi
 
+###########################################################################
+
 # Standard SD-memory[1] card interface
-if [ -d "/run/media/mmcblk1p1" ]
+if [ -d "/run/media/boot-mmcblk1p1" ]
 then
-   # Change /run/media/mmcblk1p1 to /boot
-   umount /run/media/mmcblk1p1 > /dev/null 2>&1
-   rm -r  /run/media/mmcblk1p1
+   # Change /run/media/boot-mmcblk1p1 to /boot
+   umount /run/media/boot-mmcblk1p1 > /dev/null 2>&1
+   rm -r  /run/media/boot-mmcblk1p1
    mkdir -p /boot
    mount /dev/mmcblk1p1 /boot > /dev/null 2>&1
 
-   # Change /run/media/mmcblk1p2 to /u1
-   umount /run/media/mmcblk1p2 > /dev/null 2>&1
-   rm -r  /run/media/mmcblk1p2
-   mkdir -p /u1
-   mount /dev/mmcblk1p2 /u1
+   # Change /run/media/root-mmcblk1p2 to /app
+   umount /run/media/root-mmcblk1p2 > /dev/null 2>&1
+   rm -r  /run/media/root-mmcblk1p2
+   mkdir -p /app
+   mount /dev/mmcblk1p2 /app
 fi
 
 ###########################################################################
@@ -96,11 +54,11 @@ then
    mkdir -p /boot
    mount /dev/sda1 /boot > /dev/null 2>&1
 
-   # Change /run/media/sda2 to /u1
+   # Change /run/media/sda2 to /app
    umount /run/media/sda2 > /dev/null 2>&1
    rm -r  /run/media/sda2
-   mkdir -p /u1
-   mount /dev/sda2 /u1
+   mkdir -p /app
+   mount /dev/sda2 /app
 fi
 
 ###########################################################################
@@ -113,13 +71,6 @@ then
    ip link set dev eth0 address $(cat /boot/mac)
    ip link set dev eth0 up
    /etc/init.d/networking restart
-else
-   # Check for default SLAC MAC address
-   if [ $(cat /sys/class/net/eth0/address) == "08:00:56:00:00:00" ]
-   then
-      # Update the MAC address based on FRU
-      Update_MAC_Address
-   fi
 fi
 
 # Check if ip file exists in SD boot partition
@@ -166,10 +117,10 @@ insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 /usr/bin/axiversiondump
 
 # Check if user's runtime application exists
-if [ -f "/u1/runtimeApp" ]
+if [ -f "/app/runtimeApp" ]
 then
-   echo "Starting the user's custom runtime Application"
-   /u1/runtimeApp
+   echo "Starting the user's custom runtime Application (/app/runtimeApp)"
+   /app/runtimeApp
 else
    echo "Starting the generic rogue TCP bridge Application"
    /usr/bin/roguetcpbridge
