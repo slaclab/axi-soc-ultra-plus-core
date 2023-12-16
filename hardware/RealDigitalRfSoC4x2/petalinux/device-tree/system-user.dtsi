@@ -40,6 +40,9 @@
 	eeprom: eeprom@58 {
 		#address-cells = <1>;
 		#size-cells = <1>;
+		compatible = "atmel,24mac402";
+		pagesize = <256>;
+		read-only;
 		reg = <0x58>;
 		mac_address: mac-address@9A {
 			reg = <0x9A 6>;
