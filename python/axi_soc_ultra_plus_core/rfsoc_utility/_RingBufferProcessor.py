@@ -72,7 +72,7 @@ class RingBufferProcessor(pr.DataReceiver):
 
             self.add(pr.LocalVariable(
                 name        = 'Freq',
-                description = 'Freq steps (ns)',
+                description = 'Freq steps (MHz)',
                 typeStr     = 'Float[np]',
                 value       = freqSteps,
                 hidden      = True,
