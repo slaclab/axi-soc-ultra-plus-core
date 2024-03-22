@@ -150,7 +150,7 @@ begin
             axilReadSlave   => axilReadSlaves(i),
             axilWriteMaster => axilWriteMasters(i),
             axilWriteSlave  => axilWriteSlaves(i),
-            -- AXI-Stream Interface (axilClk domain)
+            -- AXI-Stream Interface (axisClk domain)
             axisClk         => axisClk,
             axisRst         => axisRst,
             axisMaster      => axisMasters(i),
