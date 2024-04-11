@@ -2,8 +2,8 @@
 # This file is the rogue recipe.
 #
 
-ROGUE_VERSION = "6.1.3"
-ROGUE_MD5SUM  = "1df912b8525c01930bb869c3a2b2e7e3"
+ROGUE_VERSION = "6.1.4"
+ROGUE_MD5SUM  = "659c7f5c894f6915e2bd15f922cdab3b"
 
 SUMMARY = "Recipe to build Rogue"
 HOMEPAGE ="https://github.com/slaclab/rogue"
@@ -17,8 +17,7 @@ S = "${WORKDIR}/rogue-${ROGUE_VERSION}"
 PROVIDES = "rogue"
 EXTRA_OECMAKE += "-DROGUE_INSTALL=system -DROGUE_VERSION=v${ROGUE_VERSION}"
 
-# Note: distutils3 is depreciated (not removed) in petalinux 2023.2 and need to switch to setuptools3 in petalinux 2024 release
-inherit cmake python3native distutils3
+inherit cmake python3native setuptools3
 
 DEPENDS += " \
    python3 \
@@ -60,4 +59,11 @@ do_configure:prepend() {
 
 do_install:prepend() {
    cmake_do_install
+}
+
+do_install:append() {
+   # Ensure the target directory exists
+   install -d ${D}${PYTHON_SITEPACKAGES_DIR}
+   # Install the rogue.so file into the Python site-packages directory
+   install -m 0755 ${S}/python/rogue.so ${D}${PYTHON_SITEPACKAGES_DIR}
 }
