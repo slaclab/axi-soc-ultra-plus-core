@@ -110,6 +110,29 @@ Note: Make sure you power cycle the board before JTAG boot
 <!--- ######################################################## -->
 
 
+### How to Program the QSPI flash
+
+```bash
+# Go to petalinux project directory
+cd <MY_PROJECT>
+
+# Define default parameters
+default_parameter="\
+-flash_type qspi-x8-dual_parallel \
+-fsbl images/linux/zynqmp_fsbl.elf \
+-verify -cable type xilinx_tcf url TCP:127.0.0.1:3121"
+
+# Execute the commands
+program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
+program_flash -f images/linux/boot.scr -offset 0x1f80000 $default_parameter
+program_flash -f images/linux/image.ub -offset 0x2000000 $default_parameter
+```
+
+Note: Assuming "qspi-x8-dual_parallel" for QSPI configuration
+
+<!--- ######################################################## -->
+
+
 ### How to Program the NAND flash
 
 ```bash
