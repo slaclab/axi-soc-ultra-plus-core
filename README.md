@@ -119,8 +119,7 @@ cd <MY_PROJECT>
 # Define default parameters
 default_parameter="\
 -flash_type qspi-x8-dual_parallel \
--fsbl images/linux/zynqmp_fsbl.elf \
--verify -cable type xilinx_tcf url TCP:127.0.0.1:3121"
+-fsbl images/linux/zynqmp_fsbl.elf"
 
 # Execute the commands
 program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
@@ -142,8 +141,7 @@ cd <MY_PROJECT>
 # Define default parameters
 default_parameter="\
 -flash_type nand-x8-single \
--fsbl images/linux/zynqmp_fsbl.elf \
--verify -cable type xilinx_tcf url TCP:127.0.0.1:3121"
+-fsbl images/linux/zynqmp_fsbl.elf"
 
 # Execute the commands
 program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
