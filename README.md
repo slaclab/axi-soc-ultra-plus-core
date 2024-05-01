@@ -53,13 +53,13 @@ rst -system
 disconnect
 ```
 
-#### following sequence changes to NAND mode
+#### following sequence changes to Quad-SPI (32b) mode
 ```bash
 xsct
 connect
 targets -set -nocase -filter {name =~ "*PSU*"}
 stop
-mwr  0xff5e0200 0x4100
+mwr  0xff5e0200 0x2100
 rst -system
 con
 disconnect
@@ -72,6 +72,18 @@ connect
 targets -set -nocase -filter {name =~ "*PSU*"}
 stop
 mwr  0xff5e0200 0x3100 
+rst -system
+con
+disconnect
+```
+
+#### following sequence changes to NAND mode
+```bash
+xsct
+connect
+targets -set -nocase -filter {name =~ "*PSU*"}
+stop
+mwr  0xff5e0200 0x4100
 rst -system
 con
 disconnect
