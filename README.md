@@ -119,6 +119,7 @@ cd <MY_PROJECT>
 # Define default parameters
 default_parameter="\
 -flash_type qspi-x8-dual_parallel \
+-blank_check -verify \
 -fsbl images/linux/zynqmp_fsbl.elf"
 
 # Execute the commands
@@ -141,6 +142,7 @@ cd <MY_PROJECT>
 # Define default parameters
 default_parameter="\
 -flash_type nand-x8-single \
+-blank_check -verify \
 -fsbl images/linux/zynqmp_fsbl.elf"
 
 # Execute the commands
