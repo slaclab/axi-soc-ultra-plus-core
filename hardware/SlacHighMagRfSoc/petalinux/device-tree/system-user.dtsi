@@ -13,7 +13,6 @@
 	};
 };
 &gem0 {
-	status = "okay";
 	local-mac-address = [08 00 56 00 00 00];
 	phy-mode = "sgmii";
 	fixed-link {
@@ -26,7 +25,6 @@
 	no-1-8-v;
 };
 &qspi {
-	status = "okay";
 	num-cs = <2>;
 	is-dual = <1>;
 	flash@0 {
