@@ -182,3 +182,13 @@ disconnect
 ```
 
 <!--- ######################################################## -->
+
+### How to dump all the PS diagnostic registers
+
+```bash
+cd submodule/axi-soc-ultra-plus-core
+xsct
+source xsct_debug_dump.tcl
+```
+
+<!--- ######################################################## -->
