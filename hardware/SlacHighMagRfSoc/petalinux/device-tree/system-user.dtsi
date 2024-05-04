@@ -12,6 +12,15 @@
 		interrupt-parent = <&gic>;
 	};
 };
+&gem0 {
+	status = "okay";
+	local-mac-address = [08 00 56 00 00 00];
+	phy-mode = "sgmii";
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+	};
+};
 &sdhci1 {
 	disable-wp;
 	no-1-8-v;
@@ -29,18 +38,5 @@
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 		spi-max-frequency = <50000000>;
-		label = "qpi-storage-0";
-		partition@0 {
-			label = "qpi-boot-bin";
-			reg = <0x0 0x0000000 0x3E80000>;
-		};
-		partition@1 {
-			label = "qpi-boot-src";
-			reg = <0x0 0x3E80000 0x80000>;
-		};
-		partition@2 {
-			label = "qpi-image-ub";
-			reg = <0x0 0x3F80000 0x3F00000>;
-		};
 	};
 };
