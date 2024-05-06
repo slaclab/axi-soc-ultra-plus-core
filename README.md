@@ -137,7 +137,7 @@ default_parameter="\
 # Execute the commands
 program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
 program_flash -f images/linux/boot.scr -offset 0x3E80000 $default_parameter
-program_flash -f images/linux/image.ub -offset 0x3F80000 $default_parameter
+program_flash -f images/linux/image.ub -offset 0x4000000 $default_parameter
 ```
 
 Note: Assuming "qspi-x8-dual_parallel" for QSPI configuration
