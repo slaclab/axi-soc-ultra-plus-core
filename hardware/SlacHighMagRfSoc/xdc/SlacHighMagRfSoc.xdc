@@ -10,3 +10,6 @@
 
 set_property -dict { PACKAGE_PIN W17 IOSTANDARD ANALOG } [get_ports { vPIn }]
 set_property -dict { PACKAGE_PIN Y16 IOSTANDARD ANALOG } [get_ports { vNIn }]
+
+set_property -dict { PACKAGE_PIN N21 IOSTANDARD LVCMOS18 } [get_ports { plScl }]
+set_property -dict { PACKAGE_PIN N20 IOSTANDARD LVCMOS18 } [get_ports { plSda }]
