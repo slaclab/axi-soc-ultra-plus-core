@@ -2,8 +2,8 @@
 # This file is the rogue recipe.
 #
 
-ROGUE_VERSION = "6.1.4"
-ROGUE_MD5SUM  = "659c7f5c894f6915e2bd15f922cdab3b"
+ROGUE_VERSION = "6.2.0"
+ROGUE_MD5SUM  = "51c4eda8f7f53dbd4b66a497df9fd5a6"
 
 SUMMARY = "Recipe to build Rogue"
 HOMEPAGE ="https://github.com/slaclab/rogue"
