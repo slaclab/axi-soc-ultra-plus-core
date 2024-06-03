@@ -72,7 +72,7 @@ class RingBufferProcessor(pr.DataReceiver):
 
             self.add(pr.LocalVariable(
                 name        = 'Freq',
-                description = 'Freq steps (ns)',
+                description = 'Freq steps (MHz)',
                 typeStr     = 'Float[np]',
                 value       = freqSteps,
                 hidden      = True,
@@ -140,25 +140,29 @@ class RingBufferProcessor(pr.DataReceiver):
         with self.root.updateGroup():
             pr.DataReceiver.process(self,frame)
 
-            # Get data from frame
-            waveformData = self.Data.value()[:].view(np.int16)
-            self.WaveformData.set(waveformData,write=True)
+            # Check frame size
+            if (frame.getPayload()//2) != self._maxSize:
+                print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//2}, expected {self._maxSize}' )
+            else:
+                # Get data from frame
+                waveformData = self.Data.value()[:].view(np.int16)
+                self.WaveformData.set(waveformData,write=True)
 
-            # Check if live display
-            if (self._liveDisplay):
+                # Check if live display
+                if (self._liveDisplay):
 
-                # Calculate the FFT
-                freq = np.fft.fft(waveformData)/float(len(waveformData))
-                freq = freq[range(len(waveformData)//2)]
+                    # Calculate the FFT
+                    freq = np.fft.fft(waveformData)/float(len(waveformData))
+                    freq = freq[range(len(waveformData)//2)]
 
-                # Prevent warning message when for divide by zero encountered in log10
-                # Checking for inf later to fix this in the display
-                np.seterr(divide = 'ignore')
+                    # Prevent warning message when for divide by zero encountered in log10
+                    # Checking for inf later to fix this in the display
+                    np.seterr(divide = 'ignore')
 
-                # Calculate the average magnitude
-                mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
-                self._mag[self._idx] = mag
-                magnitude = self.running_mean(self._mag)
-                self.Magnitude.set(magnitude,write=True)
+                    # Calculate the average magnitude
+                    mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
+                    self._mag[self._idx] = mag
+                    magnitude = self.running_mean(self._mag)
+                    self.Magnitude.set(magnitude,write=True)
 
-            self.NewDataReady.set(True)
+                self.NewDataReady.set(True)

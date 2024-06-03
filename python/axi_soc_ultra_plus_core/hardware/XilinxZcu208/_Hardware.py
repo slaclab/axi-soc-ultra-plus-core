@@ -23,6 +23,12 @@ class Hardware(pr.Device):
             allowHexFileRst = False,
         ))
 
+        for i in range(2):
+            self.add(ti.Lmx2594(
+                name   = f'Lmx[{i}]',
+                offset = 0x0054_0000 + i*0x2_0000,
+            ))
+
         self.add(nxp.Sc18Is602(
             name   = 'I2cToSpi',
             offset = 0x0058_0000,
@@ -40,6 +46,12 @@ class Hardware(pr.Device):
 
     def InitClock(self, lmkConfig=None, lmxConfig=[None]):
 
+        # Check if same LMX configuration for both devices
+        if len(lmxConfig) == 1:
+            lmxCfg = [lmxConfig[0] for i in range(2)]
+        else:
+            lmxCfg = lmxConfig
+
         # Seems like 1st time after power up that need to load twice
         for x in range(2):
 
@@ -50,3 +62,10 @@ class Hardware(pr.Device):
             self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
             self.Lmk.Init()
             self.Lmk.enable.set(False)
+
+            # Load the LMX configuration from the TICS Pro software HEX export
+            for i in range(2):
+                if lmxCfg[i] != None:
+                    self.Lmx[i].enable.set(True)
+                    self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
+                    self.Lmx[i].enable.set(False)

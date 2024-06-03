@@ -2,8 +2,8 @@
 # This file is the rogue recipe.
 #
 
-ROGUE_VERSION = "6.1.1"
-ROGUE_MD5SUM  = "f331d9f8f2bf4cfa347c482804e9e21f"
+ROGUE_VERSION = "6.2.0"
+ROGUE_MD5SUM  = "51c4eda8f7f53dbd4b66a497df9fd5a6"
 
 SUMMARY = "Recipe to build Rogue"
 HOMEPAGE ="https://github.com/slaclab/rogue"
@@ -17,7 +17,7 @@ S = "${WORKDIR}/rogue-${ROGUE_VERSION}"
 PROVIDES = "rogue"
 EXTRA_OECMAKE += "-DROGUE_INSTALL=system -DROGUE_VERSION=v${ROGUE_VERSION}"
 
-inherit cmake python3native distutils3
+inherit cmake python3native setuptools3
 
 DEPENDS += " \
    python3 \
@@ -59,4 +59,11 @@ do_configure:prepend() {
 
 do_install:prepend() {
    cmake_do_install
+}
+
+do_install:append() {
+   # Ensure the target directory exists
+   install -d ${D}${PYTHON_SITEPACKAGES_DIR}
+   # Install the rogue.so file into the Python site-packages directory
+   install -m 0755 ${S}/python/rogue.so ${D}${PYTHON_SITEPACKAGES_DIR}
 }

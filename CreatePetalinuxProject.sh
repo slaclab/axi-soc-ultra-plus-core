@@ -68,6 +68,10 @@ rm -rf $name
 petalinux-create --type project --template zynqMP --name $name
 cd $name
 
+# Increase QSPI image.ub size to 128MB
+echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_OFFSET=0x4000000 >> project-spec/configs/config
+echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_SIZE=0x8000000  >> project-spec/configs/config
+
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 

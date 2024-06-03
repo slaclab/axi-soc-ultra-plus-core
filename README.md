@@ -53,13 +53,13 @@ rst -system
 disconnect
 ```
 
-#### following sequence changes to NAND mode
+#### following sequence changes to Quad-SPI (32b) mode
 ```bash
 xsct
 connect
 targets -set -nocase -filter {name =~ "*PSU*"}
 stop
-mwr  0xff5e0200 0x4100
+mwr  0xff5e0200 0x2100
 rst -system
 con
 disconnect
@@ -72,6 +72,18 @@ connect
 targets -set -nocase -filter {name =~ "*PSU*"}
 stop
 mwr  0xff5e0200 0x3100 
+rst -system
+con
+disconnect
+```
+
+#### following sequence changes to NAND mode
+```bash
+xsct
+connect
+targets -set -nocase -filter {name =~ "*PSU*"}
+stop
+mwr  0xff5e0200 0x4100
 rst -system
 con
 disconnect
@@ -110,6 +122,29 @@ Note: Make sure you power cycle the board before JTAG boot
 <!--- ######################################################## -->
 
 
+### How to Program the QSPI flash
+
+```bash
+# Go to petalinux project directory
+cd <MY_PROJECT>
+
+# Define default parameters
+default_parameter="\
+-flash_type qspi-x8-dual_parallel \
+-blank_check -verify \
+-fsbl images/linux/zynqmp_fsbl.elf"
+
+# Execute the commands
+program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
+program_flash -f images/linux/boot.scr -offset 0x3E80000 $default_parameter
+program_flash -f images/linux/image.ub -offset 0x4000000 $default_parameter
+```
+
+Note: Assuming "qspi-x8-dual_parallel" for QSPI configuration
+
+<!--- ######################################################## -->
+
+
 ### How to Program the NAND flash
 
 ```bash
@@ -119,8 +154,8 @@ cd <MY_PROJECT>
 # Define default parameters
 default_parameter="\
 -flash_type nand-x8-single \
--fsbl images/linux/zynqmp_fsbl.elf \
--verify -cable type xilinx_tcf url TCP:127.0.0.1:3121"
+-blank_check -verify \
+-fsbl images/linux/zynqmp_fsbl.elf"
 
 # Execute the commands
 program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
@@ -144,6 +179,16 @@ connect
 targets -set -nocase -filter {name =~ "*PSU*"}
  mwr -force 0x00FFD80528 0x8000FFFF 
 disconnect
+```
+
+<!--- ######################################################## -->
+
+### How to dump all the PS diagnostic registers
+
+```bash
+cd submodule/axi-soc-ultra-plus-core
+xsct
+source xsct_debug_dump.tcl
 ```
 
 <!--- ######################################################## -->
