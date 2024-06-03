@@ -4,10 +4,10 @@ proc regdump {msg} {
 
     set value [mrd -force 0xFF5E0200]
     puts -nonewline "    BOOT_MODE_USER                  = $value"
-	
+
     set value [mrd -force 0xFF5E0204]
     puts -nonewline "    BOOT_MODE_POR                   = $value"
-	
+
     set value [mrd -force 0xFF5E0220]
     puts -nonewline "    RESET_REASON                    = $value"
 
