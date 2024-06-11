@@ -48,6 +48,7 @@ entity AppRingBuffer is
       -- ADC/DAC Interface (dspClk domain)
       dspClk          : in  sl;
       dspRst          : in  sl;
+      dspAdcValid     : in  slv(NUM_ADC_CH_G-1 downto 0)              := (others => '1');
       dspAdc0         : in  slv(16*ADC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspAdc1         : in  slv(16*ADC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspAdc2         : in  slv(16*ADC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
@@ -64,6 +65,7 @@ entity AppRingBuffer is
       dspAdc13        : in  slv(16*ADC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspAdc14        : in  slv(16*ADC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspAdc15        : in  slv(16*ADC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
+      dspDacValid     : in  slv(NUM_DAC_CH_G-1 downto 0)              := (others => '1');
       dspDac0         : in  slv(16*DAC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspDac1         : in  slv(16*DAC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       dspDac2         : in  slv(16*DAC_SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
@@ -169,6 +171,7 @@ begin
             -- DATA Interface (dataClk domain)
             dataClk         => dspClk,
             dataRst         => dspRst,
+            dataValid       => dspAdcValid,
             data0           => dspAdc0,
             data1           => dspAdc1,
             data2           => dspAdc2,
@@ -229,6 +232,7 @@ begin
             -- DATA Interface (dataClk domain)
             dataClk         => dspClk,
             dataRst         => dspRst,
+            dataValid       => dspDacValid,
             data0           => dspDac0,
             data1           => dspDac1,
             data2           => dspDac2,

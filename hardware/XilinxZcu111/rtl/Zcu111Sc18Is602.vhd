@@ -87,7 +87,8 @@ architecture rtl of Zcu111Sc18Is602 is
       regReq      => '0',
       busReq      => '0',
       endianness  => '1',               -- Big endian
-      repeatStart => '0');
+      repeatStart => '0',
+      wrDataOnRd  => '0');
 
    type StateType is (
       IDLE_S,

@@ -44,6 +44,7 @@ entity AppRingBufferEngine is
       -- DATA Interface (dataClk domain)
       dataClk         : in  sl;
       dataRst         : in  sl;
+      dataValid       : in  slv(NUM_CH_G-1 downto 0)              := (others => '1');
       data0           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       data1           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
       data2           : in  slv(16*SAMPLE_PER_CYCLE_G-1 downto 0) := (others => '0');
@@ -141,6 +142,7 @@ begin
          port map (
             -- Data to store in ring buffer (dataClk domain)
             dataClk         => dataClk,
+            dataValid       => dataValid(i),
             dataValue       => dataValues(i),
             extTrig         => extTrigIn,
             -- AXI-Lite interface (axilClk domain)
