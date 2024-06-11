@@ -148,6 +148,7 @@ class SigGen(pr.Device):
                 hidden       = True,
                 base         = pr.Int,
                 mode         = "RW",
+                groups       = ['NoStream','NoState','NoConfig'], # Not saving config/state to YAML
             ))
 
         self.add(pr.LocalVariable(
