@@ -32,6 +32,9 @@ class RingBufferProcessor(pr.DataReceiver):
 
         self._liveDisplay = liveDisplay
 
+        # Not saving config/state to YAML
+        guiGroups = ['NoStream','NoState','NoConfig']
+
         # Remove data variable from stream and server
         self.Data.addToGroup('NoServe')
         self.Data.addToGroup('NoStream')
@@ -58,6 +61,7 @@ class RingBufferProcessor(pr.DataReceiver):
             typeStr     = 'Float[np]',
             value       = timeSteps,
             hidden      = True,
+            groups      = guiGroups,
         ))
 
         self.add(pr.LocalVariable(
@@ -66,6 +70,7 @@ class RingBufferProcessor(pr.DataReceiver):
             typeStr     = 'Int16[np]',
             value       = np.zeros(shape=self._maxSize, dtype=np.int16, order='C'),
             hidden      = True,
+            groups      = guiGroups,
         ))
 
         if (self._liveDisplay):
@@ -76,6 +81,7 @@ class RingBufferProcessor(pr.DataReceiver):
                 typeStr     = 'Float[np]',
                 value       = freqSteps,
                 hidden      = True,
+                groups      = guiGroups,
             ))
 
             self.add(pr.LocalVariable(
@@ -84,6 +90,7 @@ class RingBufferProcessor(pr.DataReceiver):
                 typeStr     = 'Float[np]',
                 value       = np.zeros(shape=(self._maxSize>>1), dtype=np.float32, order='C'),
                 hidden      = True,
+                groups      = guiGroups,
             ))
 
             self.add(pr.LocalVariable(
@@ -95,13 +102,15 @@ class RingBufferProcessor(pr.DataReceiver):
                 value       = self._maxAve,
                 minimum     = 1,
                 maximum     = self._maxAve,
+                groups      = guiGroups,
             ))
 
             self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float32, order='C')
 
         self.add(pr.LocalVariable(
-            name  = 'NewDataReady',
-            value = False,
+            name   = 'NewDataReady',
+            value  = False,
+            groups = guiGroups,
         ))
 
     def _start(self):
