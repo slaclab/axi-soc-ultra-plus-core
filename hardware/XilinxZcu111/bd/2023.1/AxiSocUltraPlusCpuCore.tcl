@@ -251,7 +251,6 @@ proc create_root_design { parentCell } {
 
   # Create ports
   set pmuErrorFromPl [ create_bd_port -dir I -from 3 -to 0 pmuErrorFromPl ]
-  set dmaIrq [ create_bd_port -dir I -type intr dmaIrq ]
   set dmaClk [ create_bd_port -dir I -type clk -freq_hz 250000000 dmaClk ]
   set_property -dict [ list \
    CONFIG.ASSOCIATED_BUSIF {dma:axiLite:dmaCtrl} \
@@ -265,6 +264,7 @@ proc create_root_design { parentCell } {
   set plRstL [ create_bd_port -dir O -type rst plRstL ]
   set fanEnableL [ create_bd_port -dir O -from 0 -to 0 fanEnableL ]
   set dmaRstL [ create_bd_port -dir I -type rst dmaRstL ]
+  set pl_ps_irq0 [ create_bd_port -dir I -from 7 -to 0 pl_ps_irq0 ]
 
   # Create instance: ps_e, and set properties
   set ps_e [ create_bd_cell -type ip -vlnv xilinx.com:ip:zynq_ultra_ps_e:3.5 ps_e ]
@@ -593,6 +593,7 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
     CONFIG.PSU__USB__RESET__MODE {Boot Pin} \
     CONFIG.PSU__USB__RESET__POLARITY {Active Low} \
     CONFIG.PSU__USE__IRQ0 {1} \
+    CONFIG.PSU__USE__IRQ1 {0} \
     CONFIG.PSU__USE__M_AXI_GP0 {1} \
     CONFIG.PSU__USE__M_AXI_GP1 {1} \
     CONFIG.PSU__USE__M_AXI_GP2 {0} \
@@ -645,7 +646,7 @@ Port;FD4A0000;FD4AFFFF;1|FPD;DPDMA;FD4C0000;FD4CFFFF;1|FPD;DDR_XMPU5_CFG;FD05000
   # Create port connections
   connect_bd_net -net aresetn_0_1 [get_bd_ports dmaRstL] [get_bd_pins axi_protocol_convert_0/aresetn] [get_bd_pins axi_protocol_convert_1/aresetn]
   connect_bd_net -net dmaClk_1 [get_bd_ports dmaClk] [get_bd_pins ps_e/saxihp0_fpd_aclk] [get_bd_pins ps_e/maxihpm1_fpd_aclk] [get_bd_pins ps_e/maxihpm0_fpd_aclk] [get_bd_pins axi_protocol_convert_0/aclk] [get_bd_pins axi_protocol_convert_1/aclk]
-  connect_bd_net -net dmaIrq_1 [get_bd_ports dmaIrq] [get_bd_pins ps_e/pl_ps_irq0]
+  connect_bd_net -net pl_ps_irq0_1 [get_bd_ports pl_ps_irq0] [get_bd_pins ps_e/pl_ps_irq0]
   connect_bd_net -net pmu_error_from_pl_0_1 [get_bd_ports pmuErrorFromPl] [get_bd_pins ps_e/pmu_error_from_pl]
   connect_bd_net -net ps_e_emio_ttc0_wave_o [get_bd_pins ps_e/emio_ttc0_wave_o] [get_bd_pins xlslice_0/Din]
   connect_bd_net -net ps_e_pl_clk0 [get_bd_pins ps_e/pl_clk0] [get_bd_ports plClk]
