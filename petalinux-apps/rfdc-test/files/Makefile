@@ -2,10 +2,6 @@
 OUTS =
 RFDC_OBJS =
 
-# Compiler and flags
-CFLAGS += -I${STAGING_INCDIR} -D__aarch64__ -Wall -Wextra -O2
-LDFLAGS += -L${STAGING_LIBDIR} -lrfdc -lmetal -Wl,--hash-style=gnu
-
 all: $(OUTS)
 
 $(OUTS): $(RFDC_OBJS)
