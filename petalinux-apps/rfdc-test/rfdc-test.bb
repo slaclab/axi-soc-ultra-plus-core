@@ -27,12 +27,12 @@ EXTRA_OEMAKE = " \
 "
 
 do_compile (){
-    oe_runmake OUTS=rfdc-selftest RFDC_OBJS=xrfdc_selftest_example.o
-    oe_runmake OUTS=rfdc-mst      RFDC_OBJS=xrfdc_mts_example.o
+    oe_runmake OUTS=rfdc-test RFDC_OBJS=xrfdc_selftest_example.o
+    oe_runmake OUTS=rfdc-mst  RFDC_OBJS=xrfdc_mts_example.o
 }
 
 do_install() {
    install -d ${D}/${bindir}
-   install -m 0755 ${S}/rfdc-selftest ${D}/${bindir}
-   install -m 0755 ${S}/rfdc-mst ${D}/${bindir}
+   install -m 0755 ${S}/rfdc-test ${D}/${bindir}
+   install -m 0755 ${S}/rfdc-mst  ${D}/${bindir}
 }

@@ -185,6 +185,10 @@ echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_htop   >> project-spec/configs/rootfsconfigs/user-rootfsconfig
 echo CONFIG_htop   >> project-spec/meta-user/conf/user-rootfsconfig
 
+echo CONFIG_rfdc-selftest=y >> project-spec/configs/rootfs_config
+echo CONFIG_rfdc-selftest   >> project-spec/configs/rootfsconfigs/user-rootfsconfig
+echo CONFIG_rfdc-selftest   >> project-spec/meta-user/conf/user-rootfsconfig
+
 ##############################################################################
 
 # # Add the P4P python package and its dependences
