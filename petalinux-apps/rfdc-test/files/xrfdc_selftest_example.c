@@ -173,7 +173,8 @@ int XRFdc_SelfTestExample(u16 RFdcDeviceId)
 	u32 DACSetFabricRate[4];
 	u32 GetFabricRate;
 
-	struct metal_init_params init_param = METAL_INIT_DEFAULTS;
+	// struct metal_init_params init_param = METAL_INIT_DEFAULTS;
+	struct metal_init_params init_param = {.log_handler = metal_default_log_handler, .log_level = METAL_LOG_DEBUG};
 
 	if (metal_init(&init_param)) {
 		printf("ERROR: Failed to run metal initialization\n");
