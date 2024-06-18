@@ -51,52 +51,21 @@ entity AxiSocUltraPlusCpu is
       pmuErrorToPl       : out slv(46 downto 0);
       fanEnableL         : out sl;
       -- Interrupt Interface
-      plToPsIrq0         : in  slv(7 downto 0));
+      dmaIrq             : in  sl);
 end AxiSocUltraPlusCpu;
 
 architecture mapping of AxiSocUltraPlusCpu is
 
    component AxiSocUltraPlusCpuCore is
       port (
-         dma_aruser      : in  std_logic;
-         dma_awuser      : in  std_logic;
-         dma_awid        : in  std_logic_vector (5 downto 0);
-         dma_awaddr      : in  std_logic_vector (48 downto 0);
-         dma_awlen       : in  std_logic_vector (7 downto 0);
-         dma_awsize      : in  std_logic_vector (2 downto 0);
-         dma_awburst     : in  std_logic_vector (1 downto 0);
-         dma_awlock      : in  std_logic;
-         dma_awcache     : in  std_logic_vector (3 downto 0);
-         dma_awprot      : in  std_logic_vector (2 downto 0);
-         dma_awvalid     : in  std_logic;
-         dma_awready     : out std_logic;
-         dma_wdata       : in  std_logic_vector (127 downto 0);
-         dma_wstrb       : in  std_logic_vector (15 downto 0);
-         dma_wlast       : in  std_logic;
-         dma_wvalid      : in  std_logic;
-         dma_wready      : out std_logic;
-         dma_bid         : out std_logic_vector (5 downto 0);
-         dma_bresp       : out std_logic_vector (1 downto 0);
-         dma_bvalid      : out std_logic;
-         dma_bready      : in  std_logic;
-         dma_arid        : in  std_logic_vector (5 downto 0);
-         dma_araddr      : in  std_logic_vector (48 downto 0);
-         dma_arlen       : in  std_logic_vector (7 downto 0);
-         dma_arsize      : in  std_logic_vector (2 downto 0);
-         dma_arburst     : in  std_logic_vector (1 downto 0);
-         dma_arlock      : in  std_logic;
-         dma_arcache     : in  std_logic_vector (3 downto 0);
-         dma_arprot      : in  std_logic_vector (2 downto 0);
-         dma_arvalid     : in  std_logic;
-         dma_arready     : out std_logic;
-         dma_rid         : out std_logic_vector (5 downto 0);
-         dma_rdata       : out std_logic_vector (127 downto 0);
-         dma_rresp       : out std_logic_vector (1 downto 0);
-         dma_rlast       : out std_logic;
-         dma_rvalid      : out std_logic;
-         dma_rready      : in  std_logic;
-         dma_awqos       : in  std_logic_vector (3 downto 0);
-         dma_arqos       : in  std_logic_vector (3 downto 0);
+         dmaClk          : in  std_logic;
+         dmaIrq          : in  std_logic;
+         dmaRstL         : in  std_logic;
+         fanEnableL      : out std_logic_vector (0 to 0);
+         plClk           : out std_logic;
+         plRstL          : out std_logic;
+         pmuErrorFromPl  : in  std_logic_vector (3 downto 0);
+         pmuErrorToPl    : out std_logic_vector (46 downto 0);
          axiLite_awaddr  : out std_logic_vector (39 downto 0);
          axiLite_awprot  : out std_logic_vector (2 downto 0);
          axiLite_awvalid : out std_logic;
@@ -135,14 +104,45 @@ architecture mapping of AxiSocUltraPlusCpu is
          dmaCtrl_rresp   : in  std_logic_vector (1 downto 0);
          dmaCtrl_rvalid  : in  std_logic;
          dmaCtrl_rready  : out std_logic;
-         pmuErrorFromPl  : in  std_logic_vector (3 downto 0);
-         dmaClk          : in  std_logic;
-         plClk           : out std_logic;
-         pmuErrorToPl    : out std_logic_vector (46 downto 0);
-         plRstL          : out std_logic;
-         fanEnableL      : out std_logic_vector (0 to 0);
-         dmaRstL         : in  std_logic;
-         pl_ps_irq0      : in  std_logic_vector (7 downto 0)
+         dma_aruser      : in  std_logic;
+         dma_awuser      : in  std_logic;
+         dma_awid        : in  std_logic_vector (5 downto 0);
+         dma_awaddr      : in  std_logic_vector (48 downto 0);
+         dma_awlen       : in  std_logic_vector (7 downto 0);
+         dma_awsize      : in  std_logic_vector (2 downto 0);
+         dma_awburst     : in  std_logic_vector (1 downto 0);
+         dma_awlock      : in  std_logic;
+         dma_awcache     : in  std_logic_vector (3 downto 0);
+         dma_awprot      : in  std_logic_vector (2 downto 0);
+         dma_awvalid     : in  std_logic;
+         dma_awready     : out std_logic;
+         dma_wdata       : in  std_logic_vector (127 downto 0);
+         dma_wstrb       : in  std_logic_vector (15 downto 0);
+         dma_wlast       : in  std_logic;
+         dma_wvalid      : in  std_logic;
+         dma_wready      : out std_logic;
+         dma_bid         : out std_logic_vector (5 downto 0);
+         dma_bresp       : out std_logic_vector (1 downto 0);
+         dma_bvalid      : out std_logic;
+         dma_bready      : in  std_logic;
+         dma_arid        : in  std_logic_vector (5 downto 0);
+         dma_araddr      : in  std_logic_vector (48 downto 0);
+         dma_arlen       : in  std_logic_vector (7 downto 0);
+         dma_arsize      : in  std_logic_vector (2 downto 0);
+         dma_arburst     : in  std_logic_vector (1 downto 0);
+         dma_arlock      : in  std_logic;
+         dma_arcache     : in  std_logic_vector (3 downto 0);
+         dma_arprot      : in  std_logic_vector (2 downto 0);
+         dma_arvalid     : in  std_logic;
+         dma_arready     : out std_logic;
+         dma_rid         : out std_logic_vector (5 downto 0);
+         dma_rdata       : out std_logic_vector (127 downto 0);
+         dma_rresp       : out std_logic_vector (1 downto 0);
+         dma_rlast       : out std_logic;
+         dma_rvalid      : out std_logic;
+         dma_rready      : in  std_logic;
+         dma_awqos       : in  std_logic_vector (3 downto 0);
+         dma_arqos       : in  std_logic_vector (3 downto 0)
          );
    end component AxiSocUltraPlusCpuCore;
 
@@ -218,6 +218,7 @@ begin
          dmaCtrl_bvalid               => dmaCtrlWriteSlave.bvalid,
          -- DMA Interface
          dmaClk                       => dmaClk,
+         dmaIrq                       => dmaIrq,
          dmaRstL                      => dmaRstL,
          dma_araddr(48 downto 0)      => dmaReadMaster.araddr(48 downto 0),
          dma_arburst(1 downto 0)      => dmaReadMaster.arburst(1 downto 0),
@@ -262,10 +263,9 @@ begin
          pmuErrorFromPl               => pmuErrorFromPl,
          pmuErrorToPl                 => pmuErrorToPl,
          fanEnableL(0)                => fanEnableL,
-         -- Reference Clock and reset and
+         -- Reference Clock and reset
          plClk                        => plClk,
-         plRstL                       => plRstL,
-         pl_ps_irq0                   => plToPsIrq0);
+         plRstL                       => plRstL);
 
    U_Pll : entity surf.ClockManagerUltraScale
       generic map(

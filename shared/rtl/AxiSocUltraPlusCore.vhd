@@ -42,8 +42,6 @@ entity AxiSocUltraPlusCore is
       ------------------------
       --  Top Level Interfaces
       ------------------------
-      -- External Interrupt Interface
-      rfdcIrq         : in  sl;
       -- DSP Clock and Reset Monitoring
       dspClk          : in  sl;
       dspRst          : in  sl;
@@ -110,7 +108,6 @@ architecture mapping of AxiSocUltraPlusCore is
    signal auxReset    : sl;
    signal cardReset   : sl;
    signal dmaIrq      : sl;
-   signal plToPsIrq0  : slv(7 downto 0);
 
 begin
 
@@ -137,14 +134,6 @@ begin
          rstOut => auxRst);
 
    systemReset(1) <= auxReset or cardReset;
-
-   -----------------------
-   -- PL-to-PS IRQ mapping
-   -----------------------
-   plToPsIrq0(0) <= dmaIrq;             -- IRQ#89
-   plToPsIrq0(1) <= rfdcIrq;            -- IRQ#90
-
-   plToPsIrq0(7 downto 2) <= (others => '0');  -- Reserved
 
    ----------
    -- AXI CPU
@@ -179,7 +168,7 @@ begin
             pmuErrorToPl       => pmuErrorToPl,
             fanEnableL         => fanEnableL,
             -- Interrupt Interface
-            plToPsIrq0         => plToPsIrq0);
+            dmaIrq             => dmaIrq);
 
    end generate;
 

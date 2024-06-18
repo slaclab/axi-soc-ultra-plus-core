@@ -1,9 +1,9 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0xE952A08DBC147BB0",
+      "boundary_crc": "0xE7D16F784B1292A1",
       "device": "xczu28dr-ffvg1517-2-e",
-      "gen_directory": "../../../../KekBpmRfsocDevZcu111_4072MSPS_BypassDDC_project.gen/sources_1/bd/2023",
+      "gen_directory": "../../../../SimpleZcu111Example_project.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
       "name": "AxiSocUltraPlusCpuCore",
       "pfm_name": "xilinx.com:xd:zcu111:1.0",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
@@ -776,6 +776,20 @@
         "left": "3",
         "right": "0"
       },
+      "dmaIrq": {
+        "type": "intr",
+        "direction": "I",
+        "parameters": {
+          "PortWidth": {
+            "value": "1",
+            "value_src": "default"
+          },
+          "SENSITIVITY": {
+            "value": "LEVEL_HIGH",
+            "value_src": "default"
+          }
+        }
+      },
       "dmaClk": {
         "type": "clk",
         "direction": "I",
@@ -874,17 +888,6 @@
           "POLARITY": {
             "value": "ACTIVE_LOW",
             "value_src": "default"
-          }
-        }
-      },
-      "pl_ps_irq0": {
-        "direction": "I",
-        "left": "7",
-        "right": "0",
-        "parameters": {
-          "PortWidth": {
-            "value": "1",
-            "value_src": "default_prop"
           }
         }
       }
@@ -1855,9 +1858,6 @@
           "PSU__USE__IRQ0": {
             "value": "1"
           },
-          "PSU__USE__IRQ1": {
-            "value": "0"
-          },
           "PSU__USE__M_AXI_GP0": {
             "value": "1"
           },
@@ -2116,9 +2116,9 @@
           "axi_protocol_convert_1/aclk"
         ]
       },
-      "pl_ps_irq0_1": {
+      "dmaIrq_1": {
         "ports": [
-          "pl_ps_irq0",
+          "dmaIrq",
           "ps_e/pl_ps_irq0"
         ]
       },
