@@ -9,7 +9,6 @@
 #-----------------------------------------------------------------------------
 
 import pyrogue as pr
-import click
 import csv
 
 class SigGen(pr.Device):
@@ -201,4 +200,3 @@ class SigGen(pr.Device):
 
             # Toggle flags (if flags already active)
             self.RefreshDacFsm()
-

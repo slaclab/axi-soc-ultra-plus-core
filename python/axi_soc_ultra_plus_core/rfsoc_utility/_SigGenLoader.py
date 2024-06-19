@@ -35,7 +35,7 @@ class SigGenLoader(pr.Device):
             smplPerCycle = 16, # Must match SAMPLE_PER_CYCLE_G config
             sampleRate   = 5.0E+9, # Units of Hz
             defaultFreq  = 200.0E+6, # Units of Hz
-        **kwargs):
+            **kwargs):
         super().__init__(**kwargs)
 
         self.DacSigGen    = DacSigGen

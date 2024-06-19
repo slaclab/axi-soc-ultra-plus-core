@@ -15,9 +15,9 @@ from qtpy.QtWidgets import (QVBoxLayout, QTabWidget)
 from pyrogue.pydm.widgets import DebugTree
 from pyrogue.pydm.widgets import SystemWindow
 
-Channel = 'rogue://0/root'
-
 import axi_soc_ultra_plus_core.rfsoc_utility.gui as gui
+
+Channel = 'rogue://0/root'
 
 class GuiTop(Display):
     def __init__(self, parent=None, args=[], macros=None):

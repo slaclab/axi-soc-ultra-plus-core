@@ -11,10 +11,9 @@
 import rogue.interfaces.stream as ris
 import pyrogue as pr
 import numpy as np
-import math
 
 import rogue
-rogue.Version.minVersion('5.18.3')
+rogue.Version.minVersion('6.2.0')
 
 # Class for streaming RX
 class RingBufferProcessor(pr.DataReceiver):
@@ -25,7 +24,7 @@ class RingBufferProcessor(pr.DataReceiver):
             maxAve      = 4,
             liveDisplay = True,
             hidden      = True,
-        **kwargs):
+            **kwargs):
         pr.Device.__init__(self, hidden=hidden, **kwargs)
         ris.Slave.__init__(self)
         pr.DataReceiver.__init__(self, enableOnStart=True, hideData=True, hidden=hidden, **kwargs)
