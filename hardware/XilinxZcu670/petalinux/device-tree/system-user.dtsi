@@ -36,4 +36,10 @@
 		interrupts = <0 89 4>;
 		interrupt-parent = <&gic>;
 	};
+	usp_rf_data_converter@490000000 {
+		compatible = "xlnx,usp-rf-data-converter-2.6";
+		num-insts = <0x1>;
+		param-list = [ ];
+		reg = <0x4 0x90000000 0x0 0x40000>;
+	};
 };

@@ -159,6 +159,14 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 
 ##############################################################################
 
+# Add RFDC selftest application
+petalinux-create -t apps --template install -n rfdc-test
+echo CONFIG_rfdc-test=y >> project-spec/configs/rootfs_config
+cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-test project-spec/meta-user/recipes-apps/.
+echo IMAGE_INSTALL:append = \" rfdc-test\" >> build/conf/local.conf
+
+##############################################################################
+
 # Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
 petalinux-create -t apps --template install -n startup-app-init --enable
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startup-app-init project-spec/meta-user/recipes-apps/.

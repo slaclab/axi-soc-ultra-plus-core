@@ -4,14 +4,6 @@
 		stdout-path = "serial0:115200n8";
 	};
 };
-/ {
-	axi_stream_dma_0@b0000000 {
-		compatible = "axi_stream_dma";
-		reg = <0x0 0xb0000000 0x0 0x10000>;
-		interrupts = <0 89 4>;
-		interrupt-parent = <&gic>;
-	};
-};
 /*------------------ ETH PHY --------------------*/
 /* ETH PHY */
 &gem3 {
@@ -40,5 +32,19 @@
 		mac_address: mac-address@FA {
 			reg = <0xFA 6>;
 		};
+	};
+};
+/ {
+	axi_stream_dma_0@b0000000 {
+		compatible = "axi_stream_dma";
+		reg = <0x0 0xb0000000 0x0 0x10000>;
+		interrupts = <0 89 4>;
+		interrupt-parent = <&gic>;
+	};
+	usp_rf_data_converter@490000000 {
+		compatible = "xlnx,usp-rf-data-converter-2.6";
+		num-insts = <0x1>;
+		param-list = [ ];
+		reg = <0x4 0x90000000 0x0 0x40000>;
 	};
 };
