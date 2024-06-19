@@ -75,8 +75,6 @@ echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_SIZE=0x8000000  >> project-spec/confi
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
-echo CONFIG_UIO_PDRV_GENIRQ=y   >> project-spec/configs/config
-
 # Check if the hardware has custom u-boot
 if [ -f "$hwDir/petalinux/u-boot/platform-top.h" ]
 then

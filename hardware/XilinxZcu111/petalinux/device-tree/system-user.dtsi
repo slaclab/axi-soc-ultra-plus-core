@@ -30,9 +30,6 @@
 	nvmem-cells = <&mac_address>;
 	nvmem-cell-names = "mac-address";
 };
-&axiLite1 { /* Prevent memory overlap with usp_rf_data_converter */
-	status = "disabled";
-};
 / {
 	axi_stream_dma_0@b0000000 {
 		compatible = "axi_stream_dma";
