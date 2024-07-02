@@ -9,7 +9,6 @@
 #-----------------------------------------------------------------------------
 
 import pyrogue as pr
-import click
 import csv
 
 class SigGen(pr.Device):
@@ -148,6 +147,7 @@ class SigGen(pr.Device):
                 hidden       = True,
                 base         = pr.Int,
                 mode         = "RW",
+                groups       = ['NoStream','NoState','NoConfig'], # Not saving config/state to YAML
             ))
 
         self.add(pr.LocalVariable(
@@ -200,4 +200,3 @@ class SigGen(pr.Device):
 
             # Toggle flags (if flags already active)
             self.RefreshDacFsm()
-

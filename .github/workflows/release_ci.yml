@@ -18,84 +18,50 @@ on: [push]
 
 jobs:
 
-  gen_release:
-    name: Generate Release
-    runs-on: ubuntu-20.04
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
+# ----------------------------------------------------------------------------
 
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
-
-      - name: Get Image Information
-        id: get_image_info
-        run: |
-          echo ::set-output name=tag::`git describe --tags`
-
-      - name: Get Ruckus
-        run: |
-          git clone https://github.com/slaclab/ruckus.git
-          python -m pip install --upgrade pip
-          pip install -r ruckus/scripts/pip_requirements.txt
-
-      - name: Gen Release
-        env:
-          TRAVIS_REPO_SLUG: ${{ github.repository }}
-          TRAVIS_TAG: ${{ steps.get_image_info.outputs.tag }}
-          GH_REPO_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          python ruckus/scripts/releaseGen.py
-
-  conda_build:
-    name: Anaconda Build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-20.04
+  test_and_document:
+    name: Test And Generate Documentation
+    runs-on: ubuntu-22.04
     steps:
 
       # This step checks out a copy of your repository.
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
-          python-version: 3.8
+          python-version: 3.11
 
-      - name: Setup anaconda
-        env:
-          OS_NAME: ${{ matrix.os }}
+      - name: Install dependencies
         run: |
-          cd ${HOME}
-          wget -O miniconda.sh https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-          bash miniconda.sh -b -p ${HOME}/miniconda
-          export PATH="${HOME}/miniconda/bin:$PATH"
-          source ${HOME}/miniconda/etc/profile.d/conda.sh
-          conda config --set always_yes yes
-          conda config --set channel_priority strict
-          conda install -n base conda-libmamba-solver
-          conda config --set solver libmamba
-          conda install conda-build anaconda-client conda-verify
-          conda update -q conda conda-build
-          conda update --all
+          python -m pip install --upgrade pip
+          pip install flake8
 
-      - name: Get Image Information
-        id: get_image_info
-        env:
-          CONDA_UPLOAD_TOKEN_TAG: ${{ secrets.CONDA_UPLOAD_TOKEN_TAG }}
-          OS_NAME: ${{ matrix.os }}
+      - name: Python Syntax Check
         run: |
-          echo ::set-output name=token::$CONDA_UPLOAD_TOKEN_TAG
-          echo ::set-output name=os::linux-64
+          python -m compileall -f python/
+          flake8 --count python/
 
-      - name: Build And Upload
-        run: |
-          export PATH="${HOME}/miniconda/bin:$PATH"
-          source ${HOME}/miniconda/etc/profile.d/conda.sh
-          conda build --debug conda-recipe --output-folder bld-dir -c tidair-tag -c tidair-packages -c conda-forge
-          anaconda -t ${{ steps.get_image_info.outputs.token }} upload --force bld-dir/noarch/*.tar.bz2
+# ----------------------------------------------------------------------------
 
+  gen_release:
+    needs: [test_and_document]
+    uses: slaclab/ruckus/.github/workflows/gen_release.yml@main
+    with:
+      version: '1.0.0'
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+# ----------------------------------------------------------------------------
+
+  conda_build_lib:
+    needs: [test_and_document]
+    uses: slaclab/ruckus/.github/workflows/conda_build_lib.yml@main
+    with:
+      version: '1.0.0'
+    secrets:
+      CONDA_UPLOAD_TOKEN_TAG: ${{ secrets.CONDA_UPLOAD_TOKEN_TAG }}
+
+# ----------------------------------------------------------------------------

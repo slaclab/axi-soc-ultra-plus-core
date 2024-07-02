@@ -117,4 +117,3 @@ class Hardware(pr.Device):
 
         self.Tca6416a.enable.set(False)
         time.sleep(1.0)
-

@@ -12,12 +12,9 @@ from pydm.widgets.frame import PyDMFrame
 from pydm.widgets import PyDMWaveformPlot, PyDMSpinbox, PyDMPushButton
 
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QDoubleSpinBox
+from qtpy.QtWidgets import QVBoxLayout, QFormLayout, QGroupBox
 
 from pyrogue.pydm.data_plugins.rogue_plugin import nodeFromAddress
-from pyrogue.pydm.widgets import PyRogueLineEdit
-
-import pyrogue as pr
 
 class LiveDisplay(PyDMFrame):
     def __init__(self, parent=None, init_channel=None, dispType='Adc', numCh=8):

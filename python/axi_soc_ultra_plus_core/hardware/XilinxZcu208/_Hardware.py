@@ -65,7 +65,7 @@ class Hardware(pr.Device):
 
             # Load the LMX configuration from the TICS Pro software HEX export
             for i in range(2):
-                if lmxCfg[i] != None:
+                if lmxCfg[i] is not None:
                     self.Lmx[i].enable.set(True)
                     self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
                     self.Lmx[i].enable.set(False)
