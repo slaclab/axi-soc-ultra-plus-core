@@ -9,7 +9,10 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-while getopts p:n:h:x:l:d:t:r:s: flag
+# Set default values
+rfdc=1
+
+while getopts p:n:h:x:l:d:t:r:s:f: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
@@ -21,6 +24,7 @@ do
         t) dmaTxBuffCount=${OPTARG};;
         r) dmaRxBuffCount=${OPTARG};;
         s) dmaBuffSize=${OPTARG};;
+        f) rfdc=${OPTARG};;
     esac
 done
 
@@ -55,6 +59,7 @@ echo "Number of DEST per lane: $numDest";
 echo "Number of DMA TX Buffers: $dmaTxBuffCount";
 echo "Number of DMA RX Buffers: $dmaRxBuffCount";
 echo "DMA Buffer Size: $dmaBuffSize Bytes";
+echo "Include RFDC utility: $rfdc";
 echo "$axi_soc_ultra_plus_core"
 echo "$aes_stream_drivers"
 
@@ -159,11 +164,15 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 
 ##############################################################################
 
-# Add RFDC selftest application
-petalinux-create -t apps --template install -n rfdc-test
-echo CONFIG_rfdc-test=y >> project-spec/configs/rootfs_config
-cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-test project-spec/meta-user/recipes-apps/.
-echo IMAGE_INSTALL:append = \" rfdc-test\" >> build/conf/local.conf
+# Check if including RFDC utility
+if [ "$rfdc" -eq 1 ]
+then
+    # Add RFDC selftest application
+    petalinux-create -t apps --template install -n rfdc-test
+    echo CONFIG_rfdc-test=y >> project-spec/configs/rootfs_config
+    cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-test project-spec/meta-user/recipes-apps/.
+    echo IMAGE_INSTALL:append = \" rfdc-test\" >> build/conf/local.conf
+fi
 
 ##############################################################################
 
