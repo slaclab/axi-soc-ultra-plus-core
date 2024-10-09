@@ -59,5 +59,6 @@ package AxiSocUltraPlusPkg is
    constant HW_TYPE_REAL_DIGITAL_RFSOC4x2_C : slv(31 downto 0) := x"00_00_00_06"; -- RealDigitalRfSoC4x2
    constant HW_TYPE_XILINX_ZCU111_C         : slv(31 downto 0) := x"00_00_00_07"; -- XilinxZcu111
    constant HW_TYPE_XILINX_ZCU670_C         : slv(31 downto 0) := x"00_00_00_08"; -- XilinxZcu670
+   constant HW_TYPE_XILINX_K26_ZCCM_C       : slv(31 downto 0) := x"00_00_00_09"; -- XilinxK26_ZCCM
 
 end package AxiSocUltraPlusPkg;
