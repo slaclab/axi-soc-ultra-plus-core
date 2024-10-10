@@ -1,6 +1,6 @@
 
 ################################################################
-# This is a generated script based on design: kr260_starter_kit
+# This is a generated script based on design: AxiSocUltraPlusCpuCore
 #
 # Though there are limitations about the generated script,
 # the main purpose of this utility is to make learning
@@ -41,7 +41,7 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 ################################################################
 
 # To test this script, run the following commands from Vivado Tcl console:
-# source kr260_starter_kit_script.tcl
+# source AxiSocUltraPlusCpuCore_script.tcl
 
 # If there is no project opened, this script will create a
 # project, but make sure you do not have an existing project
@@ -50,13 +50,13 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 set list_projs [get_projects -quiet]
 if { $list_projs eq "" } {
    create_project project_1 myproj -part xck26-sfvc784-2LV-c
-   set_property BOARD_PART xilinx.com:kr260_som_som240_2_connector_kr260_carrier_som240_2_connector_som240_1_connector_kr260_carrier_som240_1_connector:part0:1.1 [current_project]
+   set_property BOARD_PART xilinx.com:k26c:part0:1.4 [current_project]
 }
 
 
 # CHANGE DESIGN NAME HERE
 variable design_name
-set design_name kr260_starter_kit
+set design_name AxiSocUltraPlusCpuCore
 
 # If you do not already have an existing IP Integrator design open,
 # you can create a design using the following command:
@@ -500,7 +500,7 @@ proc create_root_design { parentCell } {
 \
     CONFIG.PSU_SD0_INTERNAL_BUS_WIDTH {8} \
     CONFIG.PSU_SD1_INTERNAL_BUS_WIDTH {8} \
-    CONFIG.PSU_USB3__DUAL_CLOCK_ENABLE {1} \
+    CONFIG.PSU_USB3__DUAL_CLOCK_ENABLE {0} \
     CONFIG.PSU__ACT_DDR_FREQ_MHZ {1066.656006} \
     CONFIG.PSU__CAN1__PERIPHERAL__ENABLE {0} \
     CONFIG.PSU__CRF_APB__ACPU_CTRL__ACT_FREQMHZ {1333.333008} \
@@ -604,7 +604,7 @@ proc create_root_design { parentCell } {
     CONFIG.PSU__CRL_APB__USB3_DUAL_REF_CTRL__ACT_FREQMHZ {19.999800} \
     CONFIG.PSU__CRL_APB__USB3_DUAL_REF_CTRL__FREQMHZ {20} \
     CONFIG.PSU__CRL_APB__USB3_DUAL_REF_CTRL__SRCSEL {IOPLL} \
-    CONFIG.PSU__CRL_APB__USB3__ENABLE {1} \
+    CONFIG.PSU__CRL_APB__USB3__ENABLE {0} \
     CONFIG.PSU__CSUPMU__PERIPHERAL__VALID {1} \
     CONFIG.PSU__DDRC__BG_ADDR_COUNT {1} \
     CONFIG.PSU__DDRC__BRC_MAPPING {ROW_BANK_COL} \

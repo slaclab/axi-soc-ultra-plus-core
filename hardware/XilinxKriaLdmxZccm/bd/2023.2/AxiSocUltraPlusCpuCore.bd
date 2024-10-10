@@ -3,8 +3,8 @@
     "design_info": {
       "boundary_crc": "0xE7D16F7899647A38",
       "device": "xck26-sfvc784-2LV-c",
-      "gen_directory": "../../../../kr260_starter_kit.gen/sources_1/bd/kr260_starter_kit",
-      "name": "kr260_starter_kit",
+      "gen_directory": "../../../../AxiSocUltraPlusCpuCore.gen/sources_1/bd/AxiSocUltraPlusCpuCore",
+      "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
       "tool_version": "2023.2",
@@ -38,7 +38,7 @@
             "value_src": "const_prop"
           },
           "CLK_DOMAIN": {
-            "value": "kr260_starter_kit_dmaClk",
+            "value": "AxiSocUltraPlusCpuCore_dmaClk",
             "value_src": "default"
           },
           "DATA_WIDTH": {
@@ -254,7 +254,7 @@
             "value": "0"
           },
           "CLK_DOMAIN": {
-            "value": "kr260_starter_kit_dmaClk",
+            "value": "AxiSocUltraPlusCpuCore_dmaClk",
             "value_src": "default"
           },
           "DATA_WIDTH": {
@@ -570,7 +570,7 @@
             "value_src": "const_prop"
           },
           "CLK_DOMAIN": {
-            "value": "kr260_starter_kit_dmaClk",
+            "value": "AxiSocUltraPlusCpuCore_dmaClk",
             "value_src": "default"
           },
           "DATA_WIDTH": {
@@ -781,7 +781,7 @@
             "value": "dmaRstL"
           },
           "CLK_DOMAIN": {
-            "value": "kr260_starter_kit_dmaClk",
+            "value": "AxiSocUltraPlusCpuCore_dmaClk",
             "value_src": "default"
           },
           "FREQ_HZ": {
@@ -839,7 +839,7 @@
         "direction": "O",
         "parameters": {
           "CLK_DOMAIN": {
-            "value": "kr260_starter_kit_zynq_ultra_ps_e_0_1_pl_clk0",
+            "value": "AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0_pl_clk0",
             "value_src": "default_prop"
           },
           "FREQ_HZ": {
@@ -889,8 +889,8 @@
       "axi_protocol_convert_0": {
         "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
         "ip_revision": "29",
-        "xci_name": "kr260_starter_kit_axi_protocol_convert_0_0",
-        "xci_path": "ip/kr260_starter_kit_axi_protocol_convert_0_0/kr260_starter_kit_axi_protocol_convert_0_0.xci",
+        "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0",
+        "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0.xci",
         "inst_hier_path": "axi_protocol_convert_0",
         "parameters": {
           "ADDR_WIDTH": {
@@ -922,8 +922,8 @@
       "axi_protocol_convert_1": {
         "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
         "ip_revision": "29",
-        "xci_name": "kr260_starter_kit_axi_protocol_convert_1_0",
-        "xci_path": "ip/kr260_starter_kit_axi_protocol_convert_1_0/kr260_starter_kit_axi_protocol_convert_1_0.xci",
+        "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0",
+        "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0.xci",
         "inst_hier_path": "axi_protocol_convert_1",
         "parameters": {
           "ADDR_WIDTH": {
@@ -955,8 +955,8 @@
       "xlslice_0": {
         "vlnv": "xilinx.com:ip:xlslice:1.0",
         "ip_revision": "3",
-        "xci_name": "kr260_starter_kit_xlslice_0_1",
-        "xci_path": "ip/kr260_starter_kit_xlslice_0_1/kr260_starter_kit_xlslice_0_1.xci",
+        "xci_name": "AxiSocUltraPlusCpuCore_xlslice_0_0",
+        "xci_path": "ip/AxiSocUltraPlusCpuCore_xlslice_0_0/AxiSocUltraPlusCpuCore_xlslice_0_0.xci",
         "inst_hier_path": "xlslice_0",
         "parameters": {
           "DIN_FROM": {
@@ -976,8 +976,8 @@
       "zynq_ultra_ps_e_0": {
         "vlnv": "xilinx.com:ip:zynq_ultra_ps_e:3.5",
         "ip_revision": "1",
-        "xci_name": "kr260_starter_kit_zynq_ultra_ps_e_0_1",
-        "xci_path": "ip/kr260_starter_kit_zynq_ultra_ps_e_0_1/kr260_starter_kit_zynq_ultra_ps_e_0_1.xci",
+        "xci_name": "AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0",
+        "xci_path": "ip/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0.xci",
         "inst_hier_path": "zynq_ultra_ps_e_0",
         "parameters": {
           "PSU_BANK_0_IO_STANDARD": {
@@ -1564,7 +1564,7 @@
             "value": "8"
           },
           "PSU_USB3__DUAL_CLOCK_ENABLE": {
-            "value": "1"
+            "value": "0"
           },
           "PSU__ACT_DDR_FREQ_MHZ": {
             "value": "1066.656006"
@@ -1876,7 +1876,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__USB3__ENABLE": {
-            "value": "1"
+            "value": "0"
           },
           "PSU__CSUPMU__PERIPHERAL__VALID": {
             "value": "1"
