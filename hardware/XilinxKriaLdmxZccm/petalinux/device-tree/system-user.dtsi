@@ -19,6 +19,19 @@
 &gem3 {
 	nvmem-cells = <&mac_address>;
 	nvmem-cell-names = "mac-address";
+	mdio {
+                                phandle = <0x91>;
+                                #size-cells = <0x00>;
+                                #address-cells = <0x01>;
+
+                                ethernet-phy@5 {
+                                        phandle = <0x89>;
+                                        reg = <0x05>;
+                                        compatible = "ethernet-phy-id2000.a0f3";
+                                        ti,op-mode = <0x00>;
+                                        #phy-cells = <0x01>;
+                                };
+		};
 };
 &sdhci1 {
 	status = "okay";
