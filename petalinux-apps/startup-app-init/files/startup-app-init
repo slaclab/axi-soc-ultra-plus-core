@@ -9,121 +9,121 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-# Standard SD-memory[0] card interface
-if [ -d "/run/media/boot-mmcblk0p1" ]
-then
-   # Change /run/media/boot-mmcblk0p1 to /boot
-   umount /run/media/boot-mmcblk0p1 > /dev/null 2>&1
-   rm -r  /run/media/boot-mmcblk0p1
-   mkdir -p /boot
-   mount /dev/mmcblk0p1 /boot > /dev/null 2>&1
+# # Standard SD-memory[0] card interface
+# if [ -d "/run/media/boot-mmcblk0p1" ]
+# then
+#    # Change /run/media/boot-mmcblk0p1 to /boot
+#    umount /run/media/boot-mmcblk0p1 > /dev/null 2>&1
+#    rm -r  /run/media/boot-mmcblk0p1
+#    mkdir -p /boot
+#    mount /dev/mmcblk0p1 /boot > /dev/null 2>&1
 
-   # Change /run/media/root-mmcblk0p2 to /app
-   umount /run/media/root-mmcblk0p2 > /dev/null 2>&1
-   rm -r  /run/media/root-mmcblk0p2
-   mkdir -p /app
-   mount /dev/mmcblk0p2 /app
-fi
+#    # Change /run/media/root-mmcblk0p2 to /app
+#    umount /run/media/root-mmcblk0p2 > /dev/null 2>&1
+#    rm -r  /run/media/root-mmcblk0p2
+#    mkdir -p /app
+#    mount /dev/mmcblk0p2 /app
+# fi
 
-###########################################################################
+# ###########################################################################
 
-# Standard SD-memory[1] card interface
-if [ -d "/run/media/boot-mmcblk1p1" ]
-then
-   # Change /run/media/boot-mmcblk1p1 to /boot
-   umount /run/media/boot-mmcblk1p1 > /dev/null 2>&1
-   rm -r  /run/media/boot-mmcblk1p1
-   mkdir -p /boot
-   mount /dev/mmcblk1p1 /boot > /dev/null 2>&1
+# # Standard SD-memory[1] card interface
+# if [ -d "/run/media/boot-mmcblk1p1" ]
+# then
+#    # Change /run/media/boot-mmcblk1p1 to /boot
+#    umount /run/media/boot-mmcblk1p1 > /dev/null 2>&1
+#    rm -r  /run/media/boot-mmcblk1p1
+#    mkdir -p /boot
+#    mount /dev/mmcblk1p1 /boot > /dev/null 2>&1
 
-   # Change /run/media/root-mmcblk1p2 to /app
-   umount /run/media/root-mmcblk1p2 > /dev/null 2>&1
-   rm -r  /run/media/root-mmcblk1p2
-   mkdir -p /app
-   mount /dev/mmcblk1p2 /app
-fi
+#    # Change /run/media/root-mmcblk1p2 to /app
+#    umount /run/media/root-mmcblk1p2 > /dev/null 2>&1
+#    rm -r  /run/media/root-mmcblk1p2
+#    mkdir -p /app
+#    mount /dev/mmcblk1p2 /app
+# fi
 
-###########################################################################
+# ###########################################################################
 
-# KR260 using USB mounted SD-memory card
-if [ -d "/run/media/sda1" ]
-then
-   # Change /run/media/sda1 to /boot
-   umount /run/media/sda1 > /dev/null 2>&1
-   rm -r  /run/media/sda1
-   mkdir -p /boot
-   mount /dev/sda1 /boot > /dev/null 2>&1
+# # KR260 using USB mounted SD-memory card
+# if [ -d "/run/media/sda1" ]
+# then
+#    # Change /run/media/sda1 to /boot
+#    umount /run/media/sda1 > /dev/null 2>&1
+#    rm -r  /run/media/sda1
+#    mkdir -p /boot
+#    mount /dev/sda1 /boot > /dev/null 2>&1
 
-   # Change /run/media/sda2 to /app
-   umount /run/media/sda2 > /dev/null 2>&1
-   rm -r  /run/media/sda2
-   mkdir -p /app
-   mount /dev/sda2 /app
-fi
+#    # Change /run/media/sda2 to /app
+#    umount /run/media/sda2 > /dev/null 2>&1
+#    rm -r  /run/media/sda2
+#    mkdir -p /app
+#    mount /dev/sda2 /app
+# fi
 
-###########################################################################
+# ###########################################################################
 
-# Check if mac file exists in SD boot partition
-if [ -f "/boot/mac" ]
-then
-   # Set the MAC address with file
-   ip link set dev eth0 down
-   ip link set dev eth0 address $(cat /boot/mac)
-   ip link set dev eth0 up
-   /etc/init.d/networking restart
-fi
+# # Check if mac file exists in SD boot partition
+# if [ -f "/boot/mac" ]
+# then
+#    # Set the MAC address with file
+#    ip link set dev eth0 down
+#    ip link set dev eth0 address $(cat /boot/mac)
+#    ip link set dev eth0 up
+#    /etc/init.d/networking restart
+# fi
 
-# Check if ip file exists in SD boot partition
-if [ -f "/boot/ip" ]
-then
-   # Set the IP address with file
-   ip addr add $(cat /boot/ip)/24 dev eth0
-fi
+# # Check if ip file exists in SD boot partition
+# if [ -f "/boot/ip" ]
+# then
+#    # Set the IP address with file
+#    ip addr add $(cat /boot/ip)/24 dev eth0
+# fi
 
-###########################################################################
+# ###########################################################################
 
-# Check if drivers already load before loading 2nd stage bitstream
-if [ -f "/proc/axi_stream_dma_0" ]
-then
-   # Kill any stale runtime applications
-   killall jupyter > /dev/null 2>&1
-   killall python3 > /dev/null 2>&1
-   sleep 5
-   # Remove kernel drivers in-case they are already loaded
-   rmmod -s axi_memory_map
-   rmmod -s axi_stream_dma
-fi
+# # Check if drivers already load before loading 2nd stage bitstream
+# if [ -f "/proc/axi_stream_dma_0" ]
+# then
+#    # Kill any stale runtime applications
+#    killall jupyter > /dev/null 2>&1
+#    killall python3 > /dev/null 2>&1
+#    sleep 5
+#    # Remove kernel drivers in-case they are already loaded
+#    rmmod -s axi_memory_map
+#    rmmod -s axi_stream_dma
+# fi
 
-###########################################################################
+# ###########################################################################
 
-# Load the user's firmware (PL) .bit file (A.K.A. "2nd stage boot")
-if [ -f "/boot/system.bit" ]
-then
-   # fpgautil is "flaky" command and sometimes needs multiple retries to be successful
-   while [ ! -z "$(fpgautil -b /boot/system.bit | grep failed)" ]
-   do
-      sleep 1
-   done
-   echo "/sys/class/fpga_manager/fpga0/state: $(cat /sys/class/fpga_manager/fpga0/state)"
-fi
+# # Load the user's firmware (PL) .bit file (A.K.A. "2nd stage boot")
+# if [ -f "/boot/system.bit" ]
+# then
+#    # fpgautil is "flaky" command and sometimes needs multiple retries to be successful
+#    while [ ! -z "$(fpgautil -b /boot/system.bit | grep failed)" ]
+#    do
+#       sleep 1
+#    done
+#    echo "/sys/class/fpga_manager/fpga0/state: $(cat /sys/class/fpga_manager/fpga0/state)"
+# fi
 
-# Load custom kernel driver
-insmod /lib/modules/$(uname -r)/extra/axi_memory_map.ko
-insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
+# # Load custom kernel driver
+# insmod /lib/modules/$(uname -r)/extra/axi_memory_map.ko
+# insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
 
-###########################################################################
+# ###########################################################################
 
-# Dump AxiVersion Status
-/usr/bin/axiversiondump
+# # Dump AxiVersion Status
+# /usr/bin/axiversiondump
 
-# Check if user's runtime application exists
-if [ -f "/app/runtimeApp" ]
-then
-   echo "Starting the user's custom runtime Application (/app/runtimeApp)"
-   /app/runtimeApp
-else
-   echo "Starting the generic rogue TCP bridge Application"
-   /usr/bin/roguetcpbridge
-fi
+# # Check if user's runtime application exists
+# if [ -f "/app/runtimeApp" ]
+# then
+#    echo "Starting the user's custom runtime Application (/app/runtimeApp)"
+#    /app/runtimeApp
+# else
+#    echo "Starting the generic rogue TCP bridge Application"
+#    /usr/bin/roguetcpbridge
+# fi
 
 ###########################################################################
