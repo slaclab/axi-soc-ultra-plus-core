@@ -25,7 +25,7 @@ do
 done
 
 # Check the petalinux version
-EXPECTED_VERSION="2023.2"
+EXPECTED_VERSION="2024.1"
 if awk "BEGIN {exit !($PETALINUX_VER != $EXPECTED_VERSION)}"; then
    echo "Error: PETALINUX_VER is not set to $EXPECTED_VERSION"
    exit 1
@@ -69,8 +69,8 @@ petalinux-create --type project --template zynqMP --name $name
 cd $name
 
 # Increase QSPI image.ub size to 128MB
-echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_OFFSET=0x4000000 >> project-spec/configs/config
-echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_SIZE=0x8000000  >> project-spec/configs/config
+#echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_OFFSET=0x4000000 >> project-spec/configs/config
+#echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_SIZE=0x8000000  >> project-spec/configs/config
 
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
