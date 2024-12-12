@@ -28,9 +28,17 @@ do
     esac
 done
 
+# Check if the version is 2022 or newer
+UBUNTU_VERSION=$(lsb_release -rs | cut -d'.' -f1)
+if [[ "$UBUNTU_VERSION" -lt 22 ]]; then
+   echo "Error: This script requires Ubuntu 2022 or newer."
+   exit 1
+fi
+
 # Check the petalinux version
-EXPECTED_VERSION="2023.2"
-if awk "BEGIN {exit !($PETALINUX_VER != $EXPECTED_VERSION)}"; then
+EXPECTED_VERSION="2024.2"
+if ! awk -v current="$PETALINUX_VER" -v expected="$EXPECTED_VERSION" \
+   'BEGIN {exit !(current == expected)}'; then
    echo "Error: PETALINUX_VER is not set to $EXPECTED_VERSION"
    exit 1
 fi
