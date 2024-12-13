@@ -243,7 +243,7 @@ echo CONFIG_htop   >> project-spec/meta-user/conf/user-rootfsconfig
 petalinux-build
 
 # Create boot files
-petalinux-package --boot --uboot --fpga --force
+petalinux-package boot --uboot --fpga --force
 
 ##############################################################################
 
