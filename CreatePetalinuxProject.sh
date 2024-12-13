@@ -78,7 +78,7 @@ cd $path
 rm -rf $name
 
 # Create the project
-petalinux-create --type project --template zynqMP --name $name
+petalinux-create project --template zynqMP --name $name
 cd $name
 
 # Increase QSPI image.ub size to 128MB
@@ -145,7 +145,7 @@ sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" project-s
 ##############################################################################
 
 # Add rogue to petalinux
-petalinux-create -t apps --name rogue --template install
+petalinux-create apps --name rogue --template install
 cp -f $axi_soc_ultra_plus_core/petalinux-apps/rogue.bb project-spec/meta-user/recipes-apps/rogue/rogue.bb
 echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
@@ -153,7 +153,7 @@ echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
 ##############################################################################
 
 # Add rogue TCP memory/stream server application
-petalinux-create -t apps --template install -n roguetcpbridge
+petalinux-create apps --template install -n roguetcpbridge
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/roguetcpbridge project-spec/meta-user/recipes-apps/.
 echo IMAGE_INSTALL:append = \" roguetcpbridge\" >> build/conf/local.conf
@@ -165,7 +165,7 @@ sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-a
 ##############################################################################
 
 # Add rogue AxiVersion Dump application
-petalinux-create -t apps --template install -n axiversiondump
+petalinux-create apps --template install -n axiversiondump
 echo CONFIG_axiversiondump=y >> project-spec/configs/rootfs_config
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/axiversiondump project-spec/meta-user/recipes-apps/.
 echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
@@ -176,7 +176,7 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 if [ "$rfdc" -eq 1 ]
 then
     # Add RFDC selftest application
-    petalinux-create -t apps --template install -n rfdc-test
+    petalinux-create apps --template install -n rfdc-test
     echo CONFIG_rfdc-test=y >> project-spec/configs/rootfs_config
     cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-test project-spec/meta-user/recipes-apps/.
     echo IMAGE_INSTALL:append = \" rfdc-test\" >> build/conf/local.conf
@@ -185,7 +185,7 @@ fi
 ##############################################################################
 
 # Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
-petalinux-create -t apps --template install -n startup-app-init --enable
+petalinux-create apps --template install -n startup-app-init --enable
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startup-app-init project-spec/meta-user/recipes-apps/.
 
 ##############################################################################
