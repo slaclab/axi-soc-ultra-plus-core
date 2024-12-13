@@ -108,8 +108,8 @@ then
 fi
 
 # Load custom kernel driver
-insmod /lib/modules/$(uname -r)/extra/axi_memory_map.ko
-insmod /lib/modules/$(uname -r)/extra/axi_stream_dma.ko
+insmod /lib/modules/$(uname -r)/updates/axi_memory_map.ko
+insmod /lib/modules/$(uname -r)/updates/axi_stream_dma.ko
 
 ###########################################################################
 
