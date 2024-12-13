@@ -129,8 +129,8 @@ petalinux-build -c kernel
 ##############################################################################
 
 # Add the axi-stream-dma & axi_memory_map kernel modules
-petalinux-create -t modules --name axistreamdma
-petalinux-create -t modules --name aximemorymap
+petalinux-create modules --name axistreamdma
+petalinux-create modules --name aximemorymap
 rm -rf project-spec/meta-user/recipes-modules/axistreamdma
 rm -rf project-spec/meta-user/recipes-modules/aximemorymap
 cp -rfL $aes_stream_drivers/petalinux/axistreamdma project-spec/meta-user/recipes-modules/axistreamdma
