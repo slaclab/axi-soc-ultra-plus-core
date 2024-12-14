@@ -67,9 +67,9 @@ fi
 if [ -f "/boot/mac" ]
 then
    # Set the MAC address with file
-   ip link set dev eth0 down
-   ip link set dev eth0 address $(cat /boot/mac)
-   ip link set dev eth0 up
+   ip link set dev end0 down
+   ip link set dev end0 address $(cat /boot/mac)
+   ip link set dev end0 up
    /etc/init.d/networking restart
 fi
 
@@ -77,7 +77,7 @@ fi
 if [ -f "/boot/ip" ]
 then
    # Set the IP address with file
-   ip addr add $(cat /boot/ip)/24 dev eth0
+   ip addr add $(cat /boot/ip)/24 dev end0
 fi
 
 ###########################################################################
