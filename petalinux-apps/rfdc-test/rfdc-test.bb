@@ -12,12 +12,12 @@ SRC_URI = " \
 S = "${WORKDIR}"
 
 DEPENDS += " \
-   rfdc \
+   librfdc \
    libmetal \
 "
 
 RDEPENDS:${PN} += " \
-   rfdc \
+   librfdc \
    libmetal \
 "
 
