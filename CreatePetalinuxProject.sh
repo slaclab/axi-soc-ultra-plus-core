@@ -115,13 +115,6 @@ then
    cat $hwDir/petalinux/petalinuxbsp.conf >> project-spec/meta-user/conf/petalinuxbsp.conf
 fi
 
-# Check if the hardware has custom local.conf
-if [ -f "$hwDir/petalinux/local.conf" ]
-then
-   # Add new configuration
-   cat $hwDir/petalinux/local.conf >> build/conf/local.conf
-fi
-
 # Check if the dts directory exists
 if [ -d "$hwDir/petalinux/dts_dir" ]
 then
@@ -144,6 +137,9 @@ then
       cp -f $hwDir/petalinux/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
    done
 fi
+
+# Migrating to the SDT workflow because XSCT is being depreciated
+echo CONFIG_SUBSYSTEM_SDT_FLOW=y >> project-spec/configs/config
 
 ##############################################################################
 
