@@ -88,7 +88,13 @@ echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_SIZE=0x8000000  >> project-spec/confi
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
-# Check if the hardware has custom u-boot
+# Check if the hardware has custom u-boot config
+if [ -f "$hwDir/petalinux/u-boot/bsp.cfg" ]
+then
+   cp -rf $hwDir/petalinux/u-boot/bsp.cfg project-spec/meta-user/recipes-bsp/u-boot/files/bsp.cfg
+fi
+
+# Check if the hardware has custom u-boot header
 if [ -f "$hwDir/petalinux/u-boot/platform-top.h" ]
 then
    cp -rf $hwDir/petalinux/u-boot/platform-top.h project-spec/meta-user/recipes-bsp/u-boot/files/platform-top.h
