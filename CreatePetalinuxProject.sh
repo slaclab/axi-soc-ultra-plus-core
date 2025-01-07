@@ -102,16 +102,32 @@ then
    cat $hwDir/petalinux/device-tree/device-tree.bbappend >> project-spec/meta-user/recipes-bsp/device-tree/device-tree.bbappend
 fi
 
+# Check if the hardware has custom petalinuxbsp configuration
+if [ -f "$hwDir/petalinux/petalinuxbsp.conf" ]
+then
+   # Add new configuration
+   cat $hwDir/petalinux/petalinuxbsp.conf >> project-spec/meta-user/conf/petalinuxbsp.conf
+fi
+
+# Check if the hardware has custom local.conf
+if [ -f "$hwDir/petalinux/local.conf" ]
+then
+   # Add new configuration
+   cat $hwDir/petalinux/local.conf >> build/conf/local.conf
+fi
+
+# Check if the dts directory exists
+if [ -d "$hwDir/petalinux/dts_dir" ]
+then
+   cp -rf $hwDir/petalinux/dts_dir project-spec/.
+fi
+
 # Check if the hardware has custom configuration
 if [ -f "$hwDir/petalinux/config" ]
 then
    # Add new configuration
    cat $hwDir/petalinux/config >> project-spec/configs/config
-   # Reload the configurations
-   petalinux-config --silentconfig
 fi
-
-##############################################################################
 
 # Check if the patch directory exists
 if [ -d "$hwDir/petalinux/patch" ]
@@ -122,6 +138,11 @@ then
       cp -f $hwDir/petalinux/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
    done
 fi
+
+##############################################################################
+
+# Re-configure before building kernel
+petalinux-config --silentconfig
 
 # Build kernel
 petalinux-build -c kernel
