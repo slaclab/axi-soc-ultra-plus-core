@@ -138,9 +138,6 @@ then
    done
 fi
 
-# Migrating to the SDT workflow because XSCT is being depreciated
-echo CONFIG_SUBSYSTEM_SDT_FLOW=y >> project-spec/configs/config
-
 ##############################################################################
 
 # Re-configure before building kernel
