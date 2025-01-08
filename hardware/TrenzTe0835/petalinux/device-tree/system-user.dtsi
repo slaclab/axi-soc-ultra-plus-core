@@ -1,6 +1,6 @@
 / {
 	chosen {
-		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw";
+		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0";
 		stdout-path = "serial0:115200n8";
 	};
 };
@@ -15,7 +15,6 @@
 		device_type = "ethernet-phy";
 		reg = <1>;
 	};
-	label = "eth0";
 };
 /*------------------ SD --------------------*/
 /* SDIO */

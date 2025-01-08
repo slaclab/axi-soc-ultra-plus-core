@@ -1,7 +1,7 @@
 /include/ "system-conf.dtsi"
 / {
 	chosen {
-		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw";
+		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0";
 		stdout-path = "serial0:115200n8";
 	};
 };
@@ -28,7 +28,6 @@
 &gem3 {
 	nvmem-cells = <&mac_address>;
 	nvmem-cell-names = "mac-address";
-	label = "eth0";
 };
 / {
 	axi_stream_dma_0@b0000000 {

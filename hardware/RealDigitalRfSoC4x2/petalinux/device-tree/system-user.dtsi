@@ -2,7 +2,7 @@
 #include <dt-bindings/phy/phy.h>
 / {
 	chosen {
-		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw";
+		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0";
 		stdout-path = "serial0:115200n8";
 	};
 };
@@ -35,7 +35,6 @@
 		ti,fifo-depth = <0x1>;
 		ti,dp83867-rxctrl-strap-quirk;
 	};
-	label = "eth0";
 };
 &i2c1 {
 	eeprom: eeprom@58 {
