@@ -15,6 +15,7 @@
 		device_type = "ethernet-phy";
 		reg = <1>;
 	};
+	label = "eth0";
 };
 /*------------------ SD --------------------*/
 /* SDIO */

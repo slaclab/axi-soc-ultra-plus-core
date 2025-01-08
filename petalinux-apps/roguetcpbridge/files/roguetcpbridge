@@ -78,15 +78,15 @@ if __name__ == "__main__":
                     self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
                     self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
 
-    def end0_ready():
-        command = 'ip -4 -o addr show end0'.split()
+    def eth0_ready():
+        command = 'ip -4 -o addr show eth0'.split()
         return (subprocess.check_output(command).decode() != '')
 
     #################################################################
 
     # Wait for NIC to be ready
-    while(end0_ready() is False):
-        print('Waiting for end0 to get IP address')
+    while(eth0_ready() is False):
+        print('Waiting for eth0 to get IP address')
         time.sleep(5.0)
 
     # Create the server

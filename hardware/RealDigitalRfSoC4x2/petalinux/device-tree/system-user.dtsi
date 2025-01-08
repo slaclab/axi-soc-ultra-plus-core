@@ -35,6 +35,7 @@
 		ti,fifo-depth = <0x1>;
 		ti,dp83867-rxctrl-strap-quirk;
 	};
+	label = "eth0";
 };
 &i2c1 {
 	eeprom: eeprom@58 {

@@ -28,6 +28,7 @@
 &gem3 {
 	nvmem-cells = <&mac_address>;
 	nvmem-cell-names = "mac-address";
+	label = "eth0";
 };
 / {
 	axi_stream_dma_0@b0000000 {
