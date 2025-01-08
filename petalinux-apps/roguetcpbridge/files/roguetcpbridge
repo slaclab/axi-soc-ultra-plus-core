@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
     # Wait for NIC to be ready
     while(eth0_ready() is False):
-        print('Waiting for ETH0 to get IP address')
+        print('Waiting for eth0 to get IP address')
         time.sleep(5.0)
 
     # Create the server

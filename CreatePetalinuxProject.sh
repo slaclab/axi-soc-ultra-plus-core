@@ -28,9 +28,17 @@ do
     esac
 done
 
+# Check if the version is 2022 or newer
+UBUNTU_VERSION=$(lsb_release -rs | cut -d'.' -f1)
+if [[ "$UBUNTU_VERSION" -lt 22 ]]; then
+   echo "Error: This script requires Ubuntu 2022 or newer."
+   exit 1
+fi
+
 # Check the petalinux version
-EXPECTED_VERSION="2023.2"
-if awk "BEGIN {exit !($PETALINUX_VER != $EXPECTED_VERSION)}"; then
+EXPECTED_VERSION="2024.2"
+if ! awk -v current="$PETALINUX_VER" -v expected="$EXPECTED_VERSION" \
+   'BEGIN {exit !(current == expected)}'; then
    echo "Error: PETALINUX_VER is not set to $EXPECTED_VERSION"
    exit 1
 fi
@@ -70,7 +78,7 @@ cd $path
 rm -rf $name
 
 # Create the project
-petalinux-create --type project --template zynqMP --name $name
+petalinux-create project --template zynqMP --name $name
 cd $name
 
 # Increase QSPI image.ub size to 128MB
@@ -80,7 +88,13 @@ echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_SIZE=0x8000000  >> project-spec/confi
 # Importing Hardware Configuration
 petalinux-config --silentconfig --get-hw-description $xsa
 
-# Check if the hardware has custom u-boot
+# Check if the hardware has custom u-boot config
+if [ -f "$hwDir/petalinux/u-boot/bsp.cfg" ]
+then
+   cp -rf $hwDir/petalinux/u-boot/bsp.cfg project-spec/meta-user/recipes-bsp/u-boot/files/bsp.cfg
+fi
+
+# Check if the hardware has custom u-boot header
 if [ -f "$hwDir/petalinux/u-boot/platform-top.h" ]
 then
    cp -rf $hwDir/petalinux/u-boot/platform-top.h project-spec/meta-user/recipes-bsp/u-boot/files/platform-top.h
@@ -94,16 +108,25 @@ then
    cat $hwDir/petalinux/device-tree/device-tree.bbappend >> project-spec/meta-user/recipes-bsp/device-tree/device-tree.bbappend
 fi
 
+# Check if the hardware has custom petalinuxbsp configuration
+if [ -f "$hwDir/petalinux/petalinuxbsp.conf" ]
+then
+   # Add new configuration
+   cat $hwDir/petalinux/petalinuxbsp.conf >> project-spec/meta-user/conf/petalinuxbsp.conf
+fi
+
+# Check if the dts directory exists
+if [ -d "$hwDir/petalinux/dts_dir" ]
+then
+   cp -rf $hwDir/petalinux/dts_dir project-spec/.
+fi
+
 # Check if the hardware has custom configuration
 if [ -f "$hwDir/petalinux/config" ]
 then
    # Add new configuration
    cat $hwDir/petalinux/config >> project-spec/configs/config
-   # Reload the configurations
-   petalinux-config --silentconfig
 fi
-
-##############################################################################
 
 # Check if the patch directory exists
 if [ -d "$hwDir/petalinux/patch" ]
@@ -115,14 +138,19 @@ then
    done
 fi
 
+##############################################################################
+
+# Re-configure before building kernel
+petalinux-config --silentconfig
+
 # Build kernel
 petalinux-build -c kernel
 
 ##############################################################################
 
 # Add the axi-stream-dma & axi_memory_map kernel modules
-petalinux-create -t modules --name axistreamdma
-petalinux-create -t modules --name aximemorymap
+petalinux-create modules --name axistreamdma
+petalinux-create modules --name aximemorymap
 rm -rf project-spec/meta-user/recipes-modules/axistreamdma
 rm -rf project-spec/meta-user/recipes-modules/aximemorymap
 cp -rfL $aes_stream_drivers/petalinux/axistreamdma project-spec/meta-user/recipes-modules/axistreamdma
@@ -137,7 +165,7 @@ sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" project-s
 ##############################################################################
 
 # Add rogue to petalinux
-petalinux-create -t apps --name rogue --template install
+petalinux-create apps --name rogue --template install
 cp -f $axi_soc_ultra_plus_core/petalinux-apps/rogue.bb project-spec/meta-user/recipes-apps/rogue/rogue.bb
 echo CONFIG_rogue=y >> project-spec/configs/rootfs_config
 echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
@@ -145,7 +173,7 @@ echo CONFIG_rogue-dev=y >> project-spec/configs/rootfs_config
 ##############################################################################
 
 # Add rogue TCP memory/stream server application
-petalinux-create -t apps --template install -n roguetcpbridge
+petalinux-create apps --template install -n roguetcpbridge
 echo CONFIG_roguetcpbridge=y >> project-spec/configs/rootfs_config
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/roguetcpbridge project-spec/meta-user/recipes-apps/.
 echo IMAGE_INSTALL:append = \" roguetcpbridge\" >> build/conf/local.conf
@@ -157,7 +185,7 @@ sed -i "s/default  = 32,/default  = $numDest,/" project-spec/meta-user/recipes-a
 ##############################################################################
 
 # Add rogue AxiVersion Dump application
-petalinux-create -t apps --template install -n axiversiondump
+petalinux-create apps --template install -n axiversiondump
 echo CONFIG_axiversiondump=y >> project-spec/configs/rootfs_config
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/axiversiondump project-spec/meta-user/recipes-apps/.
 echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
@@ -168,7 +196,7 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 if [ "$rfdc" -eq 1 ]
 then
     # Add RFDC selftest application
-    petalinux-create -t apps --template install -n rfdc-test
+    petalinux-create apps --template install -n rfdc-test
     echo CONFIG_rfdc-test=y >> project-spec/configs/rootfs_config
     cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-test project-spec/meta-user/recipes-apps/.
     echo IMAGE_INSTALL:append = \" rfdc-test\" >> build/conf/local.conf
@@ -177,7 +205,7 @@ fi
 ##############################################################################
 
 # Add startup application script (loads the user's FPGA .bit file, loads the kernel drivers then kicks off the rogue TCP bridge)
-petalinux-create -t apps --template install -n startup-app-init --enable
+petalinux-create apps --template install -n startup-app-init --enable
 cp -rf $axi_soc_ultra_plus_core/petalinux-apps/startup-app-init project-spec/meta-user/recipes-apps/.
 
 ##############################################################################
@@ -196,46 +224,11 @@ echo CONFIG_htop   >> project-spec/meta-user/conf/user-rootfsconfig
 
 ##############################################################################
 
-# # Add the P4P python package and its dependences
-# cp -f $axi_soc_ultra_plus_core/petalinux-apps/python3-p4p/*.bb components/yocto/layers/meta-openembedded/meta-python/recipes-devtools/python/.
-# echo CONFIG_python3-p4p=y >> project-spec/configs/rootfs_config
-
-# #######################################################################################
-# # python3-setuptools_dso-native (host) has arch=linux-x86_64 and is being used for EPICS_HOST_ARCH
-# # The -native package required to make python-setup work, but -native package will have a linux-x86_64
-# # of epicscorelibs/lib/libCom.so used and incompatible with aarch64
-# # TODO: Figure out who to get python3-setuptools_dso to set EPICS_HOST_ARCH=aarch64 in future
-# #######################################################################################
-# # This prepend overwrite the native libCom.so to target .so to "fix" the incompatible issue
-# #######################################################################################
-# petalinux-build -c python3-epicscorelibs-native
-# petalinux-build -c python3-epicscorelibs
-# petalinux-build -c python3-pvxslibs-native
-# LIBCOM_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs/usr/lib)
-# LIBCOM_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libCom.so" | grep python3-epicscorelibs-native/usr/lib)
-# cp -f $LIBCOM_NATIVE_SO build/.
-# cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
-# petalinux-build -c python3-pvxslibs
-# cp -f build/libCom.so $LIBCOM_NATIVE_SO
-
-# # Same "work" around again but for python3-pvxslibs and its libpvxs.so outputs
-# petalinux-build -c python3-p4p-native
-# LIBPVXS_ARM64_SO=$(find  build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs/usr/lib)
-# LIBPVXS_NATIVE_SO=$(find build/tmp/sysroots-components/ -type f -name "libpvxs.so" | grep python3-pvxslibs-native/usr/lib)
-# cp -f $LIBPVXS_NATIVE_SO build/.
-# cp -f $LIBPVXS_ARM64_SO $LIBPVXS_NATIVE_SO
-# cp -f $LIBCOM_ARM64_SO $LIBCOM_NATIVE_SO
-# petalinux-build -c python3-p4p
-# cp -f build/libCom.so  $LIBCOM_NATIVE_SO
-# cp -f build/libpvxs.so $LIBPVXS_NATIVE_SO
-
-##############################################################################
-
 # Finalize the System Image
 petalinux-build
 
 # Create boot files
-petalinux-package --boot --uboot --fpga --force
+petalinux-package boot --uboot --fpga --force
 
 ##############################################################################
 
