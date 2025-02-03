@@ -26,18 +26,53 @@ use axi_soc_ultra_plus_core.AxiSocUltraPlusPkg.all;
 
 entity AppRingBuffer is
    generic (
-      TPD_G                  : time     := 1 ns;
-      EN_ADC_BUFF_G          : boolean  := true;
-      EN_DAC_BUFF_G          : boolean  := true;
-      NUM_ADC_CH_G           : positive := 1;
-      NUM_DAC_CH_G           : positive := 1;
-      ADC_SAMPLE_PER_CYCLE_G : positive := 16;
-      DAC_SAMPLE_PER_CYCLE_G : positive := 16;
-      RAM_ADDR_WIDTH_G       : positive := 9;
-      MEMORY_TYPE_G          : string   := "block";
-      COMMON_CLK_G           : boolean  := false;  -- true if dataClk=axilClk
-      FIFO_MEMORY_TYPE_G     : string   := "block";
-      FIFO_ADDR_WIDTH_G      : positive := 9;
+      TPD_G                  : time                   := 1 ns;
+      EN_ADC_BUFF_G          : boolean                := true;
+      EN_DAC_BUFF_G          : boolean                := true;
+      NUM_ADC_CH_G           : positive               := 1;
+      NUM_DAC_CH_G           : positive               := 1;
+      ADC_SAMPLE_PER_CYCLE_G : positive               := 16;
+      DAC_SAMPLE_PER_CYCLE_G : positive               := 16;
+      RAM_ADDR_WIDTH_G       : positive               := 9;
+      MEMORY_TYPE_G          : string                 := "block";
+      COMMON_CLK_G           : boolean                := false;  -- true if dataClk=axilClk
+      FIFO_MEMORY_TYPE_G     : string                 := "block";
+      FIFO_ADDR_WIDTH_G      : positive               := 9;
+      AXI_STREAM_CONFIG_G    : AxiStreamConfigType    := DMA_AXIS_CONFIG_C;
+      ADC_TDEST_ROUTES_G     : Slv8Array(15 downto 0) := (
+         0  => x"00",
+         1  => x"01",
+         2  => x"02",
+         3  => x"03",
+         4  => x"04",
+         5  => x"05",
+         6  => x"06",
+         7  => x"07",
+         8  => x"08",
+         9  => x"09",
+         10 => x"0A",
+         11 => x"0B",
+         12 => x"0C",
+         13 => x"0D",
+         14 => x"0E",
+         15 => x"0F");
+      DAC_TDEST_ROUTES_G     : Slv8Array(15 downto 0) := (
+         0  => x"10",
+         1  => x"11",
+         2  => x"12",
+         3  => x"13",
+         4  => x"14",
+         5  => x"15",
+         6  => x"16",
+         7  => x"17",
+         8  => x"18",
+         9  => x"19",
+         10 => x"1A",
+         11 => x"1B",
+         12 => x"1C",
+         13 => x"1D",
+         14 => x"1E",
+         15 => x"1F");
       AXIL_BASE_ADDR_G       : slv(31 downto 0));
    port (
       -- DMA Interface (dmaClk domain)
@@ -136,32 +171,17 @@ begin
    GEN_ADC_BUFF : if (EN_ADC_BUFF_G) generate
       U_AdcRingBuffer : entity axi_soc_ultra_plus_core.AppRingBufferEngine
          generic map (
-            TPD_G              => TPD_G,
-            TDEST_ROUTES_G     => (
-               0               => x"00",
-               1               => x"01",
-               2               => x"02",
-               3               => x"03",
-               4               => x"04",
-               5               => x"05",
-               6               => x"06",
-               7               => x"07",
-               8               => x"08",
-               9               => x"09",
-               10              => x"0A",
-               11              => x"0B",
-               12              => x"0C",
-               13              => x"0D",
-               14              => x"0E",
-               15              => x"0F"),
-            NUM_CH_G           => NUM_ADC_CH_G,
-            SAMPLE_PER_CYCLE_G => ADC_SAMPLE_PER_CYCLE_G,
-            RAM_ADDR_WIDTH_G   => RAM_ADDR_WIDTH_G,
-            MEMORY_TYPE_G      => MEMORY_TYPE_G,
-            COMMON_CLK_G       => COMMON_CLK_G,
-            FIFO_MEMORY_TYPE_G => FIFO_MEMORY_TYPE_G,
-            FIFO_ADDR_WIDTH_G  => FIFO_ADDR_WIDTH_G,
-            AXIL_BASE_ADDR_G   => AXIL_CONFIG_C(ADC_RING_INDEX_C).baseAddr)
+            TPD_G               => TPD_G,
+            TDEST_ROUTES_G      => ADC_TDEST_ROUTES_G,
+            NUM_CH_G            => NUM_ADC_CH_G,
+            SAMPLE_PER_CYCLE_G  => ADC_SAMPLE_PER_CYCLE_G,
+            RAM_ADDR_WIDTH_G    => RAM_ADDR_WIDTH_G,
+            MEMORY_TYPE_G       => MEMORY_TYPE_G,
+            COMMON_CLK_G        => COMMON_CLK_G,
+            FIFO_MEMORY_TYPE_G  => FIFO_MEMORY_TYPE_G,
+            FIFO_ADDR_WIDTH_G   => FIFO_ADDR_WIDTH_G,
+            AXI_STREAM_CONFIG_G => AXI_STREAM_CONFIG_G,
+            AXIL_BASE_ADDR_G    => AXIL_CONFIG_C(ADC_RING_INDEX_C).baseAddr)
          port map (
             -- AXI-Stream Interface (axisClk domain)
             axisClk         => dmaClk,
@@ -201,28 +221,17 @@ begin
    GEN_DAC_BUFF : if (EN_DAC_BUFF_G) generate
       U_DacRingBuffer : entity axi_soc_ultra_plus_core.AppRingBufferEngine
          generic map (
-            TPD_G              => TPD_G,
-            TDEST_ROUTES_G     => (
-               0               => x"10",
-               1               => x"11",
-               2               => x"12",
-               3               => x"13",
-               4               => x"14",
-               5               => x"15",
-               6               => x"16",
-               7               => x"17",
-               8               => x"18",
-               9               => x"19",
-               10              => x"1A",
-               11              => x"1B",
-               12              => x"1C",
-               13              => x"1D",
-               14              => x"1E",
-               15              => x"1F"),
-            NUM_CH_G           => NUM_DAC_CH_G,
-            SAMPLE_PER_CYCLE_G => DAC_SAMPLE_PER_CYCLE_G,
-            RAM_ADDR_WIDTH_G   => RAM_ADDR_WIDTH_G,
-            AXIL_BASE_ADDR_G   => AXIL_CONFIG_C(DAC_RING_INDEX_C).baseAddr)
+            TPD_G               => TPD_G,
+            TDEST_ROUTES_G      => DAC_TDEST_ROUTES_G,
+            NUM_CH_G            => NUM_DAC_CH_G,
+            SAMPLE_PER_CYCLE_G  => DAC_SAMPLE_PER_CYCLE_G,
+            RAM_ADDR_WIDTH_G    => RAM_ADDR_WIDTH_G,
+            MEMORY_TYPE_G       => MEMORY_TYPE_G,
+            COMMON_CLK_G        => COMMON_CLK_G,
+            FIFO_MEMORY_TYPE_G  => FIFO_MEMORY_TYPE_G,
+            FIFO_ADDR_WIDTH_G   => FIFO_ADDR_WIDTH_G,
+            AXI_STREAM_CONFIG_G => AXI_STREAM_CONFIG_G,
+            AXIL_BASE_ADDR_G    => AXIL_CONFIG_C(DAC_RING_INDEX_C).baseAddr)
          port map (
             -- AXI-Stream Interface (axisClk domain)
             axisClk         => dmaClk,
