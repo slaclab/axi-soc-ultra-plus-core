@@ -25,16 +25,17 @@ use axi_soc_ultra_plus_core.AxiSocUltraPlusPkg.all;
 
 entity AppRingBufferEngine is
    generic (
-      TPD_G              : time                   := 1 ns;
-      NUM_CH_G           : positive               := 8;
-      SAMPLE_PER_CYCLE_G : positive               := 16;
-      RAM_ADDR_WIDTH_G   : positive               := 10;
-      MEMORY_TYPE_G      : string                 := "block";
-      COMMON_CLK_G       : boolean                := false;  -- true if dataClk=axilClk
-      FIFO_MEMORY_TYPE_G : string                 := "block";
-      FIFO_ADDR_WIDTH_G  : positive               := 9;
-      TDEST_ROUTES_G     : Slv8Array(15 downto 0) := (others => x"00");
-      AXIL_BASE_ADDR_G   : slv(31 downto 0));
+      TPD_G               : time                   := 1 ns;
+      NUM_CH_G            : positive               := 8;
+      SAMPLE_PER_CYCLE_G  : positive               := 16;
+      RAM_ADDR_WIDTH_G    : positive               := 10;
+      MEMORY_TYPE_G       : string                 := "block";
+      COMMON_CLK_G        : boolean                := false;  -- true if dataClk=axilClk
+      FIFO_MEMORY_TYPE_G  : string                 := "block";
+      FIFO_ADDR_WIDTH_G   : positive               := 9;
+      TDEST_ROUTES_G      : Slv8Array(15 downto 0) := (others => x"00");
+      AXI_STREAM_CONFIG_G : AxiStreamConfigType    := DMA_AXIS_CONFIG_C;
+      AXIL_BASE_ADDR_G    : slv(31 downto 0));
    port (
       -- AXI-Stream Interface (axisClk domain)
       axisClk         : in  sl;
@@ -138,7 +139,7 @@ begin
             FIFO_MEMORY_TYPE_G  => FIFO_MEMORY_TYPE_G,
             FIFO_ADDR_WIDTH_G   => FIFO_ADDR_WIDTH_G,
             GEN_SYNC_FIFO_G     => false,
-            AXI_STREAM_CONFIG_G => DMA_AXIS_CONFIG_C)
+            AXI_STREAM_CONFIG_G => AXI_STREAM_CONFIG_G)
          port map (
             -- Data to store in ring buffer (dataClk domain)
             dataClk         => dataClk,
