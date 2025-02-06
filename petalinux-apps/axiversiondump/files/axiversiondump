@@ -211,7 +211,7 @@ if __name__ == "__main__":
                 print("FwVersion      = {}".format(hex(self.FpgaVersion.get())))
                 print("UpTime         = {}".format(self.UpTime.get()))
                 if (gitHash != 0):
-                    print("GitHash        = {}".format(hex(self.GitHash.get())))
+                    print("GitHash        = {:040x}".format(self.GitHash.get()))
                 else:
                     print("GitHash        = dirty (uncommitted code)")
                 print("XilinxDnaId    = {}".format(hex(self.DeviceDna.get())))
@@ -224,6 +224,9 @@ if __name__ == "__main__":
                 print("DMA_CLK_FREQ_C = {} Hz".format(self.DMA_CLK_FREQ_C.get()))
                 print("AppReset       = {}".format(hex(self.AppReset.get())))
                 print("AppClkFreq     = {} Hz".format(self.AppClkFreq.get()))
+                print("DspReset       = {}".format(hex(self.DspReset.get())))
+                print("DspClkFreq     = {} Hz".format(self.DspClkFreq.get()))
+                print("HW_TYPE_C      = {}".format(self.HW_TYPE_C.getDisp()))
             except Exception:
                 print("Failed to get %s status" % self)
 

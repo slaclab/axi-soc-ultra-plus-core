@@ -101,3 +101,13 @@ class AxiVersion(axi.AxiVersion):
                 0x00_00_00_09: 'XilinxZcu102',
             },
         ))
+
+    def printStatus(self):
+        super().printStatus()
+        print("DMA_SIZE_G     = {}".format(hex(self.DMA_SIZE_G.get())))
+        print("DMA_CLK_FREQ_C = {} Hz".format(self.DMA_CLK_FREQ_C.get()))
+        print("AppReset       = {}".format(hex(self.AppReset.get())))
+        print("AppClkFreq     = {} Hz".format(self.AppClkFreq.get()))
+        print("DspReset       = {}".format(hex(self.DspReset.get())))
+        print("DspClkFreq     = {} Hz".format(self.DspClkFreq.get()))
+        print("HW_TYPE_C      = {}".format(self.HW_TYPE_C.getDisp()))
