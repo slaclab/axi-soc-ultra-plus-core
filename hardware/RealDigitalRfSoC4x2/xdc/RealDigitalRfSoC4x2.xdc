@@ -33,6 +33,21 @@ set_property -dict { PACKAGE_PIN AP14 IOSTANDARD LVCMOS18 } [get_ports { pmod[1]
 set_property -dict { PACKAGE_PIN AT15 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][6] }]
 set_property -dict { PACKAGE_PIN AU14 IOSTANDARD LVCMOS18 } [get_ports { pmod[1][7] }]
 
+set_property -dict { PACKAGE_PIN AW16 IOSTANDARD LVCMOS18 } [get_ports { pmod[2][0] }]
+set_property -dict { PACKAGE_PIN AW15 IOSTANDARD LVCMOS18 } [get_ports { pmod[2][1] }]
+set_property -dict { PACKAGE_PIN AW14 IOSTANDARD LVCMOS18 } [get_ports { pmod[2][2] }]
+set_property -dict { PACKAGE_PIN AR16 IOSTANDARD LVCMOS18 } [get_ports { pmod[2][3] }]
+set_property -dict { PACKAGE_PIN AV16 IOSTANDARD LVCMOS18 } [get_ports { pmod[2][4] }]
+set_property -dict { PACKAGE_PIN AT16 IOSTANDARD LVCMOS18 } [get_ports { pmod[2][5] }]
+#set_property -dict { PACKAGE_PIN XXXX IOSTANDARD LVCMOS18 } [get_ports { pmod[2][6] }]; # Not implemented on RFSoC 4x2
+#set_property -dict { PACKAGE_PIN XXXX IOSTANDARD LVCMOS18 } [get_ports { pmod[2][7] }]; # Not implemented on RFSoC 4x2
+
+set_property -dict { PACKAGE_PIN AK13 IOSTANDARD LVCMOS18 } [get_ports { irigAdcSdo  }]
+set_property -dict { PACKAGE_PIN AH12 IOSTANDARD LVCMOS18 } [get_ports { irigAdcSclk }]
+set_property -dict { PACKAGE_PIN AH13 IOSTANDARD LVCMOS18 } [get_ports { irigTrigOut }]
+set_property -dict { PACKAGE_PIN AJ13 IOSTANDARD LVCMOS18 } [get_ports { irigCompOut }]
+set_property -dict { PACKAGE_PIN AG14 IOSTANDARD LVCMOS18 } [get_ports { irigAdcCsL  }]
+
 ##############################################################################
 
 set_property -dict { PACKAGE_PIN AN11 IOSTANDARD LVDS } [get_ports { plClkP }]
