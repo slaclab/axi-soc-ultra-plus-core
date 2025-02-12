@@ -18,8 +18,11 @@ loadConstraints -dir "$::DIR_PATH/xdc"
 loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 
 # Load the block design
-loadBlockDesign -path "$::DIR_PATH/bd/2023.1/AxiSocUltraPlusCpuCore.bd"
-# loadBlockDesign -path "$::DIR_PATH/bd/2023.1/AxiSocUltraPlusCpuCore.tcl"
+if  { $::env(VIVADO_VERSION) >= 2023.1 } {
+   set bdVer "2023.1"
+}
+loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.bd"
+# loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.tcl"
 
 # Load IP cores
 loadIpCore -dir "$::DIR_PATH/ip"
