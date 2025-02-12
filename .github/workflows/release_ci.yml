@@ -39,6 +39,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install flake8
 
+      - name: Check for trailing whitespace
+        run: |
+          if grep -rnI '[[:blank:]]$' --include=\*.{vhd,sh,tcl,py,xdc} .; then
+            echo "Error: Trailing whitespace found in the repository!"
+            exit 1
+          fi
+
       - name: Python Syntax Check
         run: |
           python -m compileall -f python/
