@@ -16,13 +16,16 @@ source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
 # https://github.com/Xilinx/RFSoC-PYNQ/tree/master/boards/RFSoC4x2/petalinux_bsp/meta-user
 #########################################################################################
 
-# Check for version 2022.1 of Vivado (or later)
-if { [VersionCheck 2022.1] < 0 } {exit -1}
+# Check for version 2023.1 of Vivado (or later)
+if { [VersionCheck 2023.1] < 0 } {exit -1}
 
 # Check for valid FPGA
 if { $::env(PRJ_PART) != "xczu48dr-ffvg1517-1-e" } {
    puts "\n\nERROR: PRJ_PART must be either xczu48dr-ffvg1517-1-e in the Makefile\n\n"; exit -1
 }
+
+# Set the board part
+set_property board_part realdigital.org:rfsoc4x2:part0:1.0 [current_project]
 
 # Load shared source code
 loadRuckusTcl "$::DIR_PATH/../../shared"
@@ -31,15 +34,12 @@ loadConstraints -dir "$::DIR_PATH/xdc"
 # Load the common source code
 loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
 
-# Set the board part
-set_property board_part realdigital.org:rfsoc4x2:part0:1.0 [current_project]
-
 # Load the block design
 if  { $::env(VIVADO_VERSION) >= 2023.1 } {
    set bdVer "2023.1"
-} else {
-   set bdVer "2022.2"
 }
 loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.bd"
 # loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.tcl"
 
+# Load IP cores
+loadIpCore -dir "$::DIR_PATH/ip"
