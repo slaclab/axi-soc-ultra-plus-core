@@ -44,3 +44,4 @@ bin*
 *.pdi
 *.bif
 *.elf
+*.dcp
