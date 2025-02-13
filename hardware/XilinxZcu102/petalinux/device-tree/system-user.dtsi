@@ -1,9 +1,23 @@
 /include/ "system-conf.dtsi"
 / {
 	chosen {
-		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0";
+		bootargs = " earlycon console=ttyPS0,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0 cma=1536M";
 		stdout-path = "serial0:115200n8";
 		xlnx,eeprom = &eeprom;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		cma_reserved: cma@0 {
+			compatible = "shared-dma-pool";
+			reusable;
+			reg = <0x0 0x80000000 0x0 0x60000000>; /* 1.5 GB reserved at 2GB boundary */
+			alignment = <0 0x1000>;
+			no-map;
+		};
 	};
 };
 &i2c1 {

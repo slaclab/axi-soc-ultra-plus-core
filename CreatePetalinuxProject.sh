@@ -222,6 +222,10 @@ echo CONFIG_htop=y >> project-spec/configs/rootfs_config
 echo CONFIG_htop   >> project-spec/configs/rootfsconfigs/user-rootfsconfig
 echo CONFIG_htop   >> project-spec/meta-user/conf/user-rootfsconfig
 
+echo CONFIG_iperf3=y >> project-spec/configs/rootfs_config
+echo CONFIG_iperf3   >> project-spec/configs/rootfsconfigs/user-rootfsconfig
+echo CONFIG_iperf3   >> project-spec/meta-user/conf/user-rootfsconfig
+
 ##############################################################################
 
 # Finalize the System Image
