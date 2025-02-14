@@ -1,7 +1,7 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0xE7D16F781B76F277",
+      "boundary_crc": "0xE7D16F78E0E904A4",
       "device": "xczu48dr-ffvg1517-2-e",
       "gen_directory": "../../../../SimpleRfSoc4x2Example_project.gen/sources_1/bd/2023",
       "name": "AxiSocUltraPlusCpuCore",
@@ -847,7 +847,7 @@
             "value_src": "default_prop"
           },
           "FREQ_HZ": {
-            "value": "249999954",
+            "value": "250000000",
             "value_src": "user_prop"
           },
           "FREQ_TOLERANCE_HZ": {
@@ -1912,7 +1912,7 @@
             "value": "1"
           },
           "PSU__ACT_DDR_FREQ_MHZ": {
-            "value": "1199.999756"
+            "value": "1000.000000"
           },
           "PSU__AUX_REF_CLK__FREQMHZ": {
             "value": "33.333"
@@ -1927,7 +1927,7 @@
             "value": "0"
           },
           "PSU__CRF_APB__ACPU_CTRL__ACT_FREQMHZ": {
-            "value": "1199.999756"
+            "value": "1200.000000"
           },
           "PSU__CRF_APB__ACPU_CTRL__FREQMHZ": {
             "value": "1200"
@@ -2044,7 +2044,7 @@
             "value": "1"
           },
           "PSU__CRF_APB__DBG_FPD_CTRL__ACT_FREQMHZ": {
-            "value": "249.999954"
+            "value": "250.000000"
           },
           "PSU__CRF_APB__DBG_FPD_CTRL__FREQMHZ": {
             "value": "250"
@@ -2062,7 +2062,7 @@
             "value": "IOPLL"
           },
           "PSU__CRF_APB__DBG_TSTMP_CTRL__ACT_FREQMHZ": {
-            "value": "249.999954"
+            "value": "250.000000"
           },
           "PSU__CRF_APB__DBG_TSTMP_CTRL__FREQMHZ": {
             "value": "250"
@@ -2071,7 +2071,7 @@
             "value": "IOPLL"
           },
           "PSU__CRF_APB__DDR_CTRL__ACT_FREQMHZ": {
-            "value": "599.999878"
+            "value": "500.000000"
           },
           "PSU__CRF_APB__DDR_CTRL__FREQMHZ": {
             "value": "1200"
@@ -2080,13 +2080,13 @@
             "value": "DPLL"
           },
           "PSU__CRF_APB__DPDMA_REF_CTRL__ACT_FREQMHZ": {
-            "value": "599.999878"
+            "value": "600.000000"
           },
           "PSU__CRF_APB__DPDMA_REF_CTRL__FREQMHZ": {
             "value": "600"
           },
           "PSU__CRF_APB__DPDMA_REF_CTRL__SRCSEL": {
-            "value": "DPLL"
+            "value": "APLL"
           },
           "PSU__CRF_APB__DPLL_CTRL__FRACFREQ": {
             "value": "27.138"
@@ -2095,7 +2095,7 @@
             "value": "PSS_REF_CLK"
           },
           "PSU__CRF_APB__DP_AUDIO_REF_CTRL__ACT_FREQMHZ": {
-            "value": "24.999996"
+            "value": "25.000000"
           },
           "PSU__CRF_APB__DP_AUDIO_REF_CTRL__FREQMHZ": {
             "value": "25"
@@ -2107,7 +2107,7 @@
             "value": "0"
           },
           "PSU__CRF_APB__DP_STC_REF_CTRL__ACT_FREQMHZ": {
-            "value": "26.249996"
+            "value": "26.785715"
           },
           "PSU__CRF_APB__DP_STC_REF_CTRL__FREQMHZ": {
             "value": "27"
@@ -2116,7 +2116,7 @@
             "value": "RPLL"
           },
           "PSU__CRF_APB__DP_VIDEO_REF_CTRL__ACT_FREQMHZ": {
-            "value": "299.999939"
+            "value": "300.000000"
           },
           "PSU__CRF_APB__DP_VIDEO_REF_CTRL__FREQMHZ": {
             "value": "300"
@@ -2128,13 +2128,13 @@
             "value": "0"
           },
           "PSU__CRF_APB__GDMA_REF_CTRL__ACT_FREQMHZ": {
-            "value": "599.999878"
+            "value": "600.000000"
           },
           "PSU__CRF_APB__GDMA_REF_CTRL__FREQMHZ": {
             "value": "600"
           },
           "PSU__CRF_APB__GDMA_REF_CTRL__SRCSEL": {
-            "value": "DPLL"
+            "value": "APLL"
           },
           "PSU__CRF_APB__GPU_REF_CTRL__ACT_FREQMHZ": {
             "value": "0"
@@ -2167,7 +2167,7 @@
             "value": "250"
           },
           "PSU__CRF_APB__TOPSW_LSBUS_CTRL__ACT_FREQMHZ": {
-            "value": "99.999985"
+            "value": "100.000000"
           },
           "PSU__CRF_APB__TOPSW_LSBUS_CTRL__FREQMHZ": {
             "value": "100"
@@ -2176,10 +2176,10 @@
             "value": "IOPLL"
           },
           "PSU__CRF_APB__TOPSW_MAIN_CTRL__ACT_FREQMHZ": {
-            "value": "399.999908"
+            "value": "500.000000"
           },
           "PSU__CRF_APB__TOPSW_MAIN_CTRL__FREQMHZ": {
-            "value": "533.33"
+            "value": "500"
           },
           "PSU__CRF_APB__TOPSW_MAIN_CTRL__SRCSEL": {
             "value": "DPLL"
@@ -2191,13 +2191,13 @@
             "value": "PSS_REF_CLK"
           },
           "PSU__CRL_APB__ADMA_REF_CTRL__ACT_FREQMHZ": {
-            "value": "524.999939"
+            "value": "500.000000"
           },
           "PSU__CRL_APB__ADMA_REF_CTRL__FREQMHZ": {
-            "value": "533.333"
+            "value": "500"
           },
           "PSU__CRL_APB__ADMA_REF_CTRL__SRCSEL": {
-            "value": "RPLL"
+            "value": "IOPLL"
           },
           "PSU__CRL_APB__AFI6_REF_CTRL__ACT_FREQMHZ": {
             "value": "500"
@@ -2212,7 +2212,7 @@
             "value": "0"
           },
           "PSU__CRL_APB__AMS_REF_CTRL__ACT_FREQMHZ": {
-            "value": "49.999992"
+            "value": "50.000000"
           },
           "PSU__CRL_APB__AMS_REF_CTRL__FREQMHZ": {
             "value": "50"
@@ -2239,7 +2239,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__CPU_R5_CTRL__ACT_FREQMHZ": {
-            "value": "499.999908"
+            "value": "500.000000"
           },
           "PSU__CRL_APB__CPU_R5_CTRL__FREQMHZ": {
             "value": "500"
@@ -2257,7 +2257,7 @@
             "value": "SysOsc"
           },
           "PSU__CRL_APB__DBG_LPD_CTRL__ACT_FREQMHZ": {
-            "value": "249.999954"
+            "value": "250.000000"
           },
           "PSU__CRL_APB__DBG_LPD_CTRL__FREQMHZ": {
             "value": "250"
@@ -2278,7 +2278,7 @@
             "value": "RPLL"
           },
           "PSU__CRL_APB__DLL_REF_CTRL__ACT_FREQMHZ": {
-            "value": "1499.999756"
+            "value": "1500.000000"
           },
           "PSU__CRL_APB__DLL_REF_CTRL__FREQMHZ": {
             "value": "1500"
@@ -2296,7 +2296,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__GEM1_REF_CTRL__ACT_FREQMHZ": {
-            "value": "124.999977"
+            "value": "125.000000"
           },
           "PSU__CRL_APB__GEM1_REF_CTRL__FREQMHZ": {
             "value": "125"
@@ -2323,7 +2323,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__GEM_TSU_REF_CTRL__ACT_FREQMHZ": {
-            "value": "249.999954"
+            "value": "250.000000"
           },
           "PSU__CRL_APB__GEM_TSU_REF_CTRL__FREQMHZ": {
             "value": "250"
@@ -2332,7 +2332,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__I2C0_REF_CTRL__ACT_FREQMHZ": {
-            "value": "99.999985"
+            "value": "100.000000"
           },
           "PSU__CRL_APB__I2C0_REF_CTRL__FREQMHZ": {
             "value": "100"
@@ -2341,7 +2341,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__I2C1_REF_CTRL__ACT_FREQMHZ": {
-            "value": "99.999985"
+            "value": "100.000000"
           },
           "PSU__CRL_APB__I2C1_REF_CTRL__FREQMHZ": {
             "value": "100"
@@ -2356,16 +2356,16 @@
             "value": "PSS_REF_CLK"
           },
           "PSU__CRL_APB__IOU_SWITCH_CTRL__ACT_FREQMHZ": {
-            "value": "262.499969"
+            "value": "250.000000"
           },
           "PSU__CRL_APB__IOU_SWITCH_CTRL__FREQMHZ": {
-            "value": "267"
+            "value": "250"
           },
           "PSU__CRL_APB__IOU_SWITCH_CTRL__SRCSEL": {
-            "value": "RPLL"
+            "value": "IOPLL"
           },
           "PSU__CRL_APB__LPD_LSBUS_CTRL__ACT_FREQMHZ": {
-            "value": "99.999985"
+            "value": "100.000000"
           },
           "PSU__CRL_APB__LPD_LSBUS_CTRL__FREQMHZ": {
             "value": "100"
@@ -2374,13 +2374,13 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__LPD_SWITCH_CTRL__ACT_FREQMHZ": {
-            "value": "524.999939"
+            "value": "500.000000"
           },
           "PSU__CRL_APB__LPD_SWITCH_CTRL__FREQMHZ": {
-            "value": "533.333"
+            "value": "500"
           },
           "PSU__CRL_APB__LPD_SWITCH_CTRL__SRCSEL": {
-            "value": "RPLL"
+            "value": "IOPLL"
           },
           "PSU__CRL_APB__NAND_REF_CTRL__ACT_FREQMHZ": {
             "value": "100"
@@ -2404,7 +2404,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__PCAP_CTRL__ACT_FREQMHZ": {
-            "value": "187.499969"
+            "value": "187.500000"
           },
           "PSU__CRL_APB__PCAP_CTRL__FREQMHZ": {
             "value": "200"
@@ -2413,7 +2413,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__PL0_REF_CTRL__ACT_FREQMHZ": {
-            "value": "249.999954"
+            "value": "250.000000"
           },
           "PSU__CRL_APB__PL0_REF_CTRL__FREQMHZ": {
             "value": "250"
@@ -2446,7 +2446,7 @@
             "value": "PSS_REF_CLK"
           },
           "PSU__CRL_APB__SDIO0_REF_CTRL__ACT_FREQMHZ": {
-            "value": "187.499969"
+            "value": "187.500000"
           },
           "PSU__CRL_APB__SDIO0_REF_CTRL__FREQMHZ": {
             "value": "200"
@@ -2464,7 +2464,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__SPI0_REF_CTRL__ACT_FREQMHZ": {
-            "value": "19.999996"
+            "value": "20.000000"
           },
           "PSU__CRL_APB__SPI0_REF_CTRL__FREQMHZ": {
             "value": "20"
@@ -2482,13 +2482,13 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__TIMESTAMP_REF_CTRL__ACT_FREQMHZ": {
-            "value": "33.333328"
+            "value": "100.000000"
           },
           "PSU__CRL_APB__TIMESTAMP_REF_CTRL__FREQMHZ": {
             "value": "100"
           },
           "PSU__CRL_APB__TIMESTAMP_REF_CTRL__SRCSEL": {
-            "value": "PSS_REF_CLK"
+            "value": "IOPLL"
           },
           "PSU__CRL_APB__UART0_REF_CTRL__ACT_FREQMHZ": {
             "value": "100"
@@ -2500,7 +2500,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__UART1_REF_CTRL__ACT_FREQMHZ": {
-            "value": "99.999985"
+            "value": "100.000000"
           },
           "PSU__CRL_APB__UART1_REF_CTRL__FREQMHZ": {
             "value": "100"
@@ -2509,7 +2509,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__USB0_BUS_REF_CTRL__ACT_FREQMHZ": {
-            "value": "249.999954"
+            "value": "250.000000"
           },
           "PSU__CRL_APB__USB0_BUS_REF_CTRL__FREQMHZ": {
             "value": "250"
@@ -2518,7 +2518,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__USB1_BUS_REF_CTRL__ACT_FREQMHZ": {
-            "value": "249.999954"
+            "value": "250.000000"
           },
           "PSU__CRL_APB__USB1_BUS_REF_CTRL__FREQMHZ": {
             "value": "250"
@@ -2527,7 +2527,7 @@
             "value": "IOPLL"
           },
           "PSU__CRL_APB__USB3_DUAL_REF_CTRL__ACT_FREQMHZ": {
-            "value": "19.999996"
+            "value": "20.000000"
           },
           "PSU__CRL_APB__USB3_DUAL_REF_CTRL__FREQMHZ": {
             "value": "20"
@@ -2605,7 +2605,7 @@
             "value": "Components"
           },
           "PSU__DDRC__CWL": {
-            "value": "12"
+            "value": "14"
           },
           "PSU__DDRC__DDR4_ADDR_MAPPING": {
             "value": "1"
@@ -2836,7 +2836,7 @@
             "value": "0"
           },
           "PSU__FPD_SLCR__WDT1__ACT_FREQMHZ": {
-            "value": "99.999985"
+            "value": "100.000000"
           },
           "PSU__FPGA_PL0_ENABLE": {
             "value": "1"
@@ -3034,7 +3034,7 @@
             "value": "100.000000"
           },
           "PSU__IOU_SLCR__WDT0__ACT_FREQMHZ": {
-            "value": "99.999985"
+            "value": "100.000000"
           },
           "PSU__IRQ_P2F_ADMA_CHAN__INT": {
             "value": "0"
@@ -3471,7 +3471,7 @@
             "value": "33.333"
           },
           "PSU__PSS_REF_CLK__FREQMHZ": {
-            "value": "33.33333"
+            "value": "33.333333"
           },
           "PSU__QSPI__PERIPHERAL__ENABLE": {
             "value": "0"
