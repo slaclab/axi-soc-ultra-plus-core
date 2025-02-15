@@ -43,6 +43,17 @@ if ! awk -v current="$PETALINUX_VER" -v expected="$EXPECTED_VERSION" \
    exit 1
 fi
 
+# Check total buffer size
+TOTAL_BUFFER_SIZE=$(( (dmaTxBuffCount + dmaRxBuffCount) * dmaBuffSize ))
+MAX_BUFFER_SIZE=$((0x60000000)) # 1.5 GB (1610612736 bytes)
+if (( TOTAL_BUFFER_SIZE > MAX_BUFFER_SIZE )); then
+    HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B --format="%.2f" "$TOTAL_BUFFER_SIZE")
+    HEX_SIZE=$(printf "0x%X" "$TOTAL_BUFFER_SIZE")
+    echo "Error: Total buffer size exceeds 1.5 GB (0x60000000)."
+    echo "Current size: $HUMAN_SIZE ($HEX_SIZE)"
+    exit 1
+fi
+
 ##############################################################################
 
 axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
