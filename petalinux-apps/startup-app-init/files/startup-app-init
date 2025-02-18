@@ -9,30 +9,6 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-# Ensure persistent SSH keys are used
-mkdir -p /boot/ssh
-if [ ! -f /boot/ssh/ssh_host_ed25519_key ]; then
-   echo "Generating new SSH host keys..."
-   ssh-keygen -A
-   mv /etc/ssh/ssh_host_* /boot/ssh/
-fi
-
-# Create symbolic links for all SSH host keys
-for keyfile in /boot/ssh/ssh_host_*; do
-   link_path="/etc/ssh/$(basename "$keyfile")"
-   if [ ! -L "$link_path" ] || [ "$(readlink "$link_path")" != "$keyfile" ]; then
-      cp -f "$keyfile" "$link_path"
-      echo "Copied $keyfile to $link_path"
-      chmod 600 /etc/ssh/ssh_host_*
-      chown root:root /etc/ssh/ssh_host_*
-   fi
-done
-
-# Restarting SSH service
-/usr/sbin/sshd
-
-##############################################################################
-
 # Standard SD-memory[0] card interface
 if [ -d "/run/media/boot-mmcblk0p1" ]
 then
@@ -84,6 +60,30 @@ then
    mkdir -p /app
    mount /dev/sda2 /app
 fi
+
+##############################################################################
+
+# Ensure persistent SSH keys are used
+mkdir -p /boot/ssh
+if [ ! -f /boot/ssh/ssh_host_ed25519_key ]; then
+   echo "Generating new SSH host keys..."
+   ssh-keygen -A
+   mv /etc/ssh/ssh_host_* /boot/ssh/
+fi
+
+# Create symbolic links for all SSH host keys
+for keyfile in /boot/ssh/ssh_host_*; do
+   link_path="/etc/ssh/$(basename "$keyfile")"
+   if [ ! -L "$link_path" ] || [ "$(readlink "$link_path")" != "$keyfile" ]; then
+      cp -f "$keyfile" "$link_path"
+      echo "Copied $keyfile to $link_path"
+      chmod 600 /etc/ssh/ssh_host_*
+      chown root:root /etc/ssh/ssh_host_*
+   fi
+done
+
+# Restarting SSH service
+/usr/sbin/sshd
 
 ##############################################################################
 
