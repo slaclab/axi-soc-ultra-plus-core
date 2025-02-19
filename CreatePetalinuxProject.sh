@@ -149,13 +149,8 @@ then
    done
 fi
 
-##############################################################################
-
 # Re-configure before building kernel
 petalinux-config --silentconfig
-
-# Build kernel
-petalinux-build -c kernel
 
 ##############################################################################
 
@@ -207,10 +202,10 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 if [ "$rfdc" -eq 1 ]
 then
     # Add RFDC selftest application
-    petalinux-create apps --template install -n rfdc-test
-    echo CONFIG_rfdc-test=y >> project-spec/configs/rootfs_config
-    cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-test project-spec/meta-user/recipes-apps/.
-    echo IMAGE_INSTALL:append = \" rfdc-test\" >> build/conf/local.conf
+    petalinux-create apps --template install -n rfdc-api
+    echo CONFIG_rfdc-api=y >> project-spec/configs/rootfs_config
+    cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-api project-spec/meta-user/recipes-apps/.
+    echo IMAGE_INSTALL:append = \" rfdc-api\" >> build/conf/local.conf
 fi
 
 ##############################################################################
@@ -239,7 +234,7 @@ echo CONFIG_iperf3   >> project-spec/meta-user/conf/user-rootfsconfig
 
 ##############################################################################
 
-# Finalize the System Image
+# Build Everything!
 petalinux-build
 
 # Create boot files
