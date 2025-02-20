@@ -9,44 +9,70 @@
 //-----------------------------------------------------------------------------
 
 /***************************** Include Files ********************************/
+#ifdef __BAREMETAL__
+#include "xparameters.h"
+#endif
 #include "xrfdc.h"
 
 /************************** Constant Definitions ****************************/
+#ifdef __BAREMETAL__
+#define RFDC_DEVICE_ID 	XPAR_XRFDC_0_DEVICE_ID
+#define I2CBUS	1
+#else
+#define RFDC_DEVICE_ID 	0
+#define I2CBUS	12
+#endif
 
 /**************************** Type Definitions ******************************/
 
 /***************** Macros (Inline Functions) Definitions ********************/
+#ifdef __BAREMETAL__
+#define printf xil_printf
+#endif
 
 /************************** Function Prototypes *****************************/
-int RFdcMTSAdc(tiles);
-int RFdcMTSDac(tiles);
+int RFdcMTSAdc(u8 tiles);
+int RFdcMTSDac(u8 tiles);
 
 /************************** Variable Definitions ****************************/
 static XRFdc RFdcInst;      /* RFdc driver instance */
 
 /****************************************************************************/
-int RFdcMTSAdc(tiles) {
+int RFdcMTSAdc(u8 tiles) {
    int status, status_adc, i;
    u32 factor;
    XRFdc_Config *ConfigPtr;
    XRFdc *RFdcInstPtr = &RFdcInst;
+#ifndef __BAREMETAL__
+   struct metal_device *deviceptr;
+#endif
    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
 
    if (metal_init(&init_param)) {
       printf("ERROR: Failed to run metal initialization\n");
       return XRFDC_FAILURE;
    }
-   metal_set_log_level(METAL_LOG_DEBUG);
 
-   ConfigPtr = XRFdc_LookupConfig(0);
+   metal_set_log_level(METAL_LOG_DEBUG);
+   ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
    if (ConfigPtr == NULL) {
       printf("RFdc Config Failure\n\r");
       return XRFDC_FAILURE;
    }
 
+#ifndef __BAREMETAL__
+	status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
+	if (status != XRFDC_SUCCESS) {
+		return XRFDC_FAILURE;
+	}
+#endif
+
    status = XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
-   // Note: No return on status=error in example script
-   // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
+   if (status != XRFDC_SUCCESS) {
+      printf("RFdc Init Failure\n\r");
+      // Note: No return on status=error in example script
+      // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
+   }
 
    /* ADC MTS Settings */
    XRFdc_MultiConverter_Sync_Config ADC_Sync_Config;
@@ -77,35 +103,47 @@ int RFdcMTSAdc(tiles) {
          printf("ADC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, ADC_Sync_Config.Latency[i], factor, ADC_Sync_Config.Offset[i]);
       }
    }
-   
+
    /* Return completed successfully */
    return XRFDC_MTS_OK;
 }
 
 /****************************************************************************/
-int RFdcMTSDac(tiles) {
+int RFdcMTSDac(u8 tiles) {
    int status, status_dac, i;
    u32 factor;
    XRFdc_Config *ConfigPtr;
    XRFdc *RFdcInstPtr = &RFdcInst;
+#ifndef __BAREMETAL__
+   struct metal_device *deviceptr;
+#endif
    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
 
    if (metal_init(&init_param)) {
       printf("ERROR: Failed to run metal initialization\n");
       return XRFDC_FAILURE;
    }
-   metal_set_log_level(METAL_LOG_DEBUG);
 
-   ConfigPtr = XRFdc_LookupConfig(0);
+   metal_set_log_level(METAL_LOG_DEBUG);
+   ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
    if (ConfigPtr == NULL) {
       printf("RFdc Config Failure\n\r");
       return XRFDC_FAILURE;
    }
 
+#ifndef __BAREMETAL__
+	status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
+	if (status != XRFDC_SUCCESS) {
+		return XRFDC_FAILURE;
+	}
+#endif
+
    status = XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
-   status = XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
-   // Note: No return on status=error in example script
-   // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
+   if (status != XRFDC_SUCCESS) {
+      printf("RFdc Init Failure\n\r");
+      // Note: No return on status=error in example script
+      // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
+   }
 
    /* DAC MTS Settings */
    XRFdc_MultiConverter_Sync_Config DAC_Sync_Config;
@@ -136,7 +174,7 @@ int RFdcMTSDac(tiles) {
          printf("DAC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, DAC_Sync_Config.Latency[i], factor, DAC_Sync_Config.Offset[i]);
       }
    }
-   
+
    /* Return completed successfully */
    return XRFDC_MTS_OK;
 }

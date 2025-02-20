@@ -6,6 +6,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 SRC_URI = " \
    file://Makefile \
    file://xrfdc_selftest_example.c \
+   file://xrfdc_selftest_example.c \
+   file://xrfdc_mts_example.c \
    file://xrfdc_api.c \
 "
 
