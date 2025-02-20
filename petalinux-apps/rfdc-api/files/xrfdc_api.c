@@ -14,6 +14,11 @@
 #endif
 #include "xrfdc.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <argp.h>
+
 /************************** Constant Definitions ****************************/
 #ifdef __BAREMETAL__
 #define RFDC_DEVICE_ID 	XPAR_XRFDC_0_DEVICE_ID
@@ -180,19 +185,87 @@ int RFdcMTSDac(u8 tiles) {
 }
 
 /****************************************************************************/
-int main(void) {
 
-	int Status;
+/* Program documentation */
+const char *argp_program_version = "RFDC API 1.0";
+const char *argp_program_bug_address = "https://github.com/slaclab/axi-soc-ultra-plus-core";
+static char doc[] = "RFDC API for Linux CLI";
+static char args_doc[] = "<mts-adc|mts-adc> --tiles=0xF";
 
-	printf("RFdc MTS Example Test\r\n");
+/* Available options */
+static struct argp_option options[] = {
+    {"tiles", 't', "VALUE", 0, "Set tiles (decimal or hex, e.g., 0xF or 15)"},
+    { 0 } // Indicates end of options
+};
 
-	Status = RFdcMTSAdc(0xF);
-	if (Status != XRFDC_SUCCESS) {
-		printf("MTS Example Test failed\r\n");
-		return XRFDC_FAILURE;
-	}
+/* Structure to hold parsed arguments */
+struct arguments {
+    char mode[10];
+    u8 tiles;
+};
 
-	printf("Successfully ran MTS Example\r\n");
-	return XRFDC_SUCCESS;
+/* Argument parser function */
+static error_t parse_opt(int key, char *arg, struct argp_state *state) {
+    struct arguments *arguments = state->input;
+
+    switch (key) {
+        case 't': // Handle --tiles option
+            if (strncmp(arg, "0x", 2) == 0) {
+                arguments->tiles = strtol(arg, NULL, 16); // Hex input
+            } else {
+                arguments->tiles = atoi(arg); // Decimal input
+            }
+            break;
+
+        case ARGP_KEY_ARG: // Handle positional arguments (adc or dac)
+            if (state->arg_num == 0) {
+                strncpy(arguments->mode, arg, sizeof(arguments->mode) - 1);
+                arguments->mode[sizeof(arguments->mode) - 1] = '\0';
+            } else {
+                argp_usage(state); // Too many arguments
+            }
+            break;
+
+        case ARGP_KEY_END: // Ensure required argument (mode) is provided
+            if (state->arg_num < 1) {
+                argp_usage(state); // Too few arguments
+            }
+            break;
+
+        default:
+            return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
 }
-/****************************************************************************/
+
+/* Define the argument parser */
+static struct argp argp = { options, parse_opt, args_doc, doc };
+
+/* Main function */
+int main(int argc, char *argv[]) {
+    struct arguments arguments;
+    memset(&arguments, 0, sizeof(arguments)); // Initialize struct
+
+    /* Default argument values */
+    arguments.tiles = 0x0;
+
+    /* Parse command-line arguments */
+    argp_parse(&argp, argc, argv, 0, 0, &arguments);
+
+    int Status;
+    if (strcmp(arguments.mode, "mts-adc") == 0) {
+        Status = RFdcMTSAdc(arguments.tiles);
+    } else if (strcmp(arguments.mode, "mts-dac") == 0) {
+        Status = RFdcMTSDac(arguments.tiles);
+    } else {
+        printf("Invalid mode! Use 'mts-adc' or 'mts-dac'.\n");
+        return XRFDC_FAILURE;
+    }
+
+    if (Status != XRFDC_SUCCESS) {
+        printf("MTS Example Test failed\n");
+        return XRFDC_FAILURE;
+    }
+
+    return XRFDC_SUCCESS;
+}
