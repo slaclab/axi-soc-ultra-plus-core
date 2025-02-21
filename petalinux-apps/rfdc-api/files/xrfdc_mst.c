@@ -26,6 +26,8 @@
 #define RFDC_DEVICE_ID 	0
 #endif
 
+#define RFDC_FAILURE -1
+
 /**************************** Type Definitions ******************************/
 
 /***************** Macros (Inline Functions) Definitions ********************/
@@ -121,10 +123,10 @@ int RFdcMTSDac(XRFdc *RFdcInstPtr, u8 tiles) {
 /****************************************************************************/
 
 /* Program documentation */
-const char *argp_program_version = "RFDC API 1.0";
+const char *argp_program_version = "RFDC MST 1.0";
 const char *argp_program_bug_address = "https://github.com/slaclab/axi-soc-ultra-plus-core";
-static char doc[] = "RFDC API for Linux CLI";
-static char args_doc[] = "<mts-adc|mts-adc> --tiles=0xF";
+static char doc[] = "RFDC MST for Linux CLI";
+static char args_doc[] = "<adc|dac> --tiles=0xF";
 
 /* Available options */
 static struct argp_option options[] = {
@@ -201,45 +203,40 @@ int main(int argc, char *argv[]) {
 
    if (metal_init(&init_param)) {
       printf("ERROR: Failed to run metal initialization\n");
-      return XRFDC_FAILURE;
+      return RFDC_FAILURE;
    }
 
    metal_set_log_level(METAL_LOG_DEBUG);
    ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
    if (ConfigPtr == NULL) {
       printf("RFdc Config Failure\n\r");
-      return XRFDC_FAILURE;
+      return RFDC_FAILURE;
    }
 
 #ifndef __BAREMETAL__
 	status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
 	if (status != XRFDC_SUCCESS) {
-		return XRFDC_FAILURE;
+		return RFDC_FAILURE;
 	}
 #endif
 
-   status = XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
-   if (status != XRFDC_SUCCESS) {
-      printf("RFdc Init Failure\n\r");
-      // Note: No return on status=error in example script
-      // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
-   }
+   XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
 
    /****************************************************************************/
 
-    if (strcmp(arguments.mode, "mts-adc") == 0) {
-        status = RFdcMTSAdc(RFdcInstPtr,arguments.tiles);
-    } else if (strcmp(arguments.mode, "mts-dac") == 0) {
-        status = RFdcMTSDac(RFdcInstPtr,arguments.tiles);
-    } else {
-        printf("Invalid mode! Use 'mts-adc' or 'mts-dac'.\n");
-        return XRFDC_FAILURE;
-    }
+   if (strcmp(arguments.mode, "adc") == 0) {
+      status = RFdcMTSAdc(RFdcInstPtr,arguments.tiles);
+   } else if (strcmp(arguments.mode, "dac") == 0) {
+      status = RFdcMTSDac(RFdcInstPtr,arguments.tiles);
+   } else {
+      printf("Invalid mode! Use 'adc' or 'dac'.\n");
+      return RFDC_FAILURE;
+   }
 
-    if (status != XRFDC_SUCCESS) {
-        printf("MTS Example Test failed\n");
-        return XRFDC_FAILURE;
-    }
+   if (status != XRFDC_SUCCESS) {
+      printf("RFDC MTS failed\n");
+      return RFDC_FAILURE;
+   }
 
-    return XRFDC_SUCCESS;
+   return arguments.tiles;
 }
