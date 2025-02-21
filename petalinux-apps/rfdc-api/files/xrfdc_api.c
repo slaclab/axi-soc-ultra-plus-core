@@ -22,10 +22,8 @@
 /************************** Constant Definitions ****************************/
 #ifdef __BAREMETAL__
 #define RFDC_DEVICE_ID 	XPAR_XRFDC_0_DEVICE_ID
-#define I2CBUS	1
 #else
 #define RFDC_DEVICE_ID 	0
-#define I2CBUS	12
 #endif
 
 /**************************** Type Definitions ******************************/
