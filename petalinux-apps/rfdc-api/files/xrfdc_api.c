@@ -36,48 +36,16 @@
 #endif
 
 /************************** Function Prototypes *****************************/
-int RFdcMTSAdc(u8 tiles);
-int RFdcMTSDac(u8 tiles);
+int RFdcMTSAdc(XRFdc *RFdcInstPtr, u8 tiles);
+int RFdcMTSDac(XRFdc *RFdcInstPtr, u8 tiles);
 
 /************************** Variable Definitions ****************************/
 static XRFdc RFdcInst;      /* RFdc driver instance */
 
 /****************************************************************************/
-int RFdcMTSAdc(u8 tiles) {
+int RFdcMTSAdc(XRFdc *RFdcInstPtr, u8 tiles) {
    int status, status_adc, i;
    u32 factor;
-   XRFdc_Config *ConfigPtr;
-   XRFdc *RFdcInstPtr = &RFdcInst;
-#ifndef __BAREMETAL__
-   struct metal_device *deviceptr;
-#endif
-   struct metal_init_params init_param = METAL_INIT_DEFAULTS;
-
-   if (metal_init(&init_param)) {
-      printf("ERROR: Failed to run metal initialization\n");
-      return XRFDC_FAILURE;
-   }
-
-   metal_set_log_level(METAL_LOG_DEBUG);
-   ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
-   if (ConfigPtr == NULL) {
-      printf("RFdc Config Failure\n\r");
-      return XRFDC_FAILURE;
-   }
-
-#ifndef __BAREMETAL__
-	status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
-	if (status != XRFDC_SUCCESS) {
-		return XRFDC_FAILURE;
-	}
-#endif
-
-   status = XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
-   if (status != XRFDC_SUCCESS) {
-      printf("RFdc Init Failure\n\r");
-      // Note: No return on status=error in example script
-      // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
-   }
 
    /* ADC MTS Settings */
    XRFdc_MultiConverter_Sync_Config ADC_Sync_Config;
@@ -114,41 +82,9 @@ int RFdcMTSAdc(u8 tiles) {
 }
 
 /****************************************************************************/
-int RFdcMTSDac(u8 tiles) {
+int RFdcMTSDac(XRFdc *RFdcInstPtr, u8 tiles) {
    int status, status_dac, i;
    u32 factor;
-   XRFdc_Config *ConfigPtr;
-   XRFdc *RFdcInstPtr = &RFdcInst;
-#ifndef __BAREMETAL__
-   struct metal_device *deviceptr;
-#endif
-   struct metal_init_params init_param = METAL_INIT_DEFAULTS;
-
-   if (metal_init(&init_param)) {
-      printf("ERROR: Failed to run metal initialization\n");
-      return XRFDC_FAILURE;
-   }
-
-   metal_set_log_level(METAL_LOG_DEBUG);
-   ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
-   if (ConfigPtr == NULL) {
-      printf("RFdc Config Failure\n\r");
-      return XRFDC_FAILURE;
-   }
-
-#ifndef __BAREMETAL__
-	status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
-	if (status != XRFDC_SUCCESS) {
-		return XRFDC_FAILURE;
-	}
-#endif
-
-   status = XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
-   if (status != XRFDC_SUCCESS) {
-      printf("RFdc Init Failure\n\r");
-      // Note: No return on status=error in example script
-      // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
-   }
 
    /* DAC MTS Settings */
    XRFdc_MultiConverter_Sync_Config DAC_Sync_Config;
@@ -194,48 +130,48 @@ static char args_doc[] = "<mts-adc|mts-adc> --tiles=0xF";
 
 /* Available options */
 static struct argp_option options[] = {
-    {"tiles", 't', "VALUE", 0, "Set tiles (decimal or hex, e.g., 0xF or 15)"},
-    { 0 } // Indicates end of options
+   {"tiles", 't', "VALUE", 0, "Set tiles (decimal or hex, e.g., 0xF or 15)"},
+   { 0 } // Indicates end of options
 };
 
 /* Structure to hold parsed arguments */
 struct arguments {
-    char mode[10];
-    u8 tiles;
+   char mode[10];
+   u8 tiles;
 };
 
 /* Argument parser function */
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-    struct arguments *arguments = state->input;
+   struct arguments *arguments = state->input;
 
-    switch (key) {
-        case 't': // Handle --tiles option
-            if (strncmp(arg, "0x", 2) == 0) {
-                arguments->tiles = strtol(arg, NULL, 16); // Hex input
-            } else {
-                arguments->tiles = atoi(arg); // Decimal input
-            }
-            break;
+   switch (key) {
+      case 't': // Handle --tiles option
+         if (strncmp(arg, "0x", 2) == 0) {
+            arguments->tiles = strtol(arg, NULL, 16); // Hex input
+         } else {
+            arguments->tiles = atoi(arg); // Decimal input
+         }
+         break;
 
-        case ARGP_KEY_ARG: // Handle positional arguments (adc or dac)
-            if (state->arg_num == 0) {
-                strncpy(arguments->mode, arg, sizeof(arguments->mode) - 1);
-                arguments->mode[sizeof(arguments->mode) - 1] = '\0';
-            } else {
-                argp_usage(state); // Too many arguments
-            }
-            break;
+      case ARGP_KEY_ARG: // Handle positional arguments (adc or dac)
+         if (state->arg_num == 0) {
+            strncpy(arguments->mode, arg, sizeof(arguments->mode) - 1);
+            arguments->mode[sizeof(arguments->mode) - 1] = '\0';
+         } else {
+            argp_usage(state); // Too many arguments
+         }
+         break;
 
-        case ARGP_KEY_END: // Ensure required argument (mode) is provided
-            if (state->arg_num < 1) {
-                argp_usage(state); // Too few arguments
-            }
-            break;
+      case ARGP_KEY_END: // Ensure required argument (mode) is provided
+         if (state->arg_num < 1) {
+            argp_usage(state); // Too few arguments
+         }
+         break;
 
-        default:
-            return ARGP_ERR_UNKNOWN;
-    }
-    return 0;
+      default:
+         return ARGP_ERR_UNKNOWN;
+   }
+   return 0;
 }
 
 /* Define the argument parser */
@@ -243,26 +179,66 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 /* Main function */
 int main(int argc, char *argv[]) {
-    struct arguments arguments;
-    memset(&arguments, 0, sizeof(arguments)); // Initialize struct
 
-    /* Default argument values */
-    arguments.tiles = 0x0;
+   /****************************************************************************/
 
-    /* Parse command-line arguments */
-    argp_parse(&argp, argc, argv, 0, 0, &arguments);
+   struct arguments arguments;
+   memset(&arguments, 0, sizeof(arguments)); // Initialize struct
 
-    int Status;
+   /* Default argument values */
+   arguments.tiles = 0x0;
+
+   /* Parse command-line arguments */
+   argp_parse(&argp, argc, argv, 0, 0, &arguments);
+
+   /****************************************************************************/
+
+   int status;
+   XRFdc_Config *ConfigPtr;
+   XRFdc *RFdcInstPtr = &RFdcInst;
+#ifndef __BAREMETAL__
+   struct metal_device *deviceptr;
+#endif
+   struct metal_init_params init_param = METAL_INIT_DEFAULTS;
+
+   if (metal_init(&init_param)) {
+      printf("ERROR: Failed to run metal initialization\n");
+      return XRFDC_FAILURE;
+   }
+
+   metal_set_log_level(METAL_LOG_DEBUG);
+   ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
+   if (ConfigPtr == NULL) {
+      printf("RFdc Config Failure\n\r");
+      return XRFDC_FAILURE;
+   }
+
+#ifndef __BAREMETAL__
+	status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
+	if (status != XRFDC_SUCCESS) {
+		return XRFDC_FAILURE;
+	}
+#endif
+
+   status = XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
+   if (status != XRFDC_SUCCESS) {
+      printf("RFdc Init Failure\n\r");
+      // Note: No return on status=error in example script
+      // https://github.com/Xilinx/embeddedsw/blob/xilinx_v2024.2/XilinxProcessorIPLib/drivers/rfdc/examples/xrfdc_mts_example.c#L163
+   }
+
+   /****************************************************************************/
+
     if (strcmp(arguments.mode, "mts-adc") == 0) {
-        Status = RFdcMTSAdc(arguments.tiles);
+        status = RFdcMTSAdc(RFdcInstPtr,arguments.tiles);
     } else if (strcmp(arguments.mode, "mts-dac") == 0) {
-        Status = RFdcMTSDac(arguments.tiles);
+        status = RFdcMTSDac(RFdcInstPtr,arguments.tiles);
     } else {
         printf("Invalid mode! Use 'mts-adc' or 'mts-dac'.\n");
         return XRFDC_FAILURE;
     }
 
-    if (Status != XRFDC_SUCCESS) {
+    if (status != XRFDC_SUCCESS) {
         printf("MTS Example Test failed\n");
         return XRFDC_FAILURE;
     }
