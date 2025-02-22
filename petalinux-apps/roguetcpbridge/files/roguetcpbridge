@@ -9,24 +9,102 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-import pyrogue
 import rogue
 import rogue.hardware.axi
 import rogue.interfaces.memory
 
+import pyrogue
+import pyrogue.interfaces
+
 import subprocess
-import socket
-import ipaddress
 import time
 import argparse
+import shutil
+
+rogue.Version.minVersion('6.5.0')
 
 # rogue.Logging.setLevel(rogue.Logging.Debug)
 
-##############################################################################
-## Refer to https://jira.slac.stanford.edu/browse/ESROGUE-549 if you want to
-## have more than 100 TCP streams.  That JIRA ticket explains how to configure
-## the kernel to support all 2048 possible lanes (8 DMA lanes x 256 TDEST)
-##############################################################################
+#################################################################
+
+class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
+
+    def __init__(self):
+        super().__init__()
+
+        # Local cached variables
+        self.mstAdc = 0
+        self.mstDac = 0
+
+        @self.command(base=pyrogue.UInt(8), addr=0x00)
+        def MstAdcTiles(self, arg):
+            try:
+                # Write operation
+                if arg is not None:
+                    command = ['rfdc-mst', 'adc', f'--tiles={int(arg)}']
+                    result = subprocess.run(command, text=True)
+
+                    # Store only the return code
+                    self.mstAdc = result.returncode
+
+                # Read operation
+                else:
+                    return self.mstAdc
+
+            except Exception as e:
+                print(f"Error executing command: {e}", file=sys.stderr)
+                self.mstAdc = 0
+
+        @self.command(base=pyrogue.UInt(8), addr=0x04)
+        def MstDacTiles(self, arg):
+            try:
+                # Write operation
+                if arg is not None:
+                    command = ['rfdc-mst', 'dac', f'--tiles={int(arg)}']
+                    result = subprocess.run(command, text=True)
+
+                    # Store only the return code
+                    self.mstDac = result.returncode
+
+                # Read operation
+                else:
+                    return self.mstDac
+
+            except Exception as e:
+                print(f"Error executing command: {e}", file=sys.stderr)
+                self.mstDac = 0
+
+#################################################################
+
+class ZynqTcpServer(object):
+    def __init__(self,numLane,numDest):
+
+        # Memory server on port [9000:9001]
+        print( 'Starting Memory TcpServer at Port=9000')
+        self.memMap = rogue.hardware.axi.AxiMemMap('/dev/axi_memory_map')
+        self.memServer = rogue.interfaces.memory.TcpServer('*', 9000)
+        self.memServer >> self.memMap
+
+        # Data server on port [10000+512*lane+2*tdest:10000+512*lane+2*tdest+1]
+        self.dmaStream = [[None for x in range(numDest)] for y in range(numLane)]
+        self.dataServer = [[None for x in range(numDest)] for y in range(numLane)]
+        for lane in range(numLane):
+            for tdest in range(numDest):
+                port = 10000+512*lane+2*tdest
+                print( f'Starting Stream TcpServer at Port={port} and Port={port+1} for DMA[{lane}][{tdest}]' )
+                self.dmaStream[lane][tdest] = rogue.hardware.axi.AxiStreamDma('/dev/axi_stream_dma_0', 256*lane+tdest, True)
+                self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
+                self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
+
+        # Check if the RFDC API interface exists
+        if shutil.which('rfdc-mst'):
+
+            # Memory server on port [9002:9003]
+            self.apiMap = rogue.interfaces.memory.TcpServer('*', 9002)
+            self.rfdcApi = RfdcApi()
+            self.apiMap >> self.rfdcApi
+
+#################################################################
 
 if __name__ == "__main__":
 
@@ -34,6 +112,12 @@ if __name__ == "__main__":
 
     # Set the argument parser
     parser = argparse.ArgumentParser()
+
+    ##############################################################################
+    ## Refer to https://jira.slac.stanford.edu/browse/ESROGUE-549 if you want to
+    ## have more than 100 TCP streams.  That JIRA ticket explains how to configure
+    ## the kernel to support all 2048 possible lanes (8 DMA lanes x 256 TDEST)
+    ##############################################################################
 
     # Add arguments
     parser.add_argument(
@@ -57,29 +141,6 @@ if __name__ == "__main__":
 
     #################################################################
 
-    class ZynqTcpServer(object):
-
-        def __init__(self):
-
-            # Memory server on port 9000
-            print( 'Starting Memory TcpServer at Port=9000')
-            self.memMap = rogue.hardware.axi.AxiMemMap('/dev/axi_memory_map')
-            self.memServer = rogue.interfaces.memory.TcpServer('*', 9000)
-            self.memServer >> self.memMap
-
-            # Data server on port 10000+512*lane+2*tdest
-            self.dmaStream = [[None for x in range(args.tdest)] for y in range(args.lane)]
-            self.dataServer = [[None for x in range(args.tdest)] for y in range(args.lane)]
-            for lane in range(args.lane):
-                for tdest in range(args.tdest):
-                    port = 10000+512*lane+2*tdest
-                    print( f'Starting Stream TcpServer at Port={port} and Port={port+1} for DMA[{lane}][{tdest}]' )
-                    self.dmaStream[lane][tdest] = rogue.hardware.axi.AxiStreamDma('/dev/axi_stream_dma_0', 256*lane+tdest, True)
-                    self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
-                    self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
-
-    #################################################################
-
     def eth0_ready():
         command = 'ip -4 -o addr show eth0'.split()
         return (subprocess.check_output(command).decode() != '')
@@ -91,8 +152,8 @@ if __name__ == "__main__":
 
     #################################################################
 
-    # Create the server
-    server = ZynqTcpServer()
+    # Create the TCP bridge
+    server = ZynqTcpServer(numLane=args.lane, numDest=args.tdest)
     try:
         while True:
             time.sleep(1)
