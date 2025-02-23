@@ -9,6 +9,9 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
+# Clear terminal output
+echo -ne "\033c"
+
 # Set default values
 rfdc=1
 
