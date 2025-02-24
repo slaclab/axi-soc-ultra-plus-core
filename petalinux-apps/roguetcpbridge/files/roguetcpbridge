@@ -60,6 +60,28 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
 
         #################################################################
 
+        def CreateCalibrationModeCmd(tile, block):
+            def CalibrationMode(self, arg):
+                try:
+                    # Write operation
+                    if arg is not None:
+                        command = ['rfdc-CalibrationMode', 'set', f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                    # Read operation
+                    else:
+                        command = ['rfdc-CalibrationMode', 'get', f'--tile={tile}', f'--block={block}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                except Exception as e:
+                    print(f"Error executing command: {e}", file=sys.stderr)
+
+            return CalibrationMode
+
+        #################################################################
+
         for type in ['adc','dac']:
             for tile in range(4):
                 for block in range(4):
@@ -71,6 +93,11 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                     @self.command(base=pyrogue.UInt(2), addr=baseAddr + 0x00)
                     def NyquistZoneCmd(self, arg, type=type, tile=tile, block=block):
                         return CreateNyquistZoneCmd(type=type, tile=tile, block=block)(self, arg)
+
+                    if (type == 'adc'):
+                        @self.command(base=pyrogue.UInt(2), addr=baseAddr + 0x04)
+                        def CalibrationModeCmd(self, arg, tile=tile, block=block):
+                            return CreateCalibrationModeCmd(tile=tile, block=block)(self, arg)
 
         #################################################################
 

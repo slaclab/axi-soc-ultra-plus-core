@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
 
    /****************************************************************************/
 
-   u8 retVar = args.setValue;
+   u8 retVar = args.setValue&0x3; // 2-bit Mask
    if (strcmp(args.mode, "set") == 0) {
       printf("XRFdc_SetCalibrationMode Value: 0x%X\n", retVar);
       status = XRFdc_SetCalibrationMode(RFdcInstPtr, args.tile, args.block, retVar);

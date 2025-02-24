@@ -34,6 +34,22 @@ class RfBlock(pr.Device):
                 0 : "Undefined",
                 1 : "Odd",
                 2 : "Even",
-                3 : "NotAvailable",
+                3 : "ERROR",
             },
         ))
+
+        if isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'CalibrationMode',
+                description  = 'Method to execute the RFSoC PS rfdc-CalibrationMode executable remotely',
+                offset       = 0x04,
+                bitSize      = 2,
+                # mode         = 'RW', "RFDC CalibrationMode failed" when we try to change configurations
+                mode         = 'RO',
+                enum         = {
+                    0 : "AutoCal",
+                    1 : "Mode1",
+                    2 : "Mode2",
+                    3 : "ERROR",
+                },
+            ))
