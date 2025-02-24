@@ -24,6 +24,10 @@ class RfBlock(pr.Device):
             **kwargs):
         super().__init__(description=description, **kwargs)
 
+        ###########################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetNyquistZone
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetNyquistZone
+        ###########################################################################
         self.add(pr.RemoteVariable(
             name         = 'NyquistZone',
             description  = 'Method to execute the RFSoC PS rfdc-NyquistZone executable remotely',
@@ -39,6 +43,11 @@ class RfBlock(pr.Device):
         ))
 
         if isAdc:
+
+            ###############################################################################
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetCalibrationMode
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCalibrationMode
+            ###############################################################################
             self.add(pr.RemoteVariable(
                 name         = 'CalibrationMode',
                 description  = 'Method to execute the RFSoC PS rfdc-CalibrationMode executable remotely',
@@ -52,4 +61,31 @@ class RfBlock(pr.Device):
                     2 : "Mode2",
                     3 : "ERROR",
                 },
+            ))
+
+            #######################################################################################
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Cal_Freeze_Settings
+            #######################################################################################
+            self.add(pr.RemoteVariable(
+                name         = 'CalFrozen',
+                description  = 'Status that indicates that the calibration has been frozen',
+                offset       = 0x08,
+                bitSize      = 32,
+                mode         = 'RO',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'DisableFreezePin',
+                description  = 'Disables the calibration freeze pin',
+                offset       = 0x0C,
+                bitSize      = 32,
+                mode         = 'RW',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'FreezeCalibration',
+                description  = 'Freezes the calibration using the freeze port',
+                offset       = 0x10,
+                bitSize      = 32,
+                mode         = 'RW',
             ))

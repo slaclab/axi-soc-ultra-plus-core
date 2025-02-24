@@ -16,6 +16,7 @@ import rogue.interfaces.memory
 import pyrogue
 import pyrogue.interfaces
 
+import sys
 import subprocess
 import time
 import argparse
@@ -55,6 +56,7 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
 
                 except Exception as e:
                     print(f"Error executing command: {e}", file=sys.stderr)
+                    return None
 
             return NyquistZone
 
@@ -77,8 +79,32 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
 
                 except Exception as e:
                     print(f"Error executing command: {e}", file=sys.stderr)
+                    return None
 
             return CalibrationMode
+
+        #################################################################
+
+        def CreateCalFreezeCmd(type, tile, block):
+            def CalFreeze(self, arg):
+                try:
+                    # Write operation
+                    if arg is not None:
+                        command = ['rfdc-CalFreeze', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                    # Read operation
+                    else:
+                        command = ['rfdc-CalFreeze', 'get', type, f'--tile={tile}', f'--block={block}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                except Exception as e:
+                    print(f"Error executing command: {e}", file=sys.stderr)
+                    return None
+
+            return CalFreeze
 
         #################################################################
 
@@ -95,9 +121,22 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                         return CreateNyquistZoneCmd(type=type, tile=tile, block=block)(self, arg)
 
                     if (type == 'adc'):
+
                         @self.command(base=pyrogue.UInt(2), addr=baseAddr + 0x04)
                         def CalibrationModeCmd(self, arg, tile=tile, block=block):
                             return CreateCalibrationModeCmd(tile=tile, block=block)(self, arg)
+
+                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x08)
+                        def CalFreezeCmd(self, arg, tile=tile, block=block):
+                            return CreateCalFreezeCmd(type='CalFrozen', tile=tile, block=block)(self, arg)
+
+                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x0C)
+                        def CalFreezeCmd(self, arg, tile=tile, block=block):
+                            return CreateCalFreezeCmd(type='DisableFreezePin', tile=tile, block=block)(self, arg)
+
+                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x10)
+                        def CalFreezeCmd(self, arg, tile=tile, block=block):
+                            return CreateCalFreezeCmd(type='FreezeCalibration', tile=tile, block=block)(self, arg)
 
         #################################################################
 
