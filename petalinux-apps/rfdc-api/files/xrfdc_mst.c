@@ -21,9 +21,9 @@
 
 /************************** Constant Definitions ****************************/
 #ifdef __BAREMETAL__
-#define RFDC_DEVICE_ID 	XPAR_XRFDC_0_DEVICE_ID
+#define RFDC_DEVICE_ID  XPAR_XRFDC_0_DEVICE_ID
 #else
-#define RFDC_DEVICE_ID 	0
+#define RFDC_DEVICE_ID  0
 #endif
 
 #define RFDC_FAILURE -1
@@ -214,10 +214,10 @@ int main(int argc, char *argv[]) {
    }
 
 #ifndef __BAREMETAL__
-	status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
-	if (status != XRFDC_SUCCESS) {
-		return RFDC_FAILURE;
-	}
+   status = XRFdc_RegisterMetal(RFdcInstPtr, RFDC_DEVICE_ID, &deviceptr);
+   if (status != XRFDC_SUCCESS) {
+      return RFDC_FAILURE;
+   }
 #endif
 
    XRFdc_CfgInitialize(RFdcInstPtr, ConfigPtr);
