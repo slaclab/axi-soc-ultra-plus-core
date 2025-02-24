@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
       return RFDC_FAILURE;
    }
 
-   // metal_set_log_level(METAL_LOG_DEBUG);
+   metal_set_log_level(METAL_LOG_ERROR);
    ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
    if (ConfigPtr == NULL) {
       printf("RFdc Config Failure\n\r");
@@ -142,8 +142,8 @@ int main(int argc, char *argv[]) {
 
    u8 retVar = args.setValue;
    if (strcmp(args.mode, "set") == 0) {
-      status = XRFdc_SetCalibrationMode(RFdcInstPtr, args.tile, args.block, retVar);
       printf("XRFdc_SetCalibrationMode Value: 0x%X\n", retVar);
+      status = XRFdc_SetCalibrationMode(RFdcInstPtr, args.tile, args.block, retVar);
    } else if (strcmp(args.mode, "get") == 0) {
       status = XRFdc_GetCalibrationMode(RFdcInstPtr, args.tile, args.block, &retVar);
       printf("XRFdc_GetCalibrationMode Value: 0x%X\n", retVar);
@@ -151,7 +151,6 @@ int main(int argc, char *argv[]) {
       printf("Invalid mode! Use 'set' or 'get'.\n");
       return RFDC_FAILURE;
    }
-
 
    if (status != XRFDC_SUCCESS) {
       printf("RFDC CalibrationMode failed\n");

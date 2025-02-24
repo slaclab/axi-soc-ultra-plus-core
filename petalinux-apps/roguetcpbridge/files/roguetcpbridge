@@ -30,13 +30,51 @@ rogue.Version.minVersion('6.5.0')
 class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
 
     def __init__(self):
-        super().__init__()
+        super().__init__(maxSize=0x1_0000)
 
         # Local cached variables
         self.mstAdc = 0
         self.mstDac = 0
 
-        @self.command(base=pyrogue.UInt(8), addr=0x00)
+        #################################################################
+
+        def CreateNyquistZoneCmd(type, tile, block):
+            def NyquistZone(self, arg):
+                try:
+                    # Write operation
+                    if arg is not None:
+                        command = ['rfdc-NyquistZone', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                    # Read operation
+                    else:
+                        command = ['rfdc-NyquistZone', 'get', type, f'--tile={tile}', f'--block={block}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                except Exception as e:
+                    print(f"Error executing command: {e}", file=sys.stderr)
+
+            return NyquistZone
+
+        #################################################################
+
+        for type in ['adc','dac']:
+            for tile in range(4):
+                for block in range(4):
+                    if (type == 'adc'):
+                        baseAddr = (0x0000+0x1000*tile) + (0x400*block)
+                    else:
+                        baseAddr = (0x4000+0x1000*tile) + (0x400*block)
+
+                    @self.command(base=pyrogue.UInt(2), addr=baseAddr + 0x00)
+                    def NyquistZoneCmd(self, arg, type=type, tile=tile, block=block):
+                        return CreateNyquistZoneCmd(type=type, tile=tile, block=block)(self, arg)
+
+        #################################################################
+
+        @self.command(base=pyrogue.UInt(4), addr=0xF000)
         def MstAdcTiles(self, arg):
             try:
                 # Write operation
@@ -55,7 +93,7 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                 print(f"Error executing command: {e}", file=sys.stderr)
                 self.mstAdc = 0
 
-        @self.command(base=pyrogue.UInt(8), addr=0x04)
+        @self.command(base=pyrogue.UInt(4), addr=0xF004)
         def MstDacTiles(self, arg):
             try:
                 # Write operation

@@ -9,15 +9,41 @@
 #-----------------------------------------------------------------------------
 
 import pyrogue as pr
+import axi_soc_ultra_plus_core.rfsoc_utility as rfsoc_utility
 
 class RfdcApi(pr.Device):
-    def __init__(self,**kwargs):
+    def __init__(
+            self,
+            gen3      = True, # True if using RFSoC GEN3 Hardware
+            enAdcTile = [True,True,True,True],
+            enDacTile = [True,True,True,True],
+            **kwargs):
         super().__init__(**kwargs)
+
+        for i in range(4):
+            if enAdcTile[i]:
+                self.add(rfsoc_utility.RfTile(
+                    name    = f'AdcTile[{i}]',
+                    isAdc   = True,
+                    gen3    = gen3,
+                    offset  = (0x0000+0x1000*i),
+                    expand  = False,
+                ))
+
+        for i in range(4):
+            if enDacTile[i]:
+                self.add(rfsoc_utility.RfTile(
+                    name    = f'DacTile[{i}]',
+                    isAdc   = False,
+                    gen3    = gen3,
+                    offset  = (0x4000+0x1000*i),
+                    expand  = False,
+                ))
 
         self.add(pr.RemoteVariable(
             name         = 'MstAdcTiles',
             description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for ADC tiles',
-            offset       = 0x00,
+            offset       = 0xF000,
             bitSize      = 8,
             base         = pr.UInt,
             mode         = 'RW',
@@ -26,7 +52,7 @@ class RfdcApi(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'MstDacTiles',
             description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for DAC tiles',
-            offset       = 0x04,
+            offset       = 0xF004,
             bitSize      = 8,
             base         = pr.UInt,
             mode         = 'RW',
