@@ -39,10 +39,10 @@ static XRFdc RFdcInst;      /* RFdc driver instance */
 /****************************************************************************/
 
 /* Program documentation */
-const char *argp_program_version = "RFDC NyquistZone 1.0";
+const char *argp_program_version = "RFDC CalibrationMode 1.0";
 const char *argp_program_bug_address = "https://github.com/slaclab/axi-soc-ultra-plus-core";
-static char doc[] = "RFDC NyquistZone for Linux CLI";
-static char args_doc[] = "<set|get> <adc|dac> --tile=0x1 --block=0x3 --setValue=0x0" ;
+static char doc[] = "RFDC CalibrationMode for Linux CLI";
+static char args_doc[] = "<set|get> --tile=0x1 --block=0x3 --setValue=0x0" ;
 
 /* Available options */
 static struct argp_option options[] = {
@@ -55,10 +55,9 @@ static struct argp_option options[] = {
 /* Structure to hold parsed arguments */
 struct arguments {
    char mode[10];
-   char type[10];
    u32 tile;
    u32 block;
-   u32 setValue;
+   u8 setValue;
 };
 
 /* Argument parsing function */
@@ -73,18 +72,16 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
          args->block = (u32) strtol(arg, NULL, 0);
          break;
       case 's':
-         args->setValue = (u32) strtol(arg, NULL, 0);
+         args->setValue = (u8) strtol(arg, NULL, 0);
          break;
        case ARGP_KEY_ARG:
          if (state->arg_num == 0)
             strncpy(args->mode, arg, sizeof(args->mode) - 1);
-         else if (state->arg_num == 1)
-            strncpy(args->type, arg, sizeof(args->type) - 1);
          else
             argp_usage(state); // Too many arguments
          break;
       case ARGP_KEY_END:
-         if (state->arg_num < 2)
+         if (state->arg_num < 1)
             argp_usage(state); // Too few arguments
          break;
       default:
@@ -136,33 +133,20 @@ int main(int argc, char *argv[]) {
 
    /* Default values */
    strncpy(args.mode, "unset", sizeof(args.mode) - 1);
-   strncpy(args.type, "unset", sizeof(args.type) - 1);
-
    args.mode[sizeof(args.mode) - 1] = '\0';
-   args.type[sizeof(args.type) - 1] = '\0';
 
    /* Parse arguments */
    argp_parse(&argp, argc, argv, 0, 0, &args);
 
    /****************************************************************************/
 
-   u32 Type = 0;
-   if (strcmp(args.type, "adc") == 0) {
-      Type = XRFDC_ADC_TILE;
-   } else if (strcmp(args.type, "dac") == 0) {
-      Type = XRFDC_DAC_TILE;
-   } else {
-      printf("Invalid type! Use 'adc' or 'dac'.\n");
-      return RFDC_FAILURE;
-   }
-
-   u32 retVar = args.setValue;
+   u8 retVar = args.setValue;
    if (strcmp(args.mode, "set") == 0) {
-      status = XRFdc_SetNyquistZone(RFdcInstPtr, Type, args.tile, args.block, retVar);
-      printf("XRFdc_SetNyquistZone Value: 0x%X\n", retVar);
+      status = XRFdc_SetCalibrationMode(RFdcInstPtr, args.tile, args.block, retVar);
+      printf("XRFdc_SetCalibrationMode Value: 0x%X\n", retVar);
    } else if (strcmp(args.mode, "get") == 0) {
-      status = XRFdc_GetNyquistZone(RFdcInstPtr, Type, args.tile, args.block, &retVar);
-      printf("XRFdc_GetNyquistZone Value: 0x%X\n", retVar);
+      status = XRFdc_GetCalibrationMode(RFdcInstPtr, args.tile, args.block, &retVar);
+      printf("XRFdc_GetCalibrationMode Value: 0x%X\n", retVar);
    } else {
       printf("Invalid mode! Use 'set' or 'get'.\n");
       return RFDC_FAILURE;
@@ -170,7 +154,7 @@ int main(int argc, char *argv[]) {
 
 
    if (status != XRFDC_SUCCESS) {
-      printf("RFDC NyquistZone failed\n");
+      printf("RFDC CalibrationMode failed\n");
       return RFDC_FAILURE;
    }
 
