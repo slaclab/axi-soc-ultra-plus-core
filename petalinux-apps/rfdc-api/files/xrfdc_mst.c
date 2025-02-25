@@ -51,7 +51,7 @@ int RFdcMTSAdc(XRFdc *RFdcInstPtr, u8 tiles) {
    XRFdc_MultiConverter_Sync_Config ADC_Sync_Config;
 
    /* Run MTS for the ADC */
-   printf("\n=== Run ADC Sync ===\n");
+   metal_log(METAL_LOG_INFO, "rfdc-mst: \n=== Run ADC Sync ===\n");
 
    /* Initialize ADC MTS Settings */
    XRFdc_MultiConverter_Init (&ADC_Sync_Config, 0, 0, XRFDC_TILE_ID0);
@@ -59,9 +59,9 @@ int RFdcMTSAdc(XRFdc *RFdcInstPtr, u8 tiles) {
 
    status_adc = XRFdc_MultiConverter_Sync(RFdcInstPtr, XRFDC_ADC_TILE, &ADC_Sync_Config);
    if(status_adc == XRFDC_MTS_OK){
-      printf("INFO : ADC Multi-Tile-Sync completed successfully\n");
+      metal_log(METAL_LOG_INFO, "rfdc-mst: ADC Multi-Tile-Sync completed successfully\n");
    } else {
-      printf("ERROR : ADC Multi-Tile-Sync did not complete successfully. Error code is %u\n", status_adc);
+      metal_log(METAL_LOG_ERROR, "rfdc-mst: ADC Multi-Tile-Sync did not complete successfully. Error code is %u\n", status_adc);
       return status_adc;
    }
 
@@ -69,11 +69,11 @@ int RFdcMTSAdc(XRFdc *RFdcInstPtr, u8 tiles) {
    * Report Overall Latency in T1 (Sample Clocks) and
    * Offsets (in terms of PL words) added to each FIFO
    */
-   printf("\n\n=== Multi-Tile Sync Report ===\n");
+   metal_log(METAL_LOG_INFO, "rfdc-mst: \n\n=== Multi-Tile Sync Report ===\n");
    for(i=0; i<4; i++) {
       if( (1<<i)&ADC_Sync_Config.Tiles ) {
          XRFdc_GetDecimationFactor(RFdcInstPtr, i, 0, &factor);
-         printf("ADC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, ADC_Sync_Config.Latency[i], factor, ADC_Sync_Config.Offset[i]);
+         metal_log(METAL_LOG_INFO, "rfdc-mst: ADC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, ADC_Sync_Config.Latency[i], factor, ADC_Sync_Config.Offset[i]);
       }
    }
 
@@ -90,7 +90,7 @@ int RFdcMTSDac(XRFdc *RFdcInstPtr, u8 tiles) {
    XRFdc_MultiConverter_Sync_Config DAC_Sync_Config;
 
    /* Run MTS for the DAC */
-   printf("\n=== Run DAC Sync ===\n");
+   metal_log(METAL_LOG_INFO, "rfdc-mst: \n=== Run DAC Sync ===\n");
 
    /* Initialize DAC MTS Settings */
    XRFdc_MultiConverter_Init (&DAC_Sync_Config, 0, 0, XRFDC_TILE_ID0);
@@ -98,9 +98,9 @@ int RFdcMTSDac(XRFdc *RFdcInstPtr, u8 tiles) {
 
    status_dac = XRFdc_MultiConverter_Sync(RFdcInstPtr, XRFDC_DAC_TILE, &DAC_Sync_Config);
    if(status_dac == XRFDC_MTS_OK){
-      printf("INFO : DAC Multi-Tile-Sync completed successfully\n");
+      metal_log(METAL_LOG_INFO, "rfdc-mst: DAC Multi-Tile-Sync completed successfully\n");
    }else{
-      printf("ERROR : DAC Multi-Tile-Sync did not complete successfully. Error code is %u \n", status_dac);
+      metal_log(METAL_LOG_ERROR, "rfdc-mst: DAC Multi-Tile-Sync did not complete successfully. Error code is %u \n", status_dac);
       return status_dac;
    }
 
@@ -108,11 +108,11 @@ int RFdcMTSDac(XRFdc *RFdcInstPtr, u8 tiles) {
    * Report Overall Latency in T1 (Sample Clocks) and
    * Offsets (in terms of PL words) added to each FIFO
    */
-   printf("\n\n=== Multi-Tile Sync Report ===\n");
+   metal_log(METAL_LOG_INFO, "rfdc-mst: \n\n=== Multi-Tile Sync Report ===\n");
    for(i=0; i<4; i++) {
       if((1<<i)&DAC_Sync_Config.Tiles) {
          XRFdc_GetInterpolationFactor(RFdcInstPtr, i, 0, &factor);
-         printf("DAC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, DAC_Sync_Config.Latency[i], factor, DAC_Sync_Config.Offset[i]);
+         metal_log(METAL_LOG_INFO, "rfdc-mst: DAC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, DAC_Sync_Config.Latency[i], factor, DAC_Sync_Config.Offset[i]);
       }
    }
 
@@ -126,11 +126,12 @@ int RFdcMTSDac(XRFdc *RFdcInstPtr, u8 tiles) {
 const char *argp_program_version = "RFDC MST 1.0";
 const char *argp_program_bug_address = "https://github.com/slaclab/axi-soc-ultra-plus-core";
 static char doc[] = "RFDC MST for Linux CLI";
-static char args_doc[] = "<adc|dac> --tiles=0xF";
+static char args_doc[] = "<adc|dac> --tiles=0xF --debugPrint=0";
 
 /* Available options */
 static struct argp_option options[] = {
-   {"tiles", 't', "VALUE", 0, "Set tiles (decimal or hex, e.g., 0xF or 15)"},
+   {"tiles",      't', "VALUE", 0, "Set tiles (decimal or hex, e.g., 0xF or 15)"},
+   {"debugPrint", 'd', "VALUE", 0, "Enable debug prints (1: debug, 0: error)"},
    { 0 } // Indicates end of options
 };
 
@@ -138,36 +139,30 @@ static struct argp_option options[] = {
 struct arguments {
    char mode[10];
    u8 tiles;
+   u8 debugPrint;
 };
 
-/* Argument parser function */
+/* Argument parsing function */
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-   struct arguments *arguments = state->input;
+    struct arguments *args = state->input;
 
    switch (key) {
-      case 't': // Handle --tiles option
-         if (strncmp(arg, "0x", 2) == 0) {
-            arguments->tiles = strtol(arg, NULL, 16); // Hex input
-         } else {
-            arguments->tiles = atoi(arg); // Decimal input
-         }
+      case 't':
+         args->tiles = (u32) strtol(arg, NULL, 0);
          break;
-
-      case ARGP_KEY_ARG: // Handle positional arguments (adc or dac)
-         if (state->arg_num == 0) {
-            strncpy(arguments->mode, arg, sizeof(arguments->mode) - 1);
-            arguments->mode[sizeof(arguments->mode) - 1] = '\0';
-         } else {
+      case 'd':
+         args->debugPrint = (u8) strtol(arg, NULL, 0);
+         break;
+       case ARGP_KEY_ARG:
+         if (state->arg_num == 0)
+            strncpy(args->mode, arg, sizeof(args->mode) - 1);
+         else
             argp_usage(state); // Too many arguments
-         }
          break;
-
-      case ARGP_KEY_END: // Ensure required argument (mode) is provided
-         if (state->arg_num < 1) {
+      case ARGP_KEY_END:
+         if (state->arg_num < 1)
             argp_usage(state); // Too few arguments
-         }
          break;
-
       default:
          return ARGP_ERR_UNKNOWN;
    }
@@ -180,19 +175,6 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 /* Main function */
 int main(int argc, char *argv[]) {
 
-   /****************************************************************************/
-
-   struct arguments arguments;
-   memset(&arguments, 0, sizeof(arguments)); // Initialize struct
-
-   /* Default argument values */
-   arguments.tiles = 0x0;
-
-   /* Parse command-line arguments */
-   argp_parse(&argp, argc, argv, 0, 0, &arguments);
-
-   /****************************************************************************/
-
    int status;
    XRFdc_Config *ConfigPtr;
    XRFdc *RFdcInstPtr = &RFdcInst;
@@ -202,14 +184,13 @@ int main(int argc, char *argv[]) {
    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
 
    if (metal_init(&init_param)) {
-      printf("ERROR: Failed to run metal initialization\n");
+      metal_log(METAL_LOG_ERROR, "rfdc-mst: Failed to run metal initialization\n");
       return RFDC_FAILURE;
    }
 
-   metal_set_log_level(METAL_LOG_DEBUG);
    ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
    if (ConfigPtr == NULL) {
-      printf("RFdc Config Failure\n\r");
+      metal_log(METAL_LOG_ERROR, "rfdc-mst: RFdc Config Failure\n\r");
       return RFDC_FAILURE;
    }
 
@@ -224,19 +205,38 @@ int main(int argc, char *argv[]) {
 
    /****************************************************************************/
 
-   if (strcmp(arguments.mode, "adc") == 0) {
-      status = RFdcMTSAdc(RFdcInstPtr,arguments.tiles);
-   } else if (strcmp(arguments.mode, "dac") == 0) {
-      status = RFdcMTSDac(RFdcInstPtr,arguments.tiles);
+   struct arguments args = { .tiles = 0, .debugPrint = 0 };
+
+   /* Default values */
+   strncpy(args.mode, "unset", sizeof(args.mode) - 1);
+   args.mode[sizeof(args.mode) - 1] = '\0';
+
+   /* Parse arguments */
+   argp_parse(&argp, argc, argv, 0, 0, &args);
+
+   /* Set log level based on debugPrint flag */
+   if (args.debugPrint) {
+      metal_set_log_level(METAL_LOG_DEBUG);
    } else {
-      printf("Invalid mode! Use 'adc' or 'dac'.\n");
+      metal_set_log_level(METAL_LOG_ERROR);
+   }
+
+   /****************************************************************************/
+
+   u8 retVar = args.tiles&0xF; // 4-bit Mask
+   if (strcmp(args.mode, "adc") == 0) {
+      status = RFdcMTSAdc(RFdcInstPtr, retVar);
+   } else if (strcmp(args.mode, "dac") == 0) {
+      status = RFdcMTSDac(RFdcInstPtr, retVar);
+   } else {
+      metal_log(METAL_LOG_ERROR, "rfdc-mst: Invalid mode! Use 'adc' or 'dac'.\n");
       return RFDC_FAILURE;
    }
 
    if (status != XRFDC_SUCCESS) {
-      printf("RFDC MTS failed\n");
+      metal_log(METAL_LOG_ERROR, "rfdc-mst: failed\n");
       return RFDC_FAILURE;
    }
 
-   return arguments.tiles;
+   return retVar;
 }

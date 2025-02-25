@@ -36,6 +36,7 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
         # Local cached variables
         self.mstAdc = 0
         self.mstDac = 0
+        self.debugPrint = 0
 
         #################################################################
 
@@ -44,13 +45,13 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                 try:
                     # Write operation
                     if arg is not None:
-                        command = ['rfdc-NyquistZone', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}']
+                        command = ['rfdc-NyquistZone', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
                         result = subprocess.run(command, text=True)
                         return result.returncode
 
                     # Read operation
                     else:
-                        command = ['rfdc-NyquistZone', 'get', type, f'--tile={tile}', f'--block={block}']
+                        command = ['rfdc-NyquistZone', 'get', type, f'--tile={tile}', f'--block={block}', f'--debugPrint={self.debugPrint}']
                         result = subprocess.run(command, text=True)
                         return result.returncode
 
@@ -67,13 +68,13 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                 try:
                     # Write operation
                     if arg is not None:
-                        command = ['rfdc-CalibrationMode', 'set', f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}']
+                        command = ['rfdc-CalibrationMode', 'set', f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
                         result = subprocess.run(command, text=True)
                         return result.returncode
 
                     # Read operation
                     else:
-                        command = ['rfdc-CalibrationMode', 'get', f'--tile={tile}', f'--block={block}']
+                        command = ['rfdc-CalibrationMode', 'get', f'--tile={tile}', f'--block={block}', f'--debugPrint={self.debugPrint}']
                         result = subprocess.run(command, text=True)
                         return result.returncode
 
@@ -90,13 +91,13 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                 try:
                     # Write operation
                     if arg is not None:
-                        command = ['rfdc-CalFreeze', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}']
+                        command = ['rfdc-CalFreeze', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
                         result = subprocess.run(command, text=True)
                         return result.returncode
 
                     # Read operation
                     else:
-                        command = ['rfdc-CalFreeze', 'get', type, f'--tile={tile}', f'--block={block}']
+                        command = ['rfdc-CalFreeze', 'get', type, f'--tile={tile}', f'--block={block}', f'--debugPrint={self.debugPrint}']
                         result = subprocess.run(command, text=True)
                         return result.returncode
 
@@ -145,7 +146,7 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
             try:
                 # Write operation
                 if arg is not None:
-                    command = ['rfdc-mst', 'adc', f'--tiles={int(arg)}']
+                    command = ['rfdc-mst', 'adc', f'--tiles={int(arg)}', f'--debugPrint={self.debugPrint}']
                     result = subprocess.run(command, text=True)
 
                     # Store only the return code
@@ -164,7 +165,7 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
             try:
                 # Write operation
                 if arg is not None:
-                    command = ['rfdc-mst', 'dac', f'--tiles={int(arg)}']
+                    command = ['rfdc-mst', 'dac', f'--tiles={int(arg)}', f'--debugPrint={self.debugPrint}']
                     result = subprocess.run(command, text=True)
 
                     # Store only the return code
@@ -177,6 +178,19 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
             except Exception as e:
                 print(f"Error executing command: {e}", file=sys.stderr)
                 self.mstDac = 0
+
+        #################################################################
+
+        @self.command(base=pyrogue.UInt(1), addr=0xFFF0)
+        def DebugPrintCmd(self, arg):
+            # Write operation
+            if arg is not None:
+                self.debugPrint = int(arg)&0x1
+            # Read operation
+            else:
+                return self.debugPrint
+
+        #################################################################
 
 #################################################################
 

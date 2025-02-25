@@ -44,8 +44,7 @@ class RfdcApi(pr.Device):
             name         = 'MstAdcTiles',
             description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for ADC tiles',
             offset       = 0xF000,
-            bitSize      = 8,
-            base         = pr.UInt,
+            bitSize      = 4,
             mode         = 'RW',
         ))
 
@@ -53,7 +52,15 @@ class RfdcApi(pr.Device):
             name         = 'MstDacTiles',
             description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for DAC tiles',
             offset       = 0xF004,
-            bitSize      = 8,
-            base         = pr.UInt,
+            bitSize      = 4,
             mode         = 'RW',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'DebugPrint',
+            description  = 'True to enable debugging printing in the RFSoC UART serial console',
+            offset       = 0xFFF0,
+            bitSize      = 1,
+            mode         = 'RW',
+            base         = pr.Bool,
         ))
