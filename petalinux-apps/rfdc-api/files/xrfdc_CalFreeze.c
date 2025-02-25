@@ -42,13 +42,14 @@ static XRFdc RFdcInst;      /* RFdc driver instance */
 const char *argp_program_version = "RFDC CalFreeze 1.0";
 const char *argp_program_bug_address = "https://github.com/slaclab/axi-soc-ultra-plus-core";
 static char doc[] = "RFDC CalFreeze for Linux CLI";
-static char args_doc[] = "<set|get> <CalFrozen|DisableFreezePin|FreezeCalibration> --tile=0x1 --block=0x3 --setValue=0x0" ;
+static char args_doc[] = "<set|get> <CalFrozen|DisableFreezePin|FreezeCalibration> --tile=0x1 --block=0x3 --setValue=0x0 --debugPrint=0";
 
 /* Available options */
 static struct argp_option options[] = {
    {"tile",     't', "VALUE", 0, "tile Index"},
    {"block",    'b', "VALUE", 0, "block Index"},
    {"setValue", 's', "VALUE", 0, "Set Value"},
+   {"debugPrint", 'd', "VALUE", 0, "Enable debug prints (1: debug, 0: error)"},
    { 0 } // Indicates end of options
 };
 
@@ -59,6 +60,7 @@ struct arguments {
    u32 tile;
    u32 block;
    u32 setValue;
+   u8 debugPrint;
 };
 
 /* Argument parsing function */
@@ -74,6 +76,9 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
          break;
       case 's':
          args->setValue = (u32) strtol(arg, NULL, 0);
+         break;
+      case 'd':
+         args->debugPrint = (u8) strtol(arg, NULL, 0);
          break;
        case ARGP_KEY_ARG:
          if (state->arg_num == 0)
@@ -99,13 +104,6 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 /* Main function */
 int main(int argc, char *argv[]) {
 
-   /****************************************************************************/\
-
-   metal_set_log_level(METAL_LOG_ERROR);
-   // metal_set_log_level(METAL_LOG_DEBUG);
-
-   /****************************************************************************/
-
    int status;
    XRFdc_Config *ConfigPtr;
    XRFdc *RFdcInstPtr = &RFdcInst;
@@ -115,7 +113,7 @@ int main(int argc, char *argv[]) {
    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
 
    if (metal_init(&init_param)) {
-      metal_log(METAL_LOG_ERROR, "rfdc-CalFreeze: ERROR: Failed to run metal initialization\n");
+      metal_log(METAL_LOG_ERROR, "rfdc-CalFreeze: Failed to run metal initialization\n");
       return RFDC_FAILURE;
    }
 
@@ -136,7 +134,7 @@ int main(int argc, char *argv[]) {
 
    /****************************************************************************/
 
-   struct arguments args = { .tile = 0, .block = 0, .setValue = 0 };
+   struct arguments args = { .tile = 0, .block = 0, .setValue = 0, .debugPrint = 0 };
 
    /* Default values */
    strncpy(args.mode, "unset", sizeof(args.mode) - 1);
@@ -147,6 +145,13 @@ int main(int argc, char *argv[]) {
 
    /* Parse arguments */
    argp_parse(&argp, argc, argv, 0, 0, &args);
+
+   /* Set log level based on debugPrint flag */
+   if (args.debugPrint) {
+      metal_set_log_level(METAL_LOG_DEBUG);
+   } else {
+      metal_set_log_level(METAL_LOG_ERROR);
+   }
 
    /****************************************************************************/
 
