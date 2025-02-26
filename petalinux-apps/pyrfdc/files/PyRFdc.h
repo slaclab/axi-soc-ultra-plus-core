@@ -31,18 +31,32 @@
     #include <boost/python.hpp>
 #endif
 
-#define MAP_TYPE std::map<uint64_t, uint8_t*>
+#ifdef __BAREMETAL__
+#include "xparameters.h"
+#endif
+#include "xrfdc.h"
+
+#define PYRFDC_MAP_TYPE std::map<uint64_t, uint8_t*>
 
 //! Memory interface Emlator device
 /** This memory will respond to transactions, emilator hardware by responding to read
  * and write transactions.
  */
 class PyRFdc : public rogue::interfaces::memory::Slave {
+    // RFdc driver instance
+    XRFdc RFdcInst_;
+    XRFdc *RFdcInstPtr_ = &RFdcInst_;
+
     // Map to store 4K address space chunks
-    MAP_TYPE memMap_;
+    PYRFDC_MAP_TYPE memMap_;
 
     // Lock
     std::mutex mtx_;
+
+    // Get/Set DebugPrint_
+    bool DebugPrint_;
+    void SetDebugPrint(bool flag);
+    bool GetDebugPrint();
 
     // Total allocated memory
     uint32_t totAlloc_;

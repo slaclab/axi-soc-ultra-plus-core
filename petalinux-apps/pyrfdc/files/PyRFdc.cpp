@@ -39,6 +39,16 @@ namespace rim = rogue::interfaces::memory;
 namespace bp = boost::python;
 #endif
 
+#ifdef __BAREMETAL__
+#define RFDC_DEVICE_ID  XPAR_XRFDC_0_DEVICE_ID
+#else
+#define RFDC_DEVICE_ID  0
+#endif
+
+#ifdef __BAREMETAL__
+#define printf xil_printf
+#endif
+
 //! Create a block, class creator
 PyRFdcPtr PyRFdc::create() {
     PyRFdcPtr b = std::make_shared<PyRFdc>();
@@ -47,6 +57,32 @@ PyRFdcPtr PyRFdc::create() {
 
 //! Create an block
 PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit transactions
+
+    XRFdc_Config *ConfigPtr;
+
+#ifndef __BAREMETAL__
+    struct metal_device *deviceptr;
+#endif
+    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
+
+    if (metal_init(&init_param)) {
+        metal_log(METAL_LOG_ERROR, "PyRFdc: Failed to run metal initialization\n");
+    }
+
+    ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
+    if (ConfigPtr == NULL) {
+        metal_log(METAL_LOG_ERROR, "PyRFdc: RFdc Config Failure\n\r");
+    }
+
+#ifndef __BAREMETAL__
+    if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) != XRFDC_SUCCESS) {
+        metal_log(METAL_LOG_ERROR, "PyRFdc: XRFdc_RegisterMetal() Failure\n\r");
+    }
+#endif
+
+    XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
+
+    SetDebugPrint(false);
     totAlloc_ = 0;
     totSize_  = 0;
     log_      = rogue::Logging::create("memory.PyRFdc");
@@ -54,11 +90,25 @@ PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit tra
 
 //! Destroy a block
 PyRFdc::~PyRFdc() {
-    MAP_TYPE::iterator it = memMap_.begin();
+    PYRFDC_MAP_TYPE::iterator it = memMap_.begin();
     while (it != memMap_.end()) {
         free(it->second);
         ++it;
     }
+}
+
+void PyRFdc::SetDebugPrint(bool flag) {
+    DebugPrint_ = flag;
+   /* Set log level based on debugPrint flag */
+   if (DebugPrint_) {
+      metal_set_log_level(METAL_LOG_DEBUG);
+   } else {
+      metal_set_log_level(METAL_LOG_ERROR);
+   }
+}
+
+bool PyRFdc::GetDebugPrint() {
+    return DebugPrint_;
 }
 
 //! Post a transaction. Master will call this method with the access attributes.
