@@ -120,3 +120,9 @@ void PyRFdc::setup_python() {
     bp::implicitly_convertible<PyRFdcPtr, rim::SlavePtr>();
 #endif
 }
+
+#ifndef NO_PYTHON
+BOOST_PYTHON_MODULE(PyRFdc) {
+    PyRFdc::setup_python();
+}
+#endif

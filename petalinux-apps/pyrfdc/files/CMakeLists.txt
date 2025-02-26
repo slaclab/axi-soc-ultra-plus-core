@@ -25,7 +25,7 @@ include_directories(${Python3_INCLUDE_DIRS})
 add_library(PyRFdc MODULE PyRFdc.cpp)
 
 # Link against Rogue, rfdc, and metal
-target_link_libraries(PyRFdc rogue-core rfdc metal)
+target_link_libraries(PyRFdc ${Boost_LIBRARIES} ${Python3_LIBRARIES} rogue-core rfdc metal)
 
 # Set output properties for the Python module
 set_target_properties(PyRFdc PROPERTIES PREFIX "" SUFFIX ".so")
