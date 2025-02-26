@@ -109,6 +109,29 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
 
         #################################################################
 
+        def CreateThresholdSettingsCmd(tile, block, index):
+            def ThresholdSettings(self, arg):
+                try:
+                    # Write operation
+                    if arg is not None:
+                        command = ['rfdc-ThresholdSettings', 'set', f'--tile={tile}', f'--block={block}', f'--index={index}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                    # Read operation
+                    else:
+                        command = ['rfdc-ThresholdSettings', 'get', f'--tile={tile}', f'--block={block}', f'--index={index}', f'--debugPrint={self.debugPrint}']
+                        result = subprocess.run(command, text=True)
+                        return result.returncode
+
+                except Exception as e:
+                    print(f"Error executing command: {e}", file=sys.stderr)
+                    return None
+
+            return ThresholdSettings
+
+        #################################################################
+
         for type in ['adc','dac']:
             for tile in range(4):
                 for block in range(4):
@@ -117,13 +140,13 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                     else:
                         baseAddr = (0x4000+0x1000*tile) + (0x400*block)
 
-                    @self.command(base=pyrogue.UInt(2), addr=baseAddr + 0x00)
+                    @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x00)
                     def NyquistZoneCmd(self, arg, type=type, tile=tile, block=block):
                         return CreateNyquistZoneCmd(type=type, tile=tile, block=block)(self, arg)
 
                     if (type == 'adc'):
 
-                        @self.command(base=pyrogue.UInt(2), addr=baseAddr + 0x04)
+                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x04)
                         def CalibrationModeCmd(self, arg, tile=tile, block=block):
                             return CreateCalibrationModeCmd(tile=tile, block=block)(self, arg)
 
@@ -139,9 +162,14 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                         def CalFreezeCmd(self, arg, tile=tile, block=block):
                             return CreateCalFreezeCmd(type='FreezeCalibration', tile=tile, block=block)(self, arg)
 
+                        for index in range(8):
+                            @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x20 + 4*index) # Address=[0x20:0x3F]
+                            def ThresholdSettingsCmd(self, arg, tile=tile, block=block, index=index):
+                                return CreateThresholdSettingsCmd(tile=tile, block=block, index=index)(self, arg)
+
         #################################################################
 
-        @self.command(base=pyrogue.UInt(4), addr=0xF000)
+        @self.command(base=pyrogue.UInt(32), addr=0xF000)
         def MstAdcTiles(self, arg):
             try:
                 # Write operation
@@ -160,7 +188,7 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
                 print(f"Error executing command: {e}", file=sys.stderr)
                 self.mstAdc = 0
 
-        @self.command(base=pyrogue.UInt(4), addr=0xF004)
+        @self.command(base=pyrogue.UInt(32), addr=0xF004)
         def MstDacTiles(self, arg):
             try:
                 # Write operation
@@ -181,7 +209,7 @@ class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
 
         #################################################################
 
-        @self.command(base=pyrogue.UInt(1), addr=0xFFF0)
+        @self.command(base=pyrogue.UInt(32), addr=0xF008)
         def DebugPrintCmd(self, arg):
             # Write operation
             if arg is not None:

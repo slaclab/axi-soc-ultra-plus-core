@@ -9,6 +9,7 @@ SRC_URI = " \
    file://xrfdc_CalFreeze.c \
    file://xrfdc_CalibrationMode.c \
    file://xrfdc_NyquistZone.c \
+   file://xrfdc_ThresholdSettings.c \
 "
 
 S = "${WORKDIR}"
@@ -32,16 +33,18 @@ EXTRA_OEMAKE = " \
 "
 
 do_compile (){
-    oe_runmake OUTS=rfdc-mst             RFDC_OBJS=xrfdc_mst.o
-    oe_runmake OUTS=rfdc-CalFreeze       RFDC_OBJS=xrfdc_CalFreeze.o
-    oe_runmake OUTS=rfdc-CalibrationMode RFDC_OBJS=xrfdc_CalibrationMode.o
-    oe_runmake OUTS=rfdc-NyquistZone     RFDC_OBJS=xrfdc_NyquistZone.o
+    oe_runmake OUTS=rfdc-mst               RFDC_OBJS=xrfdc_mst.o
+    oe_runmake OUTS=rfdc-CalFreeze         RFDC_OBJS=xrfdc_CalFreeze.o
+    oe_runmake OUTS=rfdc-CalibrationMode   RFDC_OBJS=xrfdc_CalibrationMode.o
+    oe_runmake OUTS=rfdc-NyquistZone       RFDC_OBJS=xrfdc_NyquistZone.o
+    oe_runmake OUTS=rfdc-ThresholdSettings RFDC_OBJS=xrfdc_ThresholdSettings.o
 }
 
 do_install() {
    install -d ${D}/${bindir}
-   install -m 0755 ${S}/rfdc-mst             ${D}/${bindir}
-   install -m 0755 ${S}/rfdc-CalFreeze       ${D}/${bindir}
-   install -m 0755 ${S}/rfdc-CalibrationMode ${D}/${bindir}
-   install -m 0755 ${S}/rfdc-NyquistZone     ${D}/${bindir}
+   install -m 0755 ${S}/rfdc-mst               ${D}/${bindir}
+   install -m 0755 ${S}/rfdc-CalFreeze         ${D}/${bindir}
+   install -m 0755 ${S}/rfdc-CalibrationMode   ${D}/${bindir}
+   install -m 0755 ${S}/rfdc-NyquistZone       ${D}/${bindir}
+   install -m 0755 ${S}/rfdc-ThresholdSettings ${D}/${bindir}
 }

@@ -162,10 +162,6 @@ int main(int argc, char *argv[]) {
       return RFDC_FAILURE;
    }
 
-   metal_log(METAL_LOG_INFO, "XRFdc_GetCalibrationMode(tile=0x%X,block=0x%X).CalFrozen=0x%X\n",         args.tile, args.block, CalFreezePtr.CalFrozen);
-   metal_log(METAL_LOG_INFO, "XRFdc_GetCalibrationMode(tile=0x%X,block=0x%X).DisableFreezePin=0x%X\n",  args.tile, args.block, CalFreezePtr.DisableFreezePin);
-   metal_log(METAL_LOG_INFO, "XRFdc_GetCalibrationMode(tile=0x%X,block=0x%X).FreezeCalibration=0x%X\n", args.tile, args.block, CalFreezePtr.FreezeCalibration);
-
    u32 retVar = args.setValue;
    if (strcmp(args.mode, "set") == 0) {
 
@@ -210,6 +206,10 @@ int main(int argc, char *argv[]) {
       metal_log(METAL_LOG_ERROR, "rfdc-CalFreeze: failed\n");
       return RFDC_FAILURE;
    }
+
+   metal_log(METAL_LOG_INFO, "CalibrationMode(tile=0x%X,block=0x%X).CalFrozen=0x%X\n",         args.tile, args.block, CalFreezePtr.CalFrozen);
+   metal_log(METAL_LOG_INFO, "CalibrationMode(tile=0x%X,block=0x%X).DisableFreezePin=0x%X\n",  args.tile, args.block, CalFreezePtr.DisableFreezePin);
+   metal_log(METAL_LOG_INFO, "CalibrationMode(tile=0x%X,block=0x%X).FreezeCalibration=0x%X\n", args.tile, args.block, CalFreezePtr.FreezeCalibration);
 
    return retVar;
 }

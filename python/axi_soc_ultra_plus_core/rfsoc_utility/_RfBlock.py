@@ -1,8 +1,8 @@
 #-----------------------------------------------------------------------------
 # Title      : Xilinx RFSoC RF data converter block
 #-----------------------------------------------------------------------------
-# Description:
-# Xilinx RFSoC RF data converter block
+# Description: Complementary mapping to class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave)
+#              located in submodule/axi-soc-ultra-plus-core/petalinux-apps/roguetcpbridge/files/roguetcpbridge
 #-----------------------------------------------------------------------------
 # This file is part of the 'SLAC Firmware Standard Library'. It is subject to
 # the license terms in the LICENSE.txt file found in the top-level directory
@@ -53,7 +53,7 @@ class RfBlock(pr.Device):
                 description  = 'Method to execute the RFSoC PS rfdc-CalibrationMode executable remotely',
                 offset       = 0x04,
                 bitSize      = 2,
-                # mode         = 'RW', "RFDC CalibrationMode failed" when we try to change configurations
+                # mode         = 'RW', TODO: "RFDC CalibrationMode failed" due to Incorrect Sampling rate (0.0000 GHz) for ADC 0 in XRFdc_GetMixerSetting
                 mode         = 'RO',
                 enum         = {
                     0 : "AutoCal",
@@ -65,6 +65,8 @@ class RfBlock(pr.Device):
 
             #######################################################################################
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Cal_Freeze_Settings
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetCalFreeze
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCalFreeze
             #######################################################################################
             self.add(pr.RemoteVariable(
                 name         = 'CalFrozen',
@@ -89,3 +91,44 @@ class RfBlock(pr.Device):
                 bitSize      = 32,
                 mode         = 'RW',
             ))
+
+            #######################################################################################
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Threshold_Settings
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetThresholdSettings
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetThresholdSettings
+            #######################################################################################
+            thresholdReg = {
+                "ThresholdMode[0]": 0x20,
+                "ThresholdMode[1]": 0x24,
+            }
+
+            for name, offset in thresholdReg.items():
+                self.add(pr.RemoteVariable(
+                    name    = name,
+                    offset  = offset,
+                    bitSize = 2,
+                    mode    = 'RW',
+                    enum    = {
+                        0 : "OFF",
+                        1 : "sticky-over",
+                        2 : "sticky-under",
+                        3 : "hysteresis",
+                    },
+                ))
+
+            thresholdReg = {
+                "ThresholdAvgVal[0]":   0x28,
+                "ThresholdAvgVal[1]":   0x2C,
+                "ThresholdUnderVal[0]": 0x30,
+                "ThresholdUnderVal[1]": 0x34,
+                "ThresholdOverVal[0]":  0x38,
+                "ThresholdOverVal[1]":  0x3C,
+            }
+
+            for name, offset in thresholdReg.items():
+                self.add(pr.RemoteVariable(
+                    name    = name,
+                    offset  = offset,
+                    bitSize = 32,
+                    mode    = 'RW',
+                ))

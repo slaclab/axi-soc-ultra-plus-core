@@ -1,8 +1,8 @@
 #-----------------------------------------------------------------------------
 # Title      : Xilinx RFSoC RF data converter tile
 #-----------------------------------------------------------------------------
-# Description:
-# Xilinx RFSoC RF data converter tile
+# Description: Complementary mapping to class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave)
+#              located in submodule/axi-soc-ultra-plus-core/petalinux-apps/roguetcpbridge/files/roguetcpbridge
 #-----------------------------------------------------------------------------
 # This file is part of the 'SLAC Firmware Standard Library'. It is subject to
 # the license terms in the LICENSE.txt file found in the top-level directory

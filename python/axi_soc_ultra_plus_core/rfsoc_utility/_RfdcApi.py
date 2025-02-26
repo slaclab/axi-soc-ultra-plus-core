@@ -1,4 +1,9 @@
 #-----------------------------------------------------------------------------
+# Title      : Xilinx RFSoC RF data converter tile
+#-----------------------------------------------------------------------------
+# Description: Complementary mapping to class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave)
+#              located in submodule/axi-soc-ultra-plus-core/petalinux-apps/roguetcpbridge/files/roguetcpbridge
+#-----------------------------------------------------------------------------
 # This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
 # the license terms in the LICENSE.txt file found in the top-level directory
 # of this distribution and at:
@@ -59,7 +64,7 @@ class RfdcApi(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'DebugPrint',
             description  = 'True to enable debugging printing in the RFSoC UART serial console',
-            offset       = 0xFFF0,
+            offset       = 0xF008,
             bitSize      = 1,
             mode         = 'RW',
             base         = pr.Bool,
