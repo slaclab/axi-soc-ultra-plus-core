@@ -9,216 +9,18 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
+import pyrogue
 import rogue
 import rogue.hardware.axi
 import rogue.interfaces.memory
 
-import pyrogue
-import pyrogue.interfaces
-
-import sys
 import subprocess
+import socket
+import ipaddress
 import time
 import argparse
-import shutil
-
-rogue.Version.minVersion('6.5.0')
 
 # rogue.Logging.setLevel(rogue.Logging.Debug)
-
-#################################################################
-
-class RfdcApi(pyrogue.interfaces.OsCommandMemorySlave):
-
-    def __init__(self):
-        super().__init__(maxSize=0x1_0000)
-
-        # Local cached variables
-        self.mstAdc = 0
-        self.mstDac = 0
-        self.debugPrint = 0
-
-        #################################################################
-
-        def CreateNyquistZoneCmd(type, tile, block):
-            def NyquistZone(self, arg):
-                try:
-                    # Write operation
-                    if arg is not None:
-                        command = ['rfdc-NyquistZone', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                    # Read operation
-                    else:
-                        command = ['rfdc-NyquistZone', 'get', type, f'--tile={tile}', f'--block={block}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                except Exception as e:
-                    print(f"Error executing command: {e}", file=sys.stderr)
-                    return None
-
-            return NyquistZone
-
-        #################################################################
-
-        def CreateCalibrationModeCmd(tile, block):
-            def CalibrationMode(self, arg):
-                try:
-                    # Write operation
-                    if arg is not None:
-                        command = ['rfdc-CalibrationMode', 'set', f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                    # Read operation
-                    else:
-                        command = ['rfdc-CalibrationMode', 'get', f'--tile={tile}', f'--block={block}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                except Exception as e:
-                    print(f"Error executing command: {e}", file=sys.stderr)
-                    return None
-
-            return CalibrationMode
-
-        #################################################################
-
-        def CreateCalFreezeCmd(type, tile, block):
-            def CalFreeze(self, arg):
-                try:
-                    # Write operation
-                    if arg is not None:
-                        command = ['rfdc-CalFreeze', 'set', type, f'--tile={tile}', f'--block={block}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                    # Read operation
-                    else:
-                        command = ['rfdc-CalFreeze', 'get', type, f'--tile={tile}', f'--block={block}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                except Exception as e:
-                    print(f"Error executing command: {e}", file=sys.stderr)
-                    return None
-
-            return CalFreeze
-
-        #################################################################
-
-        def CreateThresholdSettingsCmd(tile, block, index):
-            def ThresholdSettings(self, arg):
-                try:
-                    # Write operation
-                    if arg is not None:
-                        command = ['rfdc-ThresholdSettings', 'set', f'--tile={tile}', f'--block={block}', f'--index={index}', f'--setValue={int(arg)}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                    # Read operation
-                    else:
-                        command = ['rfdc-ThresholdSettings', 'get', f'--tile={tile}', f'--block={block}', f'--index={index}', f'--debugPrint={self.debugPrint}']
-                        result = subprocess.run(command, text=True)
-                        return result.returncode
-
-                except Exception as e:
-                    print(f"Error executing command: {e}", file=sys.stderr)
-                    return None
-
-            return ThresholdSettings
-
-        #################################################################
-
-        for type in ['adc','dac']:
-            for tile in range(4):
-                for block in range(4):
-                    if (type == 'adc'):
-                        baseAddr = (0x0000+0x1000*tile) + (0x400*block)
-                    else:
-                        baseAddr = (0x4000+0x1000*tile) + (0x400*block)
-
-                    @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x00)
-                    def NyquistZoneCmd(self, arg, type=type, tile=tile, block=block):
-                        return CreateNyquistZoneCmd(type=type, tile=tile, block=block)(self, arg)
-
-                    if (type == 'adc'):
-
-                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x04)
-                        def CalibrationModeCmd(self, arg, tile=tile, block=block):
-                            return CreateCalibrationModeCmd(tile=tile, block=block)(self, arg)
-
-                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x08)
-                        def CalFreezeCmd(self, arg, tile=tile, block=block):
-                            return CreateCalFreezeCmd(type='CalFrozen', tile=tile, block=block)(self, arg)
-
-                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x0C)
-                        def CalFreezeCmd(self, arg, tile=tile, block=block):
-                            return CreateCalFreezeCmd(type='DisableFreezePin', tile=tile, block=block)(self, arg)
-
-                        @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x10)
-                        def CalFreezeCmd(self, arg, tile=tile, block=block):
-                            return CreateCalFreezeCmd(type='FreezeCalibration', tile=tile, block=block)(self, arg)
-
-                        for index in range(8):
-                            @self.command(base=pyrogue.UInt(32), addr=baseAddr + 0x20 + 4*index) # Address=[0x20:0x3F]
-                            def ThresholdSettingsCmd(self, arg, tile=tile, block=block, index=index):
-                                return CreateThresholdSettingsCmd(tile=tile, block=block, index=index)(self, arg)
-
-        #################################################################
-
-        @self.command(base=pyrogue.UInt(32), addr=0xF000)
-        def MstAdcTiles(self, arg):
-            try:
-                # Write operation
-                if arg is not None:
-                    command = ['rfdc-mst', 'adc', f'--tiles={int(arg)}', f'--debugPrint={self.debugPrint}']
-                    result = subprocess.run(command, text=True)
-
-                    # Store only the return code
-                    self.mstAdc = result.returncode
-
-                # Read operation
-                else:
-                    return self.mstAdc
-
-            except Exception as e:
-                print(f"Error executing command: {e}", file=sys.stderr)
-                self.mstAdc = 0
-
-        @self.command(base=pyrogue.UInt(32), addr=0xF004)
-        def MstDacTiles(self, arg):
-            try:
-                # Write operation
-                if arg is not None:
-                    command = ['rfdc-mst', 'dac', f'--tiles={int(arg)}', f'--debugPrint={self.debugPrint}']
-                    result = subprocess.run(command, text=True)
-
-                    # Store only the return code
-                    self.mstDac = result.returncode
-
-                # Read operation
-                else:
-                    return self.mstDac
-
-            except Exception as e:
-                print(f"Error executing command: {e}", file=sys.stderr)
-                self.mstDac = 0
-
-        #################################################################
-
-        @self.command(base=pyrogue.UInt(32), addr=0xF008)
-        def DebugPrintCmd(self, arg):
-            # Write operation
-            if arg is not None:
-                self.debugPrint = int(arg)&0x1
-            # Read operation
-            else:
-                return self.debugPrint
-
-        #################################################################
 
 #################################################################
 
@@ -232,8 +34,8 @@ class ZynqTcpServer(object):
         self.memServer >> self.memMap
 
         # Data server on port [10000+512*lane+2*tdest:10000+512*lane+2*tdest+1]
-        self.dmaStream = [[None for x in range(numDest)] for y in range(numLane)]
-        self.dataServer = [[None for x in range(numDest)] for y in range(numLane)]
+        self.dmaStream = [[None] * numDest for _ in range(numLane)]
+        self.dataServer = [[None] * numDest for _ in range(numLane)]
         for lane in range(numLane):
             for tdest in range(numDest):
                 port = 10000+512*lane+2*tdest
@@ -242,13 +44,39 @@ class ZynqTcpServer(object):
                 self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
                 self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
 
-        # Check if the RFDC API interface exists
-        if shutil.which('rfdc-mst'):
+        # PyRFdc Integration
+        self.apiMap = None
+        self.rfdcApi = None
+
+        try:
+            import PyRFdc
+            print("PyRFdc module imported successfully.")
 
             # Memory server on port [9002:9003]
             self.apiMap = rogue.interfaces.memory.TcpServer('*', 9002)
-            self.rfdcApi = RfdcApi()
+            self.rfdcApi = PyRFdc.PyRFdc()
             self.apiMap >> self.rfdcApi
+
+        except (ImportError, ModuleNotFoundError):
+            print("PyRFdc module is not installed.")
+        except Exception as e:
+            print(f"Error initializing PyRFdc: {e}")
+
+    def shutdown(self):
+        """Gracefully shuts down all TCP servers and releases resources."""
+        print("Shutting down TCP servers...")
+
+        del self.memServer
+        del self.memMap
+        del self.dataServer
+        del self.dmaStream
+
+        if self.apiMap:
+            del self.apiMap
+        if self.rfdcApi:
+            del self.rfdcApi
+
+        print("Shutdown complete.")
 
 #################################################################
 
@@ -288,8 +116,12 @@ if __name__ == "__main__":
     #################################################################
 
     def eth0_ready():
-        command = 'ip -4 -o addr show eth0'.split()
-        return (subprocess.check_output(command).decode() != '')
+        """Check if eth0 has an IP address."""
+        try:
+            command = 'ip -4 -o addr show eth0'.split()
+            return bool(subprocess.check_output(command).strip())
+        except subprocess.CalledProcessError:
+            return False
 
     # Wait for NIC to be ready
     while(eth0_ready() is False):
@@ -304,6 +136,6 @@ if __name__ == "__main__":
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print('Stopping TcpServers')
+        server.shutdown()
 
     #################################################################

@@ -25,6 +25,7 @@
 ehthumbs.db
 Thumps.db
 build.info
+.gdbinit
 
 # Build directories 
 build*
