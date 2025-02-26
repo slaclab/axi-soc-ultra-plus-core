@@ -204,11 +204,11 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 # Check if including RFDC utility
 if [ "$rfdc" -eq 1 ]
 then
-   # Add RFDC-API application
-   petalinux-create apps --template install -n rfdc-api
-   echo CONFIG_rfdc-api=y >> project-spec/configs/rootfs_config
-   cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-api project-spec/meta-user/recipes-apps/.
-   echo IMAGE_INSTALL:append = \" rfdc-api\" >> build/conf/local.conf
+   # Add RFDC-CLI application
+   petalinux-create apps --template install -n rfdc-cli
+   echo CONFIG_rfdc-cli=y >> project-spec/configs/rootfs_config
+   cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-cli project-spec/meta-user/recipes-apps/.
+   echo IMAGE_INSTALL:append = \" rfdc-cli\" >> build/conf/local.conf
 
    # Add Rogue Python RFDC Module
    petalinux-create apps --template install -n pyrfdc
