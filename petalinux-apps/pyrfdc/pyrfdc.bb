@@ -35,3 +35,8 @@ RDEPENDS:${PN} += " \
 "
 
 FILES:${PN} += "/usr/lib/*"
+
+do_install:append() {
+   install -d ${D}${PYTHON_SITEPACKAGES_DIR}
+   install -m 0755 ${B}/PyRFdc.so ${D}${PYTHON_SITEPACKAGES_DIR}/
+}
