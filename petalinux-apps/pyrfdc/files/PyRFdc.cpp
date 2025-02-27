@@ -2,9 +2,7 @@
  * ----------------------------------------------------------------------------
  * Company    : SLAC National Accelerator Laboratory
  * ----------------------------------------------------------------------------
- * Description:
- * A memory space emulator. Allows user to test a Rogue tree without real hardware.
- * This block will auto allocate memory as needed.
+ * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
  * This file is part of the rogue software platform. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory

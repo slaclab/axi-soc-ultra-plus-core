@@ -2,19 +2,18 @@
  * ----------------------------------------------------------------------------
  * Company    : SLAC National Accelerator Laboratory
  * ----------------------------------------------------------------------------
- * Description:
- * A memory space emulator. Allows user to test a Rogue tree without real hardware.
- * This block will auto allocate memory as needed.
+ * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
- * This file is part of the rogue software platform. It is subject to
+ * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory
  * of this distribution and at:
  *    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
- * No part of the rogue software platform, including this file, may be
+ * No part of the 'axi-soc-ultra-plus-core', including this file, may be
  * copied, modified, propagated, or distributed except according to the terms
  * contained in the LICENSE.txt file.
  * ----------------------------------------------------------------------------
  **/
+
 #ifndef __PYTHON_XRFDC_MODULE_H__
 #define __PYTHON_XRFDC_MODULE_H__
 #include "rogue/Directives.h"
