@@ -52,7 +52,9 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     XRFdc *RFdcInstPtr_ = &RFdcInst_;
 
     //! Local variables
-    bool DebugPrint_;
+    uint32_t scratchPad_;
+    bool metalLogLevel_;
+
     bool rdTxn_;
     bool isADC_;
     uint8_t tileId_;
@@ -60,8 +62,10 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     uint8_t blockId_;
     uint32_t data_;
 
+    uint8_t mstAdcTiles_;
+    uint8_t mstDacTiles_;
+
     //! Application functions
-    void DebugPrint();
     void NyquistZone();
     void CalibrationMode();
     void CalFrozen();
@@ -70,6 +74,8 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void ThresholdSettings(uint8_t index);
     void MstAdcTiles();
     void MstDacTiles();
+    void MetalLogLevel();
+    void ScratchPad();
 
   public:
     //! Class factory which returns a pointer

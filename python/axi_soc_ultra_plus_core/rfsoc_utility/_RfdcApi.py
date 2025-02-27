@@ -62,10 +62,21 @@ class RfdcApi(pr.Device):
         ))
 
         self.add(pr.RemoteVariable(
-            name         = 'DebugPrint',
-            description  = 'True to enable debugging printing in the RFSoC UART serial console',
-            offset       = 0xF008,
+            name         = 'MetalLogLevel',
+            description  = 'Sets the bare metal driver logging level',
+            offset       = 0xFFF8,
             bitSize      = 1,
             mode         = 'RW',
-            base         = pr.Bool,
+            enum         = {
+                0 : "METAL_LOG_ERROR",
+                1 : "METAL_LOG_DEBUG",
+            },
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'Scratchpad',
+            description  = 'Test register (no impact to RFDC module)',
+            offset       = 0xFFFC,
+            bitSize      = 32,
+            mode         = 'RW',
         ))

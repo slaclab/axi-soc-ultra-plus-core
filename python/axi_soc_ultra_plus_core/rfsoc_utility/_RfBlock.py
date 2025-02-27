@@ -74,6 +74,7 @@ class RfBlock(pr.Device):
                 offset       = 0x08,
                 bitSize      = 32,
                 mode         = 'RO',
+                pollInterval = 1,
             ))
 
             self.add(pr.RemoteVariable(

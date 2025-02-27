@@ -55,6 +55,7 @@ PyRFdcPtr PyRFdc::create() {
 PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit transactions
 
     log_ = rogue::Logging::create("PyRFdc");
+    metal_set_log_level(METAL_LOG_ERROR);
 
 #ifndef __BAREMETAL__
     struct metal_device *deviceptr;
@@ -79,36 +80,23 @@ PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit tra
     XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
 
     // Init local variables
-    DebugPrint_ = false;
+    scratchPad_ = 0;
+    metalLogLevel_ = false;
+
     rdTxn_ = false;
     isADC_ = false;
     tileId_ = 0;
     blockId_ = 0;
     data_ = 0;
 
-    // Set log level
-    metal_set_log_level(METAL_LOG_ERROR);
+    mstAdcTiles_ = 0;
+    mstDacTiles_ = 0;
+
+    log_->debug("PyRFdc::PyRFdc()");
 }
 
 //! Destroy a block
 PyRFdc::~PyRFdc() {
-}
-
-void PyRFdc::DebugPrint() {
-    // Check for a write
-    if (!rdTxn_) {
-        DebugPrint_ = bool(data_&0x1);
-
-        /* Set log level based on debugPrint flag */
-        if (DebugPrint_) {
-            metal_set_log_level(METAL_LOG_DEBUG);
-        } else {
-            metal_set_log_level(METAL_LOG_ERROR);
-        }
-
-    } else {
-        data_ = uint32_t(DebugPrint_);
-    }
 }
 
 void PyRFdc::NyquistZone() {
@@ -343,11 +331,57 @@ void PyRFdc::ThresholdSettings(uint8_t index) {
     }
 }
 
+void PyRFdc::MstAdcTiles() {
+    // Check for a write
+    if (!rdTxn_) {
+        mstAdcTiles_ = (data_&0xF);
+    } else {
+        data_ = uint32_t(mstAdcTiles_);
+    }
+}
+
+void PyRFdc::MstDacTiles() {
+    // Check for a write
+    if (!rdTxn_) {
+        mstDacTiles_ = (data_&0xF);
+    } else {
+        data_ = uint32_t(mstDacTiles_);
+    }
+}
+
+void PyRFdc::MetalLogLevel() {
+    // Check for a write
+    if (!rdTxn_) {
+        metalLogLevel_ = bool(data_&0x1);
+
+        /* Set log level based on debugPrint flag */
+        if (metalLogLevel_) {
+            metal_set_log_level(METAL_LOG_DEBUG);
+        } else {
+            metal_set_log_level(METAL_LOG_ERROR);
+        }
+
+    } else {
+        data_ = uint32_t(metalLogLevel_);
+    }
+}
+
+void PyRFdc::ScratchPad() {
+    // Check for a write
+    if (!rdTxn_) {
+        scratchPad_ = data_;
+    } else {
+        data_ = scratchPad_;
+    }
+}
+
 //! Post a transaction. Master will call this method with the access attributes.
 void PyRFdc::doTransaction(rim::TransactionPtr tran) {
     uint32_t addr = uint32_t(tran->address() & 0xFFFF);
     uint8_t* ptr  = tran->begin();
     uint32_t blockAddr = 0;
+
+    log_->debug("Got transaction address=0x%" PRIx32 ", size=%" PRIu32 ", type = %" PRIu32 "\n", addr, tran->size(), tran->type());
 
     rim::TransactionLockPtr tlock = tran->lock();
     {
@@ -403,8 +437,11 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
         } else if (addr==0xF004) {
             MstDacTiles();
 
+        } else if (addr==0xFFF8) {
+            MetalLogLevel();
+
         } else if (addr==0xFFFC) {
-            DebugPrint();
+            ScratchPad();
         }
 
         if (rdTxn_) {
