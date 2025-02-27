@@ -23,8 +23,8 @@ import argparse
 #################################################################
 
 if False:
-    # Set Rogue logging level globally to DEBUG
-    rogue.Logging.setLevel(rogue.Logging.Debug)
+    # Set Rogue logging level globally to WARNING to suppress unwanted debug messages
+    rogue.Logging.setLevel(rogue.Logging.Warning)
 
     # Enable Debug logging ONLY for PyRFdc
     rogue.Logging.setFilter("pyrogue.PyRFdc", rogue.Logging.Debug)

@@ -116,7 +116,7 @@ void PyRFdc::NyquistZone() {
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
         data_  = 0xFFFFFFFF;
-        log_->error("PyRFdc::NyquistZone(): failed\n");
+        log_->error("NyquistZone(): failed\n");
     }
 }
 
@@ -145,7 +145,7 @@ void PyRFdc::CalibrationMode() {
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
         data_  = 0xFFFFFFFF;
-        log_->error("PyRFdc::NyquistZone(): failed\n");
+        log_->error("NyquistZone(): failed\n");
     }
 }
 
@@ -177,7 +177,7 @@ void PyRFdc::CalFrozen() {
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
         data_  = 0xFFFFFFFF;
-        log_->error("PyRFdc::CalFrozen(): failed\n");
+        log_->error("CalFrozen(): failed\n");
     }
 }
 
@@ -209,7 +209,7 @@ void PyRFdc::DisableFreezePin() {
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
         data_  = 0xFFFFFFFF;
-        log_->error("PyRFdc::DisableFreezePin(): failed\n");
+        log_->error("DisableFreezePin(): failed\n");
     }
 }
 
@@ -241,7 +241,7 @@ void PyRFdc::FreezeCalibration() {
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
         data_  = 0xFFFFFFFF;
-        log_->error("PyRFdc::FreezeCalibration(): failed\n");
+        log_->error("FreezeCalibration(): failed\n");
     }
 }
 
@@ -327,23 +327,87 @@ void PyRFdc::ThresholdSettings(uint8_t index) {
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
         data_  = 0xFFFFFFFF;
-        log_->error("PyRFdc::ThresholdSettings(): failed\n");
+        log_->error("ThresholdSettings(): failed\n");
     }
 }
 
 void PyRFdc::MstAdcTiles() {
+    int status, i;
+    uint32_t factor;
+
     // Check for a write
     if (!rdTxn_) {
+        // Set the MST value
         mstAdcTiles_ = (data_&0xF);
+
+        // ADC MTS Settings
+        XRFdc_MultiConverter_Sync_Config ADC_Sync_Config;
+
+        // Run MTS for the ADC
+        log_->debug("\n=== Run ADC Sync ===\n");
+
+        // Initialize ADC MTS Settings
+        XRFdc_MultiConverter_Init (&ADC_Sync_Config, 0, 0, XRFDC_TILE_ID0);
+        ADC_Sync_Config.Tiles = mstAdcTiles_;
+
+        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_ADC_TILE, &ADC_Sync_Config);
+        if(status == XRFDC_MTS_OK){
+            log_->debug("ADC Multi-Tile-Sync completed successfully\n");
+        } else {
+            log_->error("ADC Multi-Tile-Sync did not complete successfully. Error code is %u\n", status);
+            mstAdcTiles_  = 0;
+        }
+
+        // Report Overall Latency in T1 (Sample Clocks) and Offsets (in terms of PL words) added to each FIFO
+        log_->debug("\n\n=== Multi-Tile Sync Report ===\n");
+        for(i=0; i<4; i++) {
+            if( (1<<i)&ADC_Sync_Config.Tiles ) {
+                XRFdc_GetDecimationFactor(RFdcInstPtr_, i, 0, &factor);
+                log_->debug("ADC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, ADC_Sync_Config.Latency[i], factor, ADC_Sync_Config.Offset[i]);
+            }
+        }
+
     } else {
         data_ = uint32_t(mstAdcTiles_);
     }
 }
 
 void PyRFdc::MstDacTiles() {
+   int status, i;
+   uint32_t factor;
+
     // Check for a write
     if (!rdTxn_) {
+        // Set the MST value
         mstDacTiles_ = (data_&0xF);
+
+        // DAC MTS Settings
+        XRFdc_MultiConverter_Sync_Config DAC_Sync_Config;
+
+        // Run MTS for the DAC
+        log_->debug("\n=== Run DAC Sync ===\n");
+
+        // Initialize DAC MTS Settings
+        XRFdc_MultiConverter_Init (&DAC_Sync_Config, 0, 0, XRFDC_TILE_ID0);
+        DAC_Sync_Config.Tiles = mstDacTiles_;
+
+        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_DAC_TILE, &DAC_Sync_Config);
+        if(status == XRFDC_MTS_OK){
+            log_->debug("DAC Multi-Tile-Sync completed successfully\n");
+        }else{
+            log_->error("DAC Multi-Tile-Sync did not complete successfully. Error code is %u \n", status);
+            mstDacTiles_  = 0;
+        }
+
+        // Report Overall Latency in T1 (Sample Clocks) and Offsets (in terms of PL words) added to each FIFO
+        log_->debug("\n\n=== Multi-Tile Sync Report ===\n");
+        for(i=0; i<4; i++) {
+            if((1<<i)&DAC_Sync_Config.Tiles) {
+                XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &factor);
+                log_->debug("DAC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, DAC_Sync_Config.Latency[i], factor, DAC_Sync_Config.Offset[i]);
+            }
+        }
+
     } else {
         data_ = uint32_t(mstDacTiles_);
     }
@@ -354,7 +418,7 @@ void PyRFdc::MetalLogLevel() {
     if (!rdTxn_) {
         metalLogLevel_ = bool(data_&0x1);
 
-        /* Set log level based on debugPrint flag */
+        // Set log level based on debugPrint flag
         if (metalLogLevel_) {
             metal_set_log_level(METAL_LOG_DEBUG);
         } else {
@@ -381,7 +445,6 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
     uint8_t* ptr  = tran->begin();
     uint32_t blockAddr = 0;
 
-    log_->debug("Got transaction address=0x%" PRIx32 ", size=%" PRIu32 ", type = %" PRIu32 "\n", addr, tran->size(), tran->type());
 
     rim::TransactionLockPtr tlock = tran->lock();
     {
@@ -408,6 +471,8 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
         // Get BLOCK ID and block address
         blockId_  = (addr>>10)&0x3;
         blockAddr = addr&0x3FF;
+
+        // log_->debug("Got TXN: addr=0x%" PRIx32 ", RdnWr=%s, data=%" PRIu32 "\n", addr, rdTxn_ ? "true" : "false", data_);
 
         // Check for the tile region
         if (addr<0x8000) {
