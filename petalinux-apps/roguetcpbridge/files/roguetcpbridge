@@ -20,7 +20,14 @@ import ipaddress
 import time
 import argparse
 
-# rogue.Logging.setLevel(rogue.Logging.Debug)
+#################################################################
+
+if False:
+    # Set Rogue logging level globally to DEBUG
+    rogue.Logging.setLevel(rogue.Logging.Debug)
+
+    # Enable Debug logging ONLY for PyRFdc
+    rogue.Logging.setFilter("pyrogue.PyRFdc", rogue.Logging.Debug)
 
 #################################################################
 
@@ -62,10 +69,13 @@ class ZynqTcpServer(object):
         except Exception as e:
             print(f"Error initializing PyRFdc: {e}")
 
-    def shutdown(self):
-        """Gracefully shuts down all TCP servers and releases resources."""
-        print("Shutting down TCP servers...")
+    def __enter__(self):
+        """Enable using the class as a context manager."""
+        return self
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Shutdown when exiting the 'with' block."""
+        print("Shutting down TCP servers...")
         del self.memServer
         del self.memMap
         del self.dataServer
@@ -131,11 +141,10 @@ if __name__ == "__main__":
     #################################################################
 
     # Create the TCP bridge
-    server = ZynqTcpServer(numLane=args.lane, numDest=args.tdest)
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        server.shutdown()
+    with ZynqTcpServer(
+        numLane = args.lane,
+        numDest = args.tdest,
+    ) as server:
+        pyrogue.waitCntrlC()
 
     #################################################################
