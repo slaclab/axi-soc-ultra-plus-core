@@ -21,11 +21,7 @@
 #include "PyRFdc.h"
 
 #include <inttypes.h>
-
-#include <cstring>
-#include <memory>
 #include <string>
-#include <utility>
 
 #include "rogue/GilRelease.h"
 #include "rogue/interfaces/memory/Constants.h"
@@ -58,7 +54,7 @@ PyRFdcPtr PyRFdc::create() {
 //! Create an block
 PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit transactions
 
-    XRFdc_Config *ConfigPtr;
+    log_ = rogue::Logging::create("PyRFdc");
 
 #ifndef __BAREMETAL__
     struct metal_device *deviceptr;
@@ -66,97 +62,354 @@ PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit tra
     struct metal_init_params init_param = METAL_INIT_DEFAULTS;
 
     if (metal_init(&init_param)) {
-        metal_log(METAL_LOG_ERROR, "PyRFdc: Failed to run metal initialization\n");
+        log_->error("PyRFdc: Failed to run metal initialization\n");
     }
 
-    ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
+    XRFdc_Config *ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
     if (ConfigPtr == NULL) {
-        metal_log(METAL_LOG_ERROR, "PyRFdc: RFdc Config Failure\n\r");
+        log_->error("PyRFdc: RFdc Config Failure\n");
     }
 
 #ifndef __BAREMETAL__
     if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) != XRFDC_SUCCESS) {
-        metal_log(METAL_LOG_ERROR, "PyRFdc: XRFdc_RegisterMetal() Failure\n\r");
+        log_->error("PyRFdc: XRFdc_RegisterMetal() Failure\n");
     }
 #endif
 
     XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
 
-    SetDebugPrint(false);
-    totAlloc_ = 0;
-    totSize_  = 0;
-    log_      = rogue::Logging::create("memory.PyRFdc");
+    // Init local variables
+    DebugPrint_ = false;
+    rdTxn_ = false;
+    isADC_ = false;
+    tileId_ = 0;
+    blockId_ = 0;
+    data_ = 0;
+
+    // Set log level
+    metal_set_log_level(METAL_LOG_ERROR);
 }
 
 //! Destroy a block
 PyRFdc::~PyRFdc() {
-    PYRFDC_MAP_TYPE::iterator it = memMap_.begin();
-    while (it != memMap_.end()) {
-        free(it->second);
-        ++it;
+}
+
+void PyRFdc::DebugPrint() {
+    // Check for a write
+    if (!rdTxn_) {
+        DebugPrint_ = bool(data_&0x1);
+
+        /* Set log level based on debugPrint flag */
+        if (DebugPrint_) {
+            metal_set_log_level(METAL_LOG_DEBUG);
+        } else {
+            metal_set_log_level(METAL_LOG_ERROR);
+        }
+
+    } else {
+        data_ = uint32_t(DebugPrint_);
     }
 }
 
-void PyRFdc::SetDebugPrint(bool flag) {
-    DebugPrint_ = flag;
-   /* Set log level based on debugPrint flag */
-   if (DebugPrint_) {
-      metal_set_log_level(METAL_LOG_DEBUG);
-   } else {
-      metal_set_log_level(METAL_LOG_ERROR);
-   }
+void PyRFdc::NyquistZone() {
+    int status = 0;
+    uint32_t settings = data_&0x3;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFdc_SetNyquistZone(RFdcInstPtr_, tileType_, tileId_, blockId_, settings);
+
+    // Else read
+    } else {
+        status = XRFdc_GetNyquistZone(RFdcInstPtr_, tileType_, tileId_, blockId_, &settings);
+        data_ = settings;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        data_  = 0xFFFFFFFF;
+        log_->error("PyRFdc::NyquistZone(): failed\n");
+    }
 }
 
-bool PyRFdc::GetDebugPrint() {
-    return DebugPrint_;
+void PyRFdc::CalibrationMode() {
+    int status = 0;
+    uint8_t settings = uint8_t(data_&0x3);
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Only ADC tiles support CalibrationMode
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFdc_SetCalibrationMode(RFdcInstPtr_, tileId_, blockId_, settings);
+
+        // Else read
+        } else {
+            status = XRFdc_GetCalibrationMode(RFdcInstPtr_, tileId_, blockId_, &settings);
+            data_ = settings;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        data_  = 0xFFFFFFFF;
+        log_->error("PyRFdc::NyquistZone(): failed\n");
+    }
+}
+
+void PyRFdc::CalFrozen() {
+    int status = 0;
+    XRFdc_Cal_Freeze_Settings settings;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Only ADC tiles support CalFrozen
+    } else {
+
+        // Get the current Cal_Freeze_Settings
+        status = XRFdc_GetCalFreeze(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Check if write
+        if (!rdTxn_) {
+            settings.CalFrozen = data_;
+            status = XRFdc_SetCalFreeze(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Else read
+        } else {
+            data_ = settings.CalFrozen;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        data_  = 0xFFFFFFFF;
+        log_->error("PyRFdc::CalFrozen(): failed\n");
+    }
+}
+
+void PyRFdc::DisableFreezePin() {
+    int status = 0;
+    XRFdc_Cal_Freeze_Settings settings;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Only ADC tiles support DisableFreezePin
+    } else {
+
+        // Get the current Cal_Freeze_Settings
+        status = XRFdc_GetCalFreeze(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Check if write
+        if (!rdTxn_) {
+            settings.DisableFreezePin = data_;
+            status = XRFdc_SetCalFreeze(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Else read
+        } else {
+            data_ = settings.DisableFreezePin;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        data_  = 0xFFFFFFFF;
+        log_->error("PyRFdc::DisableFreezePin(): failed\n");
+    }
+}
+
+void PyRFdc::FreezeCalibration() {
+    int status = 0;
+    XRFdc_Cal_Freeze_Settings settings;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Only ADC tiles support FreezeCalibration
+    } else {
+
+        // Get the current Cal_Freeze_Settings
+        status = XRFdc_GetCalFreeze(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Check if write
+        if (!rdTxn_) {
+            settings.FreezeCalibration = data_;
+            status = XRFdc_SetCalFreeze(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Else read
+        } else {
+            data_ = settings.FreezeCalibration;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        data_  = 0xFFFFFFFF;
+        log_->error("PyRFdc::FreezeCalibration(): failed\n");
+    }
+}
+
+void PyRFdc::ThresholdSettings(uint8_t index) {
+    int status = 0;
+    XRFdc_Threshold_Settings settings;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Only ADC tiles support ThresholdSettings
+    } else {
+
+        // Get the current Threshold_Settings
+        status = XRFdc_GetThresholdSettings(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Check if write
+        if (!rdTxn_) {
+            switch (index) {
+                case 0:
+                    settings.ThresholdMode[0] = data_&0x3; // Range: 0 to 3 (0-OFF, 1-sticky-over, 2-sticky-under and 3-hysteresis)
+                    break;
+                case 1:
+                    settings.ThresholdMode[1] = data_&0x3; // Range: 0 to 3 (0-OFF, 1-sticky-over, 2-sticky-under and 3-hysteresis)
+                    break;
+                case 2:
+                    settings.ThresholdAvgVal[0] = data_;
+                    break;
+                case 3:
+                    settings.ThresholdAvgVal[1] = data_;
+                    break;
+                case 4:
+                    settings.ThresholdUnderVal[0] = data_;
+                    break;
+                case 5:
+                    settings.ThresholdUnderVal[1] = data_;
+                    break;
+                case 6:
+                    settings.ThresholdOverVal[0] = data_;
+                    break;
+                case 7:
+                    settings.ThresholdOverVal[1] = data_;
+                    break;
+                default:
+                    break;
+            }
+            status = XRFdc_SetThresholdSettings(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Else read
+        } else {
+            switch (index) {
+                case 0:
+                    data_ = settings.ThresholdMode[0];
+                    break;
+                case 1:
+                    data_ = settings.ThresholdMode[1];
+                    break;
+                case 2:
+                    data_ = settings.ThresholdAvgVal[0];
+                    break;
+                case 3:
+                    data_ = settings.ThresholdAvgVal[1];
+                    break;
+                case 4:
+                    data_ = settings.ThresholdUnderVal[0];
+                    break;
+                case 5:
+                    data_ = settings.ThresholdUnderVal[1];
+                    break;
+                case 6:
+                    data_ = settings.ThresholdOverVal[0];
+                    break;
+                case 7:
+                    data_ = settings.ThresholdOverVal[1];
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        data_  = 0xFFFFFFFF;
+        log_->error("PyRFdc::ThresholdSettings(): failed\n");
+    }
 }
 
 //! Post a transaction. Master will call this method with the access attributes.
 void PyRFdc::doTransaction(rim::TransactionPtr tran) {
-    uint64_t addr4k;
-    uint64_t off4k;
-    uint64_t size4k;
-    uint32_t size = tran->size();
-    uint32_t type = tran->type();
-    uint64_t addr = tran->address();
+    uint32_t addr = uint32_t(tran->address() & 0xFFFF);
     uint8_t* ptr  = tran->begin();
+    uint32_t blockAddr = 0;
 
-    // printf("Got transaction address=0x%" PRIx64 ", size=%" PRIu32 ", type = %" PRIu32 "\n", addr, size, type);
-
-    rogue::interfaces::memory::TransactionLockPtr tlock = tran->lock();
+    rim::TransactionLockPtr tlock = tran->lock();
     {
         std::lock_guard<std::mutex> lock(mtx_);
 
-        while (size > 0) {
-            addr4k = (addr / 0x1000) * 0x1000;
-            off4k  = addr % 0x1000;
-            size4k = (addr4k + 0x1000) - (addr4k + off4k);
+        // Check the type of transaction
+        if (tran->type() == rim::Write || tran->type() == rim::Post) {
+            // Set the flag
+            rdTxn_ = false;
+            // Copy from ptr to data
+            memcpy(&data_, ptr, sizeof(uint32_t));
+        } else {
+            // Set the flag
+            rdTxn_ = true;
+        }
 
-            if (size4k > size) size4k = size;
-            size -= size4k;
-            addr += size4k;
+        // Check if ADC tiles
+        isADC_ = (addr<0x4000) ? true : false;
+        tileType_ = isADC_ ? XRFDC_ADC_TILE : XRFDC_DAC_TILE;
 
-            if (memMap_.find(addr4k) == memMap_.end()) {
-                memMap_.insert(std::make_pair(addr4k, reinterpret_cast<uint8_t*>(malloc(0x1000))));
-                totSize_ += 0x1000;
-                totAlloc_++;
-                log_->debug("Allocating block at 0x%x. Total Blocks %i, Total Size = %i", addr4k, totAlloc_, totSize_);
+        // Get TILE ID
+        tileId_ = (addr>>12)&0x3;
+
+        // Get BLOCK ID and block address
+        blockId_  = (addr>>10)&0x3;
+        blockAddr = addr&0x3FF;
+
+        // Check for the tile region
+        if (addr<0x8000) {
+
+            if (blockAddr==0x000) {
+                NyquistZone();
+
+            } else if (blockAddr==0x004) {
+                CalibrationMode();
+
+            } else if (blockAddr==0x008) {
+                CalFrozen();
+
+            } else if (blockAddr==0x00C) {
+                DisableFreezePin();
+
+            } else if (blockAddr==0x010) {
+                FreezeCalibration();
+
+            } else if ( (blockAddr >= 0x020) && (blockAddr < 0x03F) ) {
+                ThresholdSettings((blockAddr>>2)&0x7);
             }
 
-            // Write or post
-            if (tran->type() == rogue::interfaces::memory::Write || tran->type() == rogue::interfaces::memory::Post) {
-                // printf("Write data to 4k=0x%" PRIx64 ", offset=0x%" PRIx64 ", size=%" PRIu64 "\n", addr4k, off4k,
-                // size4k);
-                memcpy(memMap_[addr4k] + off4k, ptr, size4k);
+        } else if (addr==0xF000) {
+            MstAdcTiles();
 
-                // Read or verify
-            } else {
-                // printf("Read data from 4k=0x%" PRIx64 ", offset=0x%" PRIx64 ", size=%" PRIu64 "\n", addr4k, off4k,
-                // size4k);
-                memcpy(ptr, memMap_[addr4k] + off4k, size4k);
-            }
+        } else if (addr==0xF004) {
+            MstDacTiles();
 
-            ptr += size4k;
+        } else if (addr==0xFFFC) {
+            DebugPrint();
+        }
+
+        if (rdTxn_) {
+            // Copy from data to ptr
+            memcpy(ptr, &data_, sizeof(uint32_t));
         }
     }
     tran->done();

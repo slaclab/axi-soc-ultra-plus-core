@@ -27,54 +27,61 @@
 
 #include "rogue/interfaces/memory/Slave.h"
 
-#ifndef NO_PYTHON
-    #include <boost/python.hpp>
-#endif
-
 #ifdef __BAREMETAL__
 #include "xparameters.h"
 #endif
 #include "xrfdc.h"
 
-#define PYRFDC_MAP_TYPE std::map<uint64_t, uint8_t*>
+#ifndef NO_PYTHON
+    #include <boost/python.hpp>
+#endif
 
 //! Memory interface Emlator device
 /** This memory will respond to transactions, emilator hardware by responding to read
  * and write transactions.
  */
 class PyRFdc : public rogue::interfaces::memory::Slave {
-    // RFdc driver instance
-    XRFdc RFdcInst_;
-    XRFdc *RFdcInstPtr_ = &RFdcInst_;
-
-    // Map to store 4K address space chunks
-    PYRFDC_MAP_TYPE memMap_;
-
-    // Lock
-    std::mutex mtx_;
-
-    // Get/Set DebugPrint_
-    bool DebugPrint_;
-    void SetDebugPrint(bool flag);
-    bool GetDebugPrint();
-
-    // Total allocated memory
-    uint32_t totAlloc_;
-    uint32_t totSize_;
-
     //! Log
     std::shared_ptr<rogue::Logging> log_;
 
+    //! Lock
+    std::mutex mtx_;
+
+    //! RFdc driver instance
+    XRFdc RFdcInst_;
+    XRFdc *RFdcInstPtr_ = &RFdcInst_;
+
+    //! Local variables
+    bool DebugPrint_;
+    bool rdTxn_;
+    bool isADC_;
+    uint8_t tileId_;
+    uint32_t tileType_;
+    uint8_t blockId_;
+    uint32_t data_;
+
+    //! Application functions
+    void DebugPrint();
+    void NyquistZone();
+    void CalibrationMode();
+    void CalFrozen();
+    void DisableFreezePin();
+    void FreezeCalibration();
+    void ThresholdSettings(uint8_t index);
+    void MstAdcTiles();
+    void MstDacTiles();
+
   public:
+    //! Class factory which returns a pointer
     static std::shared_ptr<PyRFdc> create();
 
-    // Setup class for use in python
+    //! Setup class for use in python
     static void setup_python();
 
-    // Create a PyRFdc device
+    //! Create a PyRFdc device
     PyRFdc();
 
-    // Destroy the PyRFdc
+    //! Destroy the PyRFdc
     ~PyRFdc();
 
     //! Handle the incoming memory transaction
