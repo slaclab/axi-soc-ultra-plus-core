@@ -93,6 +93,8 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void SetupFIFOObs(int Tile_Id);
     void SetupFIFOBoth(int Tile_Id);
     void OutputCurr();
+    void FIFOStatus();
+    void FIFOStatusObs();
     void NyquistZone();
     void InvSincFIR();
     void CalibrationMode();
@@ -101,10 +103,6 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void CalFreeze(uint8_t index);
     void Dither();
     void DataScaler();
-
-
-
-
     void MstAdcTiles();
     void MstDacTiles();
     void MetalLogLevel();

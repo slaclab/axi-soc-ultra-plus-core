@@ -1821,7 +1821,7 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
         tran->done();
     // Complete transaction with error message
     } else {
-        log_->error(errMsg_);
+        log_->error(errMsg_.c_str());
         tran->errorStr(errMsg_);
     }
 

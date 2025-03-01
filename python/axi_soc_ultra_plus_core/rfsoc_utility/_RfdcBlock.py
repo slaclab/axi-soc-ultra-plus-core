@@ -70,7 +70,7 @@ class RfdcBlock(pr.Device):
                 bitOffset    = 4,
                 mode         = 'RO',
                 pollInterval = 1,
-            )
+            ))
 
         self.add(pr.RemoteVariable(
             name         = 'BlockStatus_FIFOStatus',
@@ -79,7 +79,7 @@ class RfdcBlock(pr.Device):
             bitOffset    = 8,
             mode         = 'RO',
             pollInterval = 1,
-        )
+        ))
 
         self.add(pr.RemoteVariable(
             name         = 'BlockStatus_DecimationFactor' if isAdc else 'BlockStatus_InterpolationFactor',
@@ -88,7 +88,7 @@ class RfdcBlock(pr.Device):
             bitOffset    = 12,
             mode         = 'RO',
             pollInterval = 1,
-        )
+        ))
 
         self.add(pr.RemoteVariable(
             name         = 'BlockStatus_MixerMode' if isAdc else 'BlockStatus_AdderStatus',
@@ -97,7 +97,7 @@ class RfdcBlock(pr.Device):
             bitOffset    = 16,
             mode         = 'RO',
             pollInterval = 1,
-        )
+        ))
 
         if not isAdc:
 
@@ -108,7 +108,7 @@ class RfdcBlock(pr.Device):
                 bitOffset    = 20,
                 mode         = 'RO',
                 pollInterval = 1,
-            )
+            ))
 
         self.add(pr.RemoteVariable(
             name         = 'BlockStatus_DataPathClocksStatus',
@@ -562,7 +562,7 @@ class RfdcBlock(pr.Device):
                 offset       = 0x0B8,
                 bitSize      = 32,
                 mode         = 'RO',
-            )
+            ))
 
         ###########################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetNyquistZone
@@ -744,5 +744,3 @@ class RfdcBlock(pr.Device):
                 mode         = 'RW',
                 base         = pr.Bool,
             ))
-
-
