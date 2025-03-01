@@ -4,6 +4,21 @@
  * ----------------------------------------------------------------------------
  * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
+ * TODO: Add support for the following
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiBand
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetConnectedIQData
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedIQData
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoupling
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMultibandConfig
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMinSampleRate
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MTS_Sysref_Config
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetTileLayout
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
+ * ----------------------------------------------------------------------------
  * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory
  * of this distribution and at:
@@ -81,10 +96,12 @@ PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit tra
     errMsg_.clear();
     scratchPad_ = 0;
     metalLogLevel_ = false;
+    ignoreMetalError_ = false;
 
     rdTxn_ = false;
     isADC_ = false;
     tileId_ = 0;
+    tileType_ = 0;
     blockId_ = 0;
     data_ = 0;
 
@@ -99,16 +116,16 @@ PyRFdc::~PyRFdc() {
 }
 
 void PyRFdc::StartUp(int Tile_Id) {
-    int status;
+    int status = XRFDC_SUCCESS;
 
-    // Check if write
-    if (!rdTxn_) {
+    // Check if read
+    if (rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else write
+    } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
         status = XRFdc_StartUp(RFdcInstPtr_, tileType_, Tile_Id);
-
-    // Else read
-    } else {
-        status = XRFDC_FAILURE;
     }
 
     // Check if not successful
@@ -118,16 +135,16 @@ void PyRFdc::StartUp(int Tile_Id) {
 }
 
 void PyRFdc::Shutdown(int Tile_Id) {
-    int status;
+    int status = XRFDC_SUCCESS;
 
-    // Check if write
-    if (!rdTxn_) {
+    // Check if read
+    if (rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else write
+    } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Shutdown
         status = XRFdc_Shutdown(RFdcInstPtr_, tileType_, Tile_Id);
-
-    // Else read
-    } else {
-        status = XRFDC_FAILURE;
     }
 
     // Check if not successful
@@ -137,16 +154,17 @@ void PyRFdc::Shutdown(int Tile_Id) {
 }
 
 void PyRFdc::Reset(int Tile_Id) {
-    int status;
+    int status = XRFDC_SUCCESS;
 
-    // Check if write
-    if (!rdTxn_) {
+
+    // Check if read
+    if (rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else write
+    } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
         status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
-
-    // Else read
-    } else {
-        status = XRFDC_FAILURE;
     }
 
     // Check if not successful
@@ -156,18 +174,18 @@ void PyRFdc::Reset(int Tile_Id) {
 }
 
 void PyRFdc::CustomStartUp(int Tile_Id) {
-    int status;
+    int status = XRFDC_SUCCESS;
     uint32_t StartState = (data_>>0)&0xF;
     uint32_t EndState   = (data_>>8)&0xF;
 
-    // Check if write
-    if (!rdTxn_) {
+    // Check if read
+    if (rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else write
+    } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CustomStartUp
         status = XRFdc_CustomStartUp(RFdcInstPtr_, tileType_, Tile_Id, StartState, EndState);
-
-    // Else read
-    } else {
-        status = XRFDC_FAILURE;
     }
 
     // Check if not successful
@@ -177,7 +195,7 @@ void PyRFdc::CustomStartUp(int Tile_Id) {
 }
 
 void PyRFdc::GetIPStatus() {
-    int status;
+    int status = XRFDC_SUCCESS;
     XRFdc_IPStatus IPStatusPtr;
     XRFdc_TileStatus TileStatus;
 
@@ -209,11 +227,8 @@ void PyRFdc::GetIPStatus() {
 }
 
 void PyRFdc::GetBlockStatus(uint8_t index) {
-    int status;
+    int status = XRFDC_SUCCESS;
     XRFdc_BlockStatus BlockStatus;
-
-    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetBlockStatus
-    status = XRFdc_GetBlockStatus(RFdcInstPtr_, tileType_, tileId_, blockId_, &BlockStatus);
 
     // Check if write
     if (!rdTxn_) {
@@ -221,6 +236,10 @@ void PyRFdc::GetBlockStatus(uint8_t index) {
 
     // Else read
     } else {
+
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetBlockStatus
+        status = XRFdc_GetBlockStatus(RFdcInstPtr_, tileType_, tileId_, blockId_, &BlockStatus);
+
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_BlockStatus
         if (index==0) {
             data_  = DoubleToUint32(BlockStatus.SamplingFreq, false);
@@ -247,7 +266,7 @@ void PyRFdc::GetBlockStatus(uint8_t index) {
 }
 
 void PyRFdc::MixerSettings(uint8_t index) {
-    int status;
+    int status = XRFDC_SUCCESS;
     XRFdc_Mixer_Settings settings;
 
     // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMixerSettings
@@ -334,7 +353,7 @@ void PyRFdc::MixerSettings(uint8_t index) {
 }
 
 void PyRFdc::QMCSettings(uint8_t index) {
-    int status;
+    int status = XRFDC_SUCCESS;
     XRFdc_QMC_Settings settings;
 
     // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetQMCSettings
@@ -418,7 +437,7 @@ void PyRFdc::QMCSettings(uint8_t index) {
 }
 
 void PyRFdc::CoarseDelaySettings() {
-    int status;
+    int status = XRFDC_SUCCESS;
     XRFdc_CoarseDelay_Settings settings;
 
     // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoarseDelaySettings
@@ -448,7 +467,7 @@ void PyRFdc::CoarseDelaySettings() {
 }
 
 void PyRFdc::UpdateEvent(uint32_t XRFDC_EVENT) {
-    int status;
+    int status = XRFDC_SUCCESS;
 
     // Check if write
     if (!rdTxn_) {
@@ -699,7 +718,7 @@ void PyRFdc::FabRdVldWordsObs() {
 }
 
 void PyRFdc::ThresholdStickyClear() {
-    int status;
+    int status = XRFDC_SUCCESS;
     uint32_t settings = data_;
 
     // Check if write
@@ -726,7 +745,7 @@ void PyRFdc::ThresholdStickyClear() {
 }
 
 void PyRFdc::ThresholdClrMode() {
-    int status;
+    int status = XRFDC_SUCCESS;
     uint32_t ThresholdToUpdate = (data_>>0)&0xFF;
     uint32_t ClrMode           = (data_>>8)&0xFF;
 
@@ -878,7 +897,7 @@ void PyRFdc::DecoderMode() {
 }
 
 void PyRFdc::ResetNCOPhase() {
-    int status;
+    int status = XRFDC_SUCCESS;
 
     // Check if write
     if (!rdTxn_) {
@@ -998,7 +1017,7 @@ void PyRFdc::OutputCurr() {
 }
 
 void PyRFdc::FIFOStatus() {
-    int status;
+    int status = XRFDC_SUCCESS;
     uint8_t settings;
 
     // Check if write
@@ -1020,7 +1039,7 @@ void PyRFdc::FIFOStatus() {
 }
 
 void PyRFdc::FIFOStatusObs() {
-    int status;
+    int status = XRFDC_SUCCESS;
     uint8_t settings;
 
     // Check for DAC tile
@@ -1072,7 +1091,7 @@ void PyRFdc::NyquistZone() {
 }
 
 void PyRFdc::InvSincFIR() {
-    int status;
+    int status = XRFDC_SUCCESS;
     uint16_t settings = uint16_t(data_);
 
     // Check for ADC tile
@@ -1370,21 +1389,1033 @@ void PyRFdc::DataScaler() {
     }
 }
 
+void PyRFdc::ClockSource() {
+    int status = XRFDC_SUCCESS;
+    uint32_t settings = data_;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClockSource
+        status = XRFdc_GetClockSource(RFdcInstPtr_, tileType_, tileId_, &settings);
+        data_ = settings;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "ClockSource(): failed\n";
+    }
+}
+
+void PyRFdc::PLLConfig(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+    XRFdc_PLL_Settings settings;
+
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLConfig
+    status = XRFdc_GetPLLConfig(RFdcInstPtr_, tileType_, tileId_, &settings);
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_PLL_Settings
+        switch (index) {
+            case 0:
+                data_ = settings.Enabled;
+                break;
+            case 1:
+                data_  = DoubleToUint32(settings.RefClkFreq, false);
+                break;
+            case 2:
+                data_  = DoubleToUint32(settings.RefClkFreq, true);
+                break;
+            case 3:
+                data_  = DoubleToUint32(settings.SampleRate, false);
+                break;
+            case 4:
+                data_  = DoubleToUint32(settings.SampleRate, true);
+                break;
+            case 5:
+                data_ = settings.RefClkDivider;
+                break;
+            case 6:
+                data_ = settings.FeedbackDivider;
+                break;
+            case 7:
+                data_ = settings.OutputDivider;
+                break;
+            case 8:
+                data_ = settings.FractionalMode;
+                break;
+            case 9:
+                data_ = uint32_t(settings.FractionalData>>0 & 0xFFFFFFFFULL);
+                break;
+            case 10:
+                data_ = uint32_t(settings.FractionalData>>32 & 0xFFFFFFFFULL);
+                break;
+            case 11:
+                data_ = settings.FractWidth;
+                break;
+            default:
+                status = XRFDC_FAILURE;
+                break;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "PLLConfig(" + std::to_string(index) + "): failed\n";
+    }
+}
+
+void PyRFdc::PLLLockStatus() {
+    int status = XRFDC_SUCCESS;
+    uint32_t settings = data_;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLLockStatus
+        status = XRFdc_GetPLLLockStatus(RFdcInstPtr_, tileType_, tileId_, &settings);
+        data_ = settings;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "PLLLockStatus(): failed\n";
+    }
+}
+
+void PyRFdc::LinkCoupling() {
+    int status = XRFDC_SUCCESS;
+    uint32_t settings = data_;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else ADC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling
+            status = XRFdc_GetLinkCoupling(RFdcInstPtr_, tileId_, blockId_, &settings);
+            data_ = settings;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "LinkCoupling(): failed\n";
+    }
+}
+
+void PyRFdc::DSA(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+    XRFdc_DSA_Settings settings;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else ADC tile
+    } else {
+
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDSA-Gen-3/DFE
+        status = XRFdc_GetDSA(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Check if write
+        if (!rdTxn_) {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_DSA_Settings-Gen-3/DFE
+            switch (index) {
+                case 0:
+                    settings.DisableRTS = data_;
+                    break;
+                case 1:
+                    // Copy from data_ to Attenuation
+                    memcpy(&settings.Attenuation, &data_, sizeof(float));
+                    break;
+                default:
+                    status = XRFDC_FAILURE;
+                    break;
+            }
+
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDSA-Gen-3/DFE
+            status = XRFdc_SetDSA(RFdcInstPtr_, tileId_, blockId_, &settings);
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_DSA_Settings-Gen-3/DFE
+            switch (index) {
+                case 0:
+                    data_ = settings.DisableRTS;
+                    break;
+                case 1:
+                    // Copy from Attenuation to data_
+                    memcpy(&data_, &settings.Attenuation, sizeof(uint32_t));
+                    break;
+                default:
+                    status = XRFDC_FAILURE;
+                    break;
+            }
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DSA(" + std::to_string(index) + "): failed\n";
+    }
+}
+
+void PyRFdc::DACVOP() {
+    int status = XRFDC_SUCCESS;
+    uint32_t settings = data_;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACVOP-Gen-3/DFE
+            status = XRFdc_SetDACVOP(RFdcInstPtr_, tileId_, blockId_, settings);
+
+        // Else read
+        } else {
+            status = XRFDC_FAILURE;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DACVOP(): failed\n";
+    }
+}
+
+void PyRFdc::DACCompMode() {
+    int status = XRFDC_SUCCESS;
+    uint32_t settings = data_;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACCompMode-Gen-3/DFE
+            status = XRFdc_SetDACCompMode(RFdcInstPtr_, tileId_, blockId_, settings);
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDACCompMode-Gen-3/DFE
+            status = XRFdc_GetDACCompMode(RFdcInstPtr_, tileId_, blockId_, &settings);
+            data_ = settings;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DACCompMode(): failed\n";
+    }
+}
+
+void PyRFdc::DataPathMode() {
+    int status = XRFDC_SUCCESS;
+    uint32_t settings = data_;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDataPathMode-Gen-3/DFE
+            status = XRFdc_SetDataPathMode(RFdcInstPtr_, tileId_, blockId_, settings);
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataPathMode-Gen-3/DFE
+            status = XRFdc_GetDataPathMode(RFdcInstPtr_, tileId_, blockId_, &settings);
+            data_ = settings;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DataPathMode(): failed\n";
+    }
+}
+
+void PyRFdc::IMRPassMode() {
+    int status = XRFDC_SUCCESS;
+    uint32_t settings = data_;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetIMRPassMode-Gen-3/DFE
+            status = XRFdc_SetIMRPassMode(RFdcInstPtr_, tileId_, blockId_, settings);
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetIMRPassMode-Gen-3/DFE
+            status = XRFdc_GetIMRPassMode(RFdcInstPtr_, tileId_, blockId_, &settings);
+            data_ = settings;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IMRPassMode(): failed\n";
+    }
+}
+
+void PyRFdc::SignalDetector(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+    XRFdc_Signal_Detector_Settings settings;
 
 
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
 
+    // Else ADC tile
+    } else {
 
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSignalDetector-Gen-3/DFE
+        status = XRFdc_GetSignalDetector(RFdcInstPtr_, tileId_, blockId_, &settings);
 
+        // Check if write
+        if (!rdTxn_) {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Signal_Detector_Settings-Gen-3/DFE
+            switch (index) {
+                case 0:
+                    settings.Mode = uint8_t(data_&0xFF);
+                    break;
+                case 1:
+                    settings.TimeConstant = uint8_t(data_&0xFF);
+                    break;
+                case 2:
+                    settings.Flush = uint8_t(data_&0xFF);
+                    break;
+                case 3:
+                    settings.EnableIntegrator = uint8_t(data_&0xFF);
+                    break;
+                case 4:
+                    settings.Threshold = uint16_t(data_&0xFFFF);
+                    break;
+                case 5:
+                    settings.ThreshOnTriggerCnt = uint16_t(data_&0xFFFF);
+                    break;
+                case 6:
+                    settings.ThreshOffTriggerCnt = uint16_t(data_&0xFFFF);
+                    break;
+                case 7:
+                    settings.HysteresisEnable = uint8_t(data_&0xFF);
+                    break;
+                default:
+                    status = XRFDC_FAILURE;
+                    break;
+            }
 
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetSignalDetector-Gen-3/DFE
+            status = XRFdc_SetSignalDetector(RFdcInstPtr_, tileId_, blockId_, settings);
 
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Signal_Detector_Settings-Gen-3/DFE
+            switch (index) {
+                case 0:
+                    data_ = uint32_t(settings.Mode);
+                    break;
+                case 1:
+                    data_ = uint32_t(settings.TimeConstant);
+                    break;
+                case 2:
+                    data_ = uint32_t(settings.Flush);
+                    break;
+                case 3:
+                    data_ = uint32_t(settings.EnableIntegrator);
+                    break;
+                case 4:
+                    data_ = uint32_t(settings.Threshold);
+                    break;
+                case 5:
+                    data_ = uint32_t(settings.ThreshOnTriggerCnt);
+                    break;
+                case 6:
+                    data_ = uint32_t(settings.ThreshOffTriggerCnt);
+                    break;
+                case 7:
+                    data_ = uint32_t(settings.HysteresisEnable);
+                    break;
+                default:
+                    status = XRFDC_FAILURE;
+                    break;
+            }
+        }
+    }
 
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "SignalDetector(" + std::to_string(index) + "): failed\n";
+    }
+}
 
+void PyRFdc::ResetInternalFIFOWidth() {
+    int status = XRFDC_SUCCESS;
 
+    // Check if write
+    if (!rdTxn_) {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_ResetInternalFIFOWidth-Gen-3/DFE
+        status = XRFdc_ResetInternalFIFOWidth(RFdcInstPtr_, typeId_, tileId_, blockId_);
 
+    // Else read
+    } else {
+        status = XRFDC_FAILURE;
+    }
 
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "ResetInternalFIFOWidth(): failed\n";
+    }
+}
 
+void PyRFdc::ResetInternalFIFOWidthObs() {
+    int status = XRFDC_SUCCESS;
 
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
 
+    // Else ADC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_ResetInternalFIFOWidthObs-Gen-3/DFE
+            status = XRFdc_ResetInternalFIFOWidthObs(RFdcInstPtr_, typeId_, tileId_, blockId_);
+
+        // Else read
+        } else {
+            status = XRFDC_FAILURE;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "ResetInternalFIFOWidthObs(): failed\n";
+    }
+}
+
+void PyRFdc::PwrModeSettings(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+    XRFdc_Pwr_Mode_Settings settings;
+
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPwrMode-Gen-3/DFE
+    status = XRFdc_GetPwrMode(RFdcInstPtr_, typeId_, tileId_, blockId_, &settings);
+
+    // Check if write
+    if (!rdTxn_) {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Pwr_Mode_Settings-Gen-3/DFE
+        switch (index) {
+            case 0:
+                settings.DisableIPControl = data_;
+                break;
+            case 1:
+                settings.PwrMode = data_;
+                break;
+            default:
+                status = XRFDC_FAILURE;
+                break;
+        }
+
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetPwrMode-Gen-3/DFE
+        status = XRFdc_SetPwrMode(RFdcInstPtr_, typeId_, tileId_, blockId_, &settings);
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Pwr_Mode_Settings-Gen-3/DFE
+        switch (index) {
+            case 0:
+                data_ = settings.DisableIPControl;
+                break;
+            case 1:
+                data_ = settings.PwrMode;
+                break;
+            default:
+                status = XRFDC_FAILURE;
+                break;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "PwrModeSettings(" + std::to_string(index) + "): failed\n";
+    }
+}
+
+void PyRFdc::TileBaseAddr() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_TileBaseAddr
+        data_ = XRFdc_Get_TileBaseAddr(RFdcInstPtr_, tileType_, tileId_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "TileBaseAddr(): failed\n";
+    }
+}
+
+void PyRFdc::BlockBaseAddr() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_BlockBaseAddr
+        data_ = XRFdc_Get_BlockBaseAddr(RFdcInstPtr_, tileType_, tileId_, blockId_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "BlockBaseAddr(): failed\n";
+    }
+}
+
+void PyRFdc::NoOfADCBlocks() {
+    int status = XRFDC_SUCCESS;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else ADC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetNoOfADCBlocks
+            data_ = XRFdc_GetNoOfADCBlocks(RFdcInstPtr_, tileId_);
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "NoOfADCBlocks(): failed\n";
+    }
+}
+
+void PyRFdc::NoOfDACBlock() {
+    int status = XRFDC_SUCCESS;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetNoOfDACBlock
+            data_ = XRFdc_GetNoOfDACBlock(RFdcInstPtr_, tileId_);
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "NoOfDACBlock(): failed\n";
+    }
+}
+
+void PyRFdc::IsADCBlockEnabled(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else ADC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsADCBlockEnabled
+            data_ = XRFdc_IsADCBlockEnabled(RFdcInstPtr_, tileId_, uint32_t(index));
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IsADCBlockEnabled(): failed\n";
+    }
+}
+
+void PyRFdc::IsDACBlockEnabled(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsDACBlockEnabled
+            data_ = XRFdc_IsDACBlockEnabled(RFdcInstPtr_, tileId_, uint32_t(index));
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IsDACBlockEnabled(): failed\n";
+    }
+}
+
+void PyRFdc::IsHighSpeedADC() {
+    int status = XRFDC_SUCCESS;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else ADC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsHighSpeedADC
+            data_ = XRFdc_IsHighSpeedADC(RFdcInstPtr_, tileId_);
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IsHighSpeedADC(): failed\n";
+    }
+}
+
+void PyRFdc::DataType() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataType
+        data_ = XRFdc_GetDataType(RFdcInstPtr_, tileType_, tileId_, blockId_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DataType(): failed\n";
+    }
+}
+
+void PyRFdc::DataWidth() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataWidth
+        data_ = XRFdc_GetDataWidth(RFdcInstPtr_, tileType_, tileId_, blockId_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DataWidth(): failed\n";
+    }
+}
+
+void PyRFdc::InverseSincFilter() {
+    int status = XRFDC_SUCCESS;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInverseSincFilter
+            data_ = XRFdc_GetInverseSincFilter(RFdcInstPtr_, tileId_, blockId_);
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "InverseSincFilter(): failed\n";
+    }
+}
+
+void PyRFdc::MixedMode() {
+    int status = XRFDC_SUCCESS;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMixedMode
+            data_ = XRFdc_GetMixedMode(RFdcInstPtr_, tileId_, blockId_);
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "MixedMode(): failed\n";
+    }
+}
+
+void PyRFdc::MasterTile(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMasterTile
+        data_ = XRFdc_GetMasterTile(RFdcInstPtr_, uint32_t(index));
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "MasterTile(): failed\n";
+    }
+}
+
+void PyRFdc::SysRefSource(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSysRefSource
+        data_ = XRFdc_GetSysRefSource(RFdcInstPtr_, uint32_t(index));
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "SysRefSource(): failed\n";
+    }
+}
+
+void PyRFdc::IPBaseAddr() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_IPBaseAddr
+        data_ = XRFdc_Get_IPBaseAddr(RFdcInstPtr_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IPBaseAddr(): failed\n";
+    }
+}
+
+void PyRFdc::FabClkFreq(bool upper) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabClkFreq
+        data_ = DoubleToUint32(XRFdc_GetFabClkFreq(RFdcInstPtr_, tileType_, tileId_), upper);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "FabClkFreq(): failed\n";
+    }
+}
+
+void PyRFdc::IsFifoEnabled(bool upper) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsFifoEnabled
+        data_ = XRFdc_IsFifoEnabled(RFdcInstPtr_, tileType_, tileId_, blockId_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IsFifoEnabled(): failed\n";
+    }
+}
+
+void PyRFdc::DriverVersion(bool upper) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDriverVersion
+        data_ = DoubleToUint32(XRFdc_GetDriverVersion(), upper);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DriverVersion(): failed\n";
+    }
+}
+
+void PyRFdc::ConnectedIData() {
+    int status = XRFDC_SUCCESS;
+    int convNum;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedIData
+        convNum = XRFdc_GetConnectedIData(RFdcInstPtr_, typeId_, tileId_, blockId_);
+        // Copy from convNum to data_
+        memcpy(&data_, &convNum, sizeof(uint32_t));
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "ConnectedIData(): failed\n";
+    }
+}
+
+void PyRFdc::ConnectedQData() {
+    int status = XRFDC_SUCCESS;
+    int convNum;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedQData
+        convNum = XRFdc_GetConnectedQData(RFdcInstPtr_, typeId_, tileId_, blockId_);
+        // Copy from convNum to data_
+        memcpy(&data_, &convNum, sizeof(uint32_t));
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "ConnectedQData(): failed\n";
+    }
+}
+
+void PyRFdc::IsADCDigitalPathEnabled() {
+    int status = XRFDC_SUCCESS;
+
+    // Check for DAC tile
+    if (!isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else ADC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsADCDigitalPathEnabled
+            data_ = XRFdc_IsADCDigitalPathEnabled(RFdcInstPtr_, tileId_, blockId_);
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IsADCDigitalPathEnabled(): failed\n";
+    }
+}
+
+void PyRFdc::IsDACDigitalPathEnabled() {
+    int status = XRFDC_SUCCESS;
+
+    // Check for ADC tile
+    if (isADC_) {
+        status = XRFDC_FAILURE;
+
+    // Else DAC tile
+    } else {
+
+        // Check if write
+        if (!rdTxn_) {
+            status = XRFDC_FAILURE;
+
+        // Else read
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsDACDigitalPathEnabled
+            data_ = XRFdc_IsDACDigitalPathEnabled(RFdcInstPtr_, tileId_, blockId_);
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IsDACDigitalPathEnabled(): failed\n";
+    }
+}
+
+void PyRFdc::CheckDigitalPathEnabled() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckDigitalPathEnabled
+        data_ = XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, tileId_, blockId_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "CheckDigitalPathEnabled(): failed\n";
+    }
+}
+
+void PyRFdc::CheckBlockEnabled(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckBlockEnabled
+        data_ = XRFdc_CheckBlockEnabled(RFdcInstPtr_, tileType_, tileId_, uint32_t(index));
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "CheckBlockEnabled(): failed\n";
+    }
+}
+
+void PyRFdc::CheckTileEnabled(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckTileEnabled
+        data_ = XRFdc_CheckTileEnabled(RFdcInstPtr_, tileType_, uint32_t(index));
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "CheckTileEnabled(): failed\n";
+    }
+}
 
 void PyRFdc::MstAdcTiles() {
     int status, i;
@@ -1482,6 +2513,15 @@ void PyRFdc::MetalLogLevel() {
 
     } else {
         data_ = uint32_t(metalLogLevel_);
+    }
+}
+
+void PyRFdc::IgnoreMetalError() {
+    // Check for a write
+    if (!rdTxn_) {
+        ignoreMetalError_ = bool(data_&0x1);
+    } else {
+        data_ = uint32_t(ignoreMetalError_);
     }
 }
 
@@ -1615,18 +2655,25 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
             tileType_ = XRFDC_ADC_TILE;
             SetupFIFOBoth(-1);
 
+        } else if ( (addr >= 0x10030) && (addr <= 0x10034) ) {
+            MasterTile((addr>>2)&0x1);
 
+        } else if ( (addr >= 0x10038) && (addr <= 0x1003C) ) {
+            SysRefSource((addr>>2)&0x1);
 
+        } else if (addr==0x10040) {
+            IPBaseAddr();
 
+        } else if ( (addr >= 0x10048) && (addr <= 0x1004C) ) {
+            DriverVersion( bool( (addr>>2)&0x1 ) );
 
+        } else if ( (addr >= 0x10050) && (addr <= 0x1005C) ) {
+            tileType_ = XRFDC_ADC_TILE;
+            CheckTileEnabled((addr>>2)&0x3);
 
-
-
-
-
-
-
-
+        } else if ( (addr >= 0x10060) && (addr <= 0x1006C) ) {
+            tileType_ = XRFDC_DAC_TILE;
+            CheckTileEnabled((addr>>2)&0x3);
 
         } else if (addr==0x20000) {
             MstAdcTiles();
@@ -1636,6 +2683,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
         } else if (addr==0x40000) {
             MetalLogLevel();
+
+        } else if (addr==0x40004) {
+            IgnoreMetalError();
 
         } else if (addr==0x50000) {
             ScratchPad();
@@ -1680,20 +2730,47 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                 } else if (tileAddr==0x028) {
                     FIFOStatusObs();
 
+                } else if (tileAddr==0x02C) {
+                    ClockSource();
 
+                } else if ( (tileAddr >= 0x030) && (tileAddr <= 0x05C) ) {
+                    PLLConfig((tileAddr>>2)&0xF);
 
+                } else if (tileAddr==0x060) {
+                    PLLLockStatus();
 
+                } else if (tileAddr==0x064) {
+                    TileBaseAddr();
 
+                } else if (tileAddr==0x068) {
+                    NoOfADCBlocks();
 
+                } else if (tileAddr==0x06C) {
+                    NoOfDACBlock();
 
+                } else if ( (tileAddr >= 0x070) && (tileAddr <= 0x07C) ) {
+                    IsADCBlockEnabled((tileAddr>>2)&0x3);
 
+                } else if ( (tileAddr >= 0x080) && (tileAddr <= 0x08C) ) {
+                    IsDACBlockEnabled((tileAddr>>2)&0x3);
 
+                } else if (tileAddr==0x090) {
+                    IsHighSpeedADC();
 
+                } else if ( (tileAddr >= 0x098) && (tileAddr <= 0x09C) ) {
+                    FabClkFreq( bool( (tileAddr>>2)&0x1 ) );
+
+                } else if ( (tileAddr >= 0x0A0) && (tileAddr <= 0x0AC) ) {
+                    tileType_ = XRFDC_ADC_TILE;
+                    CheckBlockEnabled((tileAddr>>2)&0x3);
+
+                } else if ( (tileAddr >= 0x0B0) && (tileAddr <= 0x0BC) ) {
+                    tileType_ = XRFDC_DAC_TILE;
+                    CheckBlockEnabled((tileAddr>>2)&0x3);
 
                 } else {
                     errMsg_ = "Undefined memory";
                 }
-
 
             ////////////////////////////////////////////////////////////////
             // Else check for the tile + block registers access and commands
@@ -1793,15 +2870,68 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                 } else if (blockAddr==0x160) {
                     DataScaler();
 
+                } else if (blockAddr==0x164) {
+                    LinkCoupling();
 
+                } else if ( (blockAddr >= 0x168) && (blockAddr <= 0x16C) ) {
+                    DSA((blockAddr>>2)&0x1);
 
+                } else if (blockAddr==0x170) {
+                    DACVOP();
 
+                } else if (blockAddr==0x174) {
+                    DACCompMode();
 
+                } else if (blockAddr==0x178) {
+                    DataPathMode();
 
+                } else if (blockAddr==0x17C) {
+                    IMRPassMode();
 
+                } else if ( (blockAddr >= 0x180) && (blockAddr <= 0x19C) ) {
+                    SignalDetector((blockAddr>>2)&0x3);
 
+                } else if (blockAddr==0x1A0) {
+                    ResetInternalFIFOWidth();
 
+                } else if (blockAddr==0x1A4) {
+                    ResetInternalFIFOWidthObs();
 
+                } else if ( (blockAddr >= 0x1A8) && (blockAddr <= 0x1AC) ) {
+                    PwrModeSettings((blockAddr>>2)&0x1);
+
+                } else if (blockAddr==0x1B0) {
+                    BlockBaseAddr();
+
+                } else if (blockAddr==0x1B4) {
+                    DataType();
+
+                } else if (blockAddr==0x1B8) {
+                    DataWidth();
+
+                } else if (blockAddr==0x1BC) {
+                    InverseSincFilter();
+
+                } else if (blockAddr==0x1C0) {
+                    MixedMode();
+
+                } else if (blockAddr==0x1C4) {
+                    IsFifoEnabled();
+
+                } else if (blockAddr==0x1C8) {
+                    ConnectedIData();
+
+                } else if (blockAddr==0x1CC) {
+                    ConnectedQData();
+
+                } else if (blockAddr==0x1D0) {
+                    IsADCDigitalPathEnabled();
+
+                } else if (blockAddr==0x1D4) {
+                    IsDACDigitalPathEnabled();
+
+                } else if (blockAddr==0x1D8) {
+                    CheckDigitalPathEnabled();
 
                 } else {
                     errMsg_ = "Undefined memory";
@@ -1814,6 +2944,10 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
         if (rdTxn_) {
             // Copy from data to ptr
             memcpy(ptr, &data_, sizeof(uint32_t));
+        }
+
+        if (ignoreMetalError_) {
+            errMsg_.clear();
         }
     }
     // Complete transaction without error

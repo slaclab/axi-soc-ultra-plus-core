@@ -20,13 +20,9 @@ class Rfdc(pr.Device):
     def __init__(
             self,
             gen3      = True, # True if using RFSoC GEN3 Hardware
-            enAdcTile = [True,True,True,True],
-            enDacTile = [True,True,True,True],
             **kwargs):
         super().__init__(**kwargs)
         self.gen3      = gen3
-        self.enAdcTile = enAdcTile
-        self.enDacTile = enDacTile
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
@@ -190,42 +186,139 @@ class Rfdc(pr.Device):
                 },
             ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMasterTile
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'MasterAdcTile',
+            description  = 'Returns the master ADC tile ID',
+            offset       = 0x10030,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'MasterDacTile',
+            description  = 'Returns the master DAC tile ID',
+            offset       = 0x10034,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSysRefSource
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'SysRefAdcSource',
+            description  = 'Returns the source of the SYSREF (internal or external).',
+            offset       = 0x10038,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'SysRefDacSource',
+            description  = 'Returns the source of the SYSREF (internal or external).',
+            offset       = 0x1003C,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_IPBaseAddr
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'IPBaseAddr',
+            description  = 'Base address of the IP',
+            offset       = 0x10040,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDriverVersion
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'DriverVersion',
+            description  = 'Driver version number',
+            offset       = 0x10048,
+            bitSize      = 64,
+            mode         = 'RO',
+            base         = pr.Double,
+        ))
 
-
-
-
-
-
-
-
-
-
-
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckTileEnabled
+        #######################################################################################
+        self.addRemoteVariables(
+            name         = 'CheckAdcTileEnabled',
+            description  = 'This API checks whether RF-ADC tile is enabled or disabled',
+            offset       = 0x10050,
+            bitSize      = 1,
+            mode         = 'RO',
+            number       = 4,
+            stride       = 4,
+            enum         = rfsoc_utility.enumStatusReturn,
+        )
 
         for i in range(4):
-            if enAdcTile[i]:
-                self.add(rfsoc_utility.RfdcTile(
-                    name    = f'AdcTile[{i}]',
-                    isAdc   = True,
-                    gen3    = gen3,
-                    offset  = (0x0000+0x2000*i),
-                    expand  = False,
-                ))
+            self.add(pr.LinkVariable(
+                name         = f'IsADCTileEnabled[{i}]',
+                description  = 'If the requested RF-ADC is enabled, the function returns 1; otherwise, it returns 0',
+                mode         = 'RO',
+                dependencies = [self.CheckAdcTileEnabled[i]],
+                linkedGet    = lambda read, i=i: False if (self.CheckAdcTileEnabled[i].getDisp(read=read) == "XRFDC_FAILURE") else True,
+                value        = False,
+            ))
+
+        self.addRemoteVariables(
+            name         = 'CheckDacTileEnabled',
+            description  = 'This API checks whether RF-DAC tile is enabled or disabled',
+            offset       = 0x10060,
+            bitSize      = 1,
+            mode         = 'RO',
+            number       = 4,
+            stride       = 4,
+            enum         = rfsoc_utility.enumStatusReturn,
+        )
 
         for i in range(4):
-            if enDacTile[i]:
-                self.add(rfsoc_utility.RfdcTile(
-                    name    = f'DacTile[{i}]',
-                    isAdc   = False,
-                    gen3    = gen3,
-                    offset  = (0x8000+0x2000*i),
-                    expand  = False,
-                ))
+            self.add(pr.LinkVariable(
+                name         = f'IsDACTileEnabled[{i}]',
+                description  = 'If the requested RF-DAC is enabled, the function returns 1; otherwise, it returns 0',
+                mode         = 'RO',
+                dependencies = [self.CheckDacTileEnabled[i]],
+                linkedGet    = lambda read, i=i: False if (self.CheckDacTileEnabled[i].getDisp(read=read) == "XRFDC_FAILURE") else True,
+                value        = False,
+            ))
+
+        #######################################################################################
+        #######################################################################################
+        #######################################################################################
+
+        for i in range(4):
+            self.add(rfsoc_utility.RfdcTile(
+                name       = f'AdcTile[{i}]',
+                isAdc      = True,
+                gen3       = gen3,
+                offset     = (0x0000+0x2000*i),
+                expand     = False,
+                enableDeps = [self.IsADCTileEnabled[i]],
+            ))
+
+        for i in range(4):
+            self.add(rfsoc_utility.RfdcTile(
+                name       = f'DacTile[{i}]',
+                isAdc      = False,
+                gen3       = gen3,
+                offset     = (0x8000+0x2000*i),
+                expand     = False,
+                enableDeps = [self.IsDACTileEnabled[i]],
+            ))
+
+        #######################################################################################
+        #######################################################################################
+        #######################################################################################
 
         self.add(pr.RemoteVariable(
             name         = 'MstAdcTiles',
@@ -245,7 +338,7 @@ class Rfdc(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'MetalLogLevel',
-            description  = 'Sets the bare metal driver logging level',
+            description  = 'Sets the bare metal driver logging level printing in the serial console',
             offset       = 0x40000,
             bitSize      = 1,
             mode         = 'RW',
@@ -253,6 +346,15 @@ class Rfdc(pr.Device):
                 0 : "METAL_LOG_ERROR",
                 1 : "METAL_LOG_DEBUG",
             },
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'IgnoreMetalError',
+            description  = 'Used to bypass the bare metal driver error returns (debugging only)',
+            offset       = 0x40004,
+            bitSize      = 1,
+            mode         = 'RW',
+            base         = pr.Bool,
         ))
 
         self.add(pr.RemoteVariable(

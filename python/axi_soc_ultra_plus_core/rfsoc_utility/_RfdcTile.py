@@ -84,6 +84,8 @@ class RfdcTile(pr.Device):
         ))
 
         #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_TileStatus
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_IPStatus
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetIPStatus
         #######################################################################################
         self.add(pr.RemoteVariable(
@@ -236,26 +238,242 @@ class RfdcTile(pr.Device):
                 pollInterval = 1,
             ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClockSource
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ClockSource',
+            description  = 'This API function gets the clock source for the RF-ADCs/RF-DACs.',
+            offset       = 0x02C,
+            bitSize      = 1,
+            mode         = 'RW',
+            enum         = {
+                0 : "XRFDC_EXTERNAL_CLK",     #define XRFDC_EXTERNAL_CLK 0x0U
+                1 : "XRFDC_INTERNAL_PLL_CLK", #define XRFDC_INTERNAL_PLL_CLK 0x1U
+            },
+        ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_PLL_Settings
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLConfig
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_Enabled',
+            description  = 'Indicates if the PLL is enabled (1) or disabled (0).',
+            offset       = 0x030,
+            bitSize      = 1,
+            mode         = 'RO',
+            base         = pr.Bool,
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_RefClkFreq',
+            description  = 'Reference clock frequency (MHz).',
+            offset       = 0x034,
+            bitSize      = 64,
+            mode         = 'RO',
+            base         = pr.Double,
+            units        = 'MHz',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_SampleRate',
+            description  = 'Sampling rate (GHz).',
+            offset       = 0x03C,
+            bitSize      = 64,
+            mode         = 'RO',
+            base         = pr.Double,
+            units        = 'GHz',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_RefClkDivider',
+            description  = 'Reference clock divider.',
+            offset       = 0x044,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_FeedbackDivider',
+            description  = 'Feedback divider.',
+            offset       = 0x048,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_OutputDivider',
+            description  = 'Output divider.',
+            offset       = 0x04C,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_FractionalMode',
+            description  = 'Fractional mode. Currently not supported.',
+            offset       = 0x050,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_FractionalData',
+            description  = 'Fractional part of the feedback divider. Currently not supported.',
+            offset       = 0x054,
+            bitSize      = 64,
+            mode         = 'RO',
+        ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'PLLConfig_FractWidth',
+            description  = 'Fractional data width. Currently not supported.',
+            offset       = 0x05C,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLLockStatus
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'PLLLockStatus',
+            description  = 'This API function gets the PLL lock status for the RF-ADCs/RF-DACs.',
+            offset       = 0x060,
+            bitSize      = 2,
+            mode         = 'RO',
+            enum         = {
+                0x0 : "UNDEFINED",
+                0x1 : "XRFDC_PLL_UNLOCKED", #define XRFDC_PLL_UNLOCKED 0x1U
+                0x2 : "XRFDC_PLL_LOCKED",   #define XRFDC_PLL_LOCKED 0x2U
+            },
+            pollInterval = 1,
+        ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_TileBaseAddr
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'TileBaseAddr',
+            description  = 'base address of the tile',
+            offset       = 0x064,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetNoOfADCBlocks
+        #######################################################################################
+        if isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'NoOfADCBlocks',
+                description  = 'number of RF-ADCs enabled in the tile',
+                offset       = 0x068,
+                bitSize      = 32,
+                mode         = 'RO',
+            ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetNoOfDACBlock
+        #######################################################################################
+        if not isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'NoOfDACBlock',
+                description  = 'number of RF-DACs enabled in the tile',
+                offset       = 0x068,
+                bitSize      = 32,
+                mode         = 'RO',
+            ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsADCBlockEnabled
+        #######################################################################################
+        if isAdc:
+            self.addRemoteVariables(
+                name         = 'IsADCBlockEnabled',
+                description  = 'If the requested RF-ADC is enabled, the function returns 1; otherwise, it returns 0',
+                offset       = 0x070,
+                bitSize      = 1,
+                mode         = 'RO',
+                number       = 4,
+                stride       = 4,
+            )
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsDACBlockEnabled
+        #######################################################################################
+        if not isAdc:
+            self.addRemoteVariables(
+                name         = 'IsDACBlockEnabled',
+                description  = 'If the requested RF-DAC is enabled, the function returns 1; otherwise, it returns 0',
+                offset       = 0x080,
+                bitSize      = 1,
+                mode         = 'RO',
+                number       = 4,
+                stride       = 4,
+            )
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsHighSpeedADC
+        #######################################################################################
+        if isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'IsHighSpeedADC',
+                description  = 'whether the tile is high speed or not',
+                offset       = 0x090,
+                bitSize      = 1,
+                mode         = 'RO',
+                base         = pr.Bool,
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabClkFreq
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'FabClkFreq',
+            description  = 'Returns the PL clock frequency',
+            offset       = 0x098,
+            bitSize      = 64,
+            mode         = 'RO',
+            base         = pr.Double,
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckBlockEnabled
+        #######################################################################################
+        if isAdc:
+            self.addRemoteVariables(
+                name         = 'CheckAdcBlockEnabled',
+                description  = 'This API checks whether RF-ADC block is enabled or disabled',
+                offset       = 0x0A0,
+                bitSize      = 1,
+                mode         = 'RO',
+                number       = 4,
+                stride       = 4,
+                enum         = rfsoc_utility.enumStatusReturn,
+            )
+
+        if not isAdc:
+            self.addRemoteVariables(
+                name         = 'CheckDacBlockEnabled',
+                description  = 'This API checks whether RF-DAC block is enabled or disabled',
+                offset       = 0x0B0,
+                bitSize      = 1,
+                mode         = 'RO',
+                number       = 4,
+                stride       = 4,
+                enum         = rfsoc_utility.enumStatusReturn,
+            )
+
+        #######################################################################################
+        #######################################################################################
+        #######################################################################################
         for i in range(4):
             self.add(rfsoc_utility.RfdcBlock(
-                name      = f'Block[{i}]',
-                gen3      = gen3,
-                isAdc     = isAdc,
-                offset    = 0x1000+0x400*i,
+                name       = f'AdcBlock[{i}]' if isAdc else f'DacBlock[{i}]',
+                gen3       = gen3,
+                isAdc      = isAdc,
+                offset     = 0x1000+0x400*i,
+                enableDeps = [self.IsADCBlockEnabled[i]] if isAdc else [self.IsDACBlockEnabled[i]],
             ))

@@ -28,8 +28,8 @@ class RfdcBlock(pr.Device):
         self.isAdc = isAdc
 
         #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_TileStatus
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetIPStatus
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_BlockStatus
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetBlockStatus
         #######################################################################################
         self.add(pr.RemoteVariable(
             name         = 'BlockStatus_SamplingFreq',
@@ -744,3 +744,379 @@ class RfdcBlock(pr.Device):
                 mode         = 'RW',
                 base         = pr.Bool,
             ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling
+        #######################################################################################
+        if isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'LinkCoupling',
+                description  = 'This API function gets the Link Coupling mode for the RF-ADC block.',
+                offset       = 0x164,
+                bitSize      = 1,
+                mode         = 'RO',
+                enum         = {
+                    0x0 : "XRFDC_LINK_COUPLING_DC", #define XRFDC_LINK_COUPLING_DC 0x0U
+                    0x1 : "XRFDC_LINK_COUPLING_AC", #define XRFDC_LINK_COUPLING_AC 0x1U
+                },
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_DSA_Settings-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDSA-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDSA-Gen-3/DFE
+        #######################################################################################
+        if isAdc and gen3:
+            self.add(pr.RemoteVariable(
+                name         = 'DSA_DisableRTS',
+                description  = 'This disables the real time signals from setting the attenuation',
+                offset       = 0x168,
+                bitSize      = 32,
+                mode         = 'RW',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'DSA_Attenuation',
+                description  = 'The attenuation 0 - 27 dB',
+                offset       = 0x16C,
+                bitSize      = 32,
+                mode         = 'RW',
+                base         = pr.Float,
+                units        = 'dB',
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACVOP-Gen-3/DFE
+        #######################################################################################
+        if not isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'DACVOP',
+                description  = 'VOP μA current is used to update the corresponding block level registers.',
+                offset       = 0x170,
+                bitSize      = 32,
+                minimum      = 2250,
+                maximum      = 40500,
+                mode         = 'WO',
+                units        = 'μA',
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACCompMode-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDACCompMode-Gen-3/DFE
+        #######################################################################################
+        if not isAdc and gen3:
+            self.add(pr.RemoteVariable(
+                name         = 'DACCompMode',
+                description  = 'Enable the legacy DAC output mode. Valid values are 0 (Gen 3/DFE behavior) 1 (Gen 2 behavior).',
+                offset       = 0x174,
+                bitSize      = 1,
+                mode         = 'RW',
+                base         = pr.Bool,
+            ))
+
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDataPathMode-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataPathMode-Gen-3/DFE
+        #######################################################################################
+        if not isAdc and gen3:
+            self.add(pr.RemoteVariable(
+                name         = 'DataPathMode',
+                description  = 'The data path mode. Valid values are 1-4.',
+                offset       = 0x178,
+                bitSize      = 3,
+                mode         = 'RW',
+                enum         = {
+                    0x0 : "UNDEFINED",
+                    0x1 : "XRFDC_DATAPATH_MODE_DUC_0_FSDIVTWO",     #define XRFDC_DATAPATH_MODE_DUC_0_FSDIVTWO 1U     = Full Bandwidth FS 7GSPS (First Nyquist zone)
+                    0x2 : "XRFDC_DATAPATH_MODE_DUC_0_FSDIVFOUR",    #define XRFDC_DATAPATH_MODE_DUC_0_FSDIVFOUR 2U    = Half Bandwidth, Low Pass IMR, FS 10GSPS (Second Nyquist zone)
+                    0x3 : "XRFDC_DATAPATH_MODE_FSDIVFOUR_FSDIVTWO", #define XRFDC_DATAPATH_MODE_FSDIVFOUR_FSDIVTWO 3U = Half Bandwidth, High Pass IMR, FS 10GSPS (First Nyquist zone)
+                    0x4 : "XRFDC_DATAPATH_MODE_NODUC_0_FSDIVTWO",   #define XRFDC_DATAPATH_MODE_NODUC_0_FSDIVTWO 4U   = Full Bandwidth, Bypass Datapath
+                },
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDataPathMode-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataPathMode-Gen-3/DFE
+        #######################################################################################
+        if not isAdc and gen3:
+            self.add(pr.RemoteVariable(
+                name         = 'IMRPassMode',
+                description  = 'The IMR Filter mode. Valid values are 0 (for low pass) 1 (for high pass)',
+                offset       = 0x17C,
+                bitSize      = 1,
+                mode         = 'RW',
+                enum         = {
+                    0x0 : "XRFDC_DAC_IMR_MODE_LOWPASS",  #define XRFDC_DAC_IMR_MODE_LOWPASS 0U
+                    0x1 : "XRFDC_DAC_IMR_MODE_HIGHPASS", #define XRFDC_DAC_IMR_MODE_HIGHPASS 1U
+                },
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Signal_Detector_Settings-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetSignalDetector-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSignalDetector-Gen-3/DFE
+        #######################################################################################
+        if isAdc and gen3:
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_Mode',
+                description  = 'Whether to use Average or Randomized mode.',
+                offset       = 0x180,
+                bitSize      = 1,
+                mode         = 'RW',
+                enum         = {
+                    0x0 : "XRFDC_SIGDET_MODE_AVG",  #define XRFDC_SIGDET_MODE_AVG 0U
+                    0x1 : "XRFDC_SIGDET_MODE_RNDM", #define XRFDC_SIGDET_MODE_RNDM 1U
+                },
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_TimeConstant',
+                description  = 'Time constant of the leaky integrator.',
+                offset       = 0x184,
+                bitSize      = 3,
+                mode         = 'RW',
+                enum         = {
+                    0 : "XRFDC_SIGDET_TC_2_0",  #define XRFDC_SIGDET_TC_2_0 0   = 2^0 Cycles
+                    1 : "XRFDC_SIGDET_TC_2_2",  #define XRFDC_SIGDET_TC_2_2 1   = 2^2 Cycles
+                    2 : "XRFDC_SIGDET_TC_2_4",  #define XRFDC_SIGDET_TC_2_4 2   = 2^4 Cycles
+                    3 : "XRFDC_SIGDET_TC_2_8",  #define XRFDC_SIGDET_TC_2_8 3   = 2^8 Cycles
+                    4 : "XRFDC_SIGDET_TC_2_12", #define XRFDC_SIGDET_TC_2_12 4  = 2^12 Cycles
+                    5 : "XRFDC_SIGDET_TC_2_14", #define XRFDC_SIGDET_TC_2_14 5  = 2^14 Cycles
+                    6 : "XRFDC_SIGDET_TC_2_16", #define XRFDC_SIGDET_TC_2_16 6  = 2^16 Cycles
+                    7 : "XRFDC_SIGDET_TC_2_18", #define XRFDC_SIGDET_TC_2_18 7  = 2^18 Cycles
+                },
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_Flush',
+                description  = 'Flush the leaky integrator.',
+                offset       = 0x188,
+                bitSize      = 1,
+                mode         = 'RW',
+                base         = pr.Bool,
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_EnableIntegrator',
+                description  = 'Enable the leaky integrator.',
+                offset       = 0x18C,
+                bitSize      = 1,
+                mode         = 'RW',
+                base         = pr.Bool,
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_Threshold',
+                description  = 'The threshold for signal detection.',
+                offset       = 0x190,
+                bitSize      = 16,
+                mode         = 'RW',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_ThresholdOnTriggerCnt',
+                description  = 'The number of times value must exceed Threshold before turning on.',
+                offset       = 0x194,
+                bitSize      = 16,
+                mode         = 'RW',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_ThresholdOffTriggerCnt',
+                description  = 'The number of times value must exceed Threshold before turning off.',
+                offset       = 0x198,
+                bitSize      = 16,
+                mode         = 'RW',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'SignalDetector_HysteresisEnable',
+                description  = 'Enable hysteresis on signal on.',
+                offset       = 0x19C,
+                bitSize      = 1,
+                mode         = 'RW',
+                base         = pr.Bool,
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_ResetInternalFIFOWidth-Gen-3/DFE
+        #######################################################################################
+        if gen3:
+            self.add(pr.RemoteCommand(
+                name         = 'ResetInternalFIFOWidth',
+                description  = 'This API function resets the internal FIFO width to conform with rate change and mixer settings for the RF-ADC/RF-DAC.',
+                offset       = 0x1A0,
+                bitSize      = 1,
+                function     = lambda cmd: cmd.post(1),
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_ResetInternalFIFOWidthObs-Gen-3/DFE
+        #######################################################################################
+        if isAdc and gen3:
+            self.add(pr.RemoteCommand(
+                name         = 'ResetInternalFIFOWidthObs',
+                description  = 'This API function resets the internal observation FIFO width to conform with rate change and mixer settings for the RF-ADC.',
+                offset       = 0x1A4,
+                bitSize      = 1,
+                function     = lambda cmd: cmd.post(1),
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Pwr_Mode_Settings-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetPwrMode-Gen-3/DFE
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPwrMode-Gen-3/DFE
+        #######################################################################################
+        if gen3:
+            self.add(pr.RemoteVariable(
+                name         = 'PwrModeSettings_DisableIPControl',
+                description  = 'This disables the real time signals from setting the power mode: 0 to leave RTS control enabled, 1 to disable RTS control.',
+                offset       = 0x1A8,
+                bitSize      = 1,
+                mode         = 'RW',
+            ))
+
+            self.add(pr.RemoteVariable(
+                name         = 'PwrModeSettings_PwrMode',
+                description  = '0 to power down, 1 to power up.',
+                offset       = 0x1AC,
+                bitSize      = 1,
+                mode         = 'RW',
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_BlockBaseAddr
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'BlockBaseAddr',
+            description  = 'base address of the block',
+            offset       = 0x1B0,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataType
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'DataType',
+            description  = 'If the data type is real, the function returns 0; otherwise, it returns 1.',
+            offset       = 0x1B4,
+            bitSize      = 1,
+            mode         = 'RO',
+            enum         = {
+                0x0 : "XRFDC_DATA_TYPE_REAL", #define XRFDC_DATA_TYPE_REAL 0x00000000U
+                0x1 : "XRFDC_DATA_TYPE_IQ",   #define XRFDC_DATA_TYPE_IQ 0x00000001U
+            },
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataWidth
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'DataWidth',
+            description  = 'Returns the data width for the RF-ADC or RF-DAC',
+            offset       = 0x1B8,
+            bitSize      = 32,
+            mode         = 'RO',
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInverseSincFilter
+        #######################################################################################
+        if not isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'InverseSincFilter',
+                description  = 'the inverse sinc filter is enabled for the RF-DAC, the function returns 1; otherwise, it returns 0.',
+                offset       = 0x1BC,
+                bitSize      = 1,
+                mode         = 'RO',
+                base         = pr.Bool,
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMixedMode
+        #######################################################################################
+        if not isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'MixedMode',
+                description  = 'the mixed mode setting for the RF-DAC',
+                offset       = 0x1C0,
+                bitSize      = 32,
+                mode         = 'RO',
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsFifoEnabled
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'IsFifoEnabled',
+            description  = 'If the FIFO is enabled, the function returns 1; otherwise, it returns 0',
+            offset       = 0x1C4,
+            bitSize      = 1,
+            mode         = 'RO',
+            base         = pr.Bool,
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedIData
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ConnectedIData',
+            description  = 'Get converter connected for I digital data path.',
+            offset       = 0x1C8,
+            bitSize      = 32,
+            mode         = 'RO',
+            base         = pr.Int, # s32
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedQData
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ConnectedQData',
+            description  = 'Get converter connected for Q digital data path.',
+            offset       = 0x1CC,
+            bitSize      = 32,
+            mode         = 'RO',
+            base         = pr.Int, # s32
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsADCDigitalPathEnabled
+        #######################################################################################
+        if isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'IsADCDigitalPathEnabled',
+                description  = 'This API checks whether ADC Digital path is enabled or disabled.',
+                offset       = 0x1D0,
+                bitSize      = 1,
+                mode         = 'RO',
+                enum         = rfsoc_utility.enumStatusReturn,
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IsDACDigitalPathEnabled
+        #######################################################################################
+        if not isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'IsDACDigitalPathEnabled',
+                description  = 'This API checks whether RF-DAC digital path is enabled or not.',
+                offset       = 0x1D4,
+                bitSize      = 1,
+                mode         = 'RO',
+                enum         = rfsoc_utility.enumStatusReturn,
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckDigitalPathEnabled
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'CheckDigitalPathEnabled',
+            description  = 'This API checks whether RF-ADC/RF-DAC digital path is enabled or not.',
+            offset       = 0x1D8,
+            bitSize      = 1,
+            mode         = 'RO',
+            enum         = rfsoc_utility.enumStatusReturn,
+        ))
