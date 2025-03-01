@@ -230,7 +230,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'MstAdcTiles',
             description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for ADC tiles',
-            offset       = 0xF000,
+            offset       = 0x20000,
             bitSize      = 4,
             mode         = 'RW',
         ))
@@ -238,7 +238,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'MstDacTiles',
             description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for DAC tiles',
-            offset       = 0xF004,
+            offset       = 0x30000,
             bitSize      = 4,
             mode         = 'RW',
         ))
@@ -246,7 +246,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'MetalLogLevel',
             description  = 'Sets the bare metal driver logging level',
-            offset       = 0xFFF8,
+            offset       = 0x40000,
             bitSize      = 1,
             mode         = 'RW',
             enum         = {
@@ -258,7 +258,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'Scratchpad',
             description  = 'Test register (no impact to RFDC module)',
-            offset       = 0xFFFC,
+            offset       = 0x50000,
             bitSize      = 32,
             mode         = 'RW',
         ))
