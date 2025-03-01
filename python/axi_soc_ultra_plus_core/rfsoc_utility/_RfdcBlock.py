@@ -137,7 +137,7 @@ class RfdcBlock(pr.Device):
             description  = 'FIFO flags asserted mask; 1 is enabled, otherwise 0',
             offset       = 0x008,
             bitSize      = 1,
-            bitOffset    = 25,
+            bitOffset    = 26,
             mode         = 'RO',
             pollInterval = 1,
             base         = pr.Bool,
@@ -292,7 +292,7 @@ class RfdcBlock(pr.Device):
         ))
 
         self.add(pr.RemoteVariable(
-            name         = 'QMCSettings_EnableGain',
+            name         = 'QMCSettings_PhaseCorrectionFactor',
             description  = 'Phase correction factor. Range: +/- 26.5 degrees (Exclusive)',
             offset       = 0x050,
             bitSize      = 64,
@@ -623,7 +623,7 @@ class RfdcBlock(pr.Device):
             self.add(pr.RemoteVariable(
                 name         = 'DisableCoefficientsOverride',
                 description  = 'This API function disables the coefficient override for the selected block.',
-                offset       = 0x0C4,
+                offset       = 0x0C8,
                 bitSize      = 2,
                 mode         = 'RW',
                 enum         = {

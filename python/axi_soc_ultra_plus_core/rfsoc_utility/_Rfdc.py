@@ -137,7 +137,6 @@ class Rfdc(pr.Device):
             offset       = 0x10020,
             bitSize      = 2,
             mode         = 'WO',
-            base         = pr.Bool,
             enum         = {
                 0x0 : "UNDEFINED",
                 0x2 : "False",
@@ -151,7 +150,6 @@ class Rfdc(pr.Device):
             offset       = 0x10024,
             bitSize      = 2,
             mode         = 'WO',
-            base         = pr.Bool,
             enum         = {
                 0x0 : "UNDEFINED",
                 0x2 : "False",
@@ -166,10 +164,9 @@ class Rfdc(pr.Device):
             self.add(pr.RemoteVariable(
                 name         = 'SetupFIFOObsAllAdc',
                 description  = 'This API function enables and disables the RF-ADC observation channel FIFO.',
-                offset       = 0x10014,
+                offset       = 0x10028,
                 bitSize      = 2,
                 mode         = 'WO',
-                base         = pr.Bool,
                 enum         = {
                     0x0 : "UNDEFINED",
                     0x2 : "False",
@@ -183,10 +180,9 @@ class Rfdc(pr.Device):
             self.add(pr.RemoteVariable(
                 name         = 'SetupFIFOBothAllAdc',
                 description  = 'This API function enables and disables the RF-ADC actual and observation channel FIFO.',
-                offset       = 0x10018,
+                offset       = 0x1002C,
                 bitSize      = 2,
                 mode         = 'WO',
-                base         = pr.Bool,
                 enum         = {
                     0x0 : "UNDEFINED",
                     0x2 : "False",

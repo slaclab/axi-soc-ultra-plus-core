@@ -1009,7 +1009,7 @@ void PyRFdc::FIFOStatus() {
     } else {
 
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFIFOStatus
-        status = XRFdc_GetFIFOStatus(RFdcInstPtr_, tileType_, Tile_Id, &settings);
+        status = XRFdc_GetFIFOStatus(RFdcInstPtr_, tileType_, tileId_, &settings);
         data_  = uint32_t(settings);
     }
 
@@ -1038,7 +1038,7 @@ void PyRFdc::FIFOStatusObs() {
         } else {
 
             // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFIFOStatusObs-Gen-3/DFE
-            status = XRFdc_GetFIFOStatusObs(RFdcInstPtr_, tileType_, Tile_Id, &settings);
+            status = XRFdc_GetFIFOStatusObs(RFdcInstPtr_, tileType_, tileId_, &settings);
             data_  = uint32_t(settings);
         }
     }
@@ -1249,7 +1249,7 @@ void PyRFdc::CalCoefficients(uint32_t calType, uint8_t index) {
     }
 }
 
-void PyRFdc::CalFreeze(uint32_t calType, uint8_t index) {
+void PyRFdc::CalFreeze(uint8_t index) {
     int status = XRFDC_SUCCESS;
     XRFdc_Cal_Freeze_Settings settings;
 

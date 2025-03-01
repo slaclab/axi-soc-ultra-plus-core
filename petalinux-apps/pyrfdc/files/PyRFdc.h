@@ -79,7 +79,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void InterpolationFactor();
     void DecimationFactor();
     void DecimationFactorObs();
-    void SetFabClkOutDiv();
+    void FabClkOutDiv();
     void FabWrVldWords();
     void FabWrVldWordsObs();
     void FabRdVldWords();
