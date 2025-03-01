@@ -51,6 +51,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     XRFdc *RFdcInstPtr_ = &RFdcInst_;
 
     //! Local variables
+    std::string errMsg_;
     uint32_t scratchPad_;
     bool metalLogLevel_;
 
@@ -65,16 +66,51 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     uint8_t mstDacTiles_;
 
     //! Application functions
-    void NyquistZone();
-    void CalibrationMode();
-    void CalFrozen();
-    void DisableFreezePin();
-    void FreezeCalibration();
+    void StartUp(int Tile_Id);
+    void Shutdown(int Tile_Id);
+    void Reset(int Tile_Id);
+    void CustomStartUp(int Tile_Id);
+    void GetIPStatus();
+    void GetBlockStatus(uint8_t index);
+    void MixerSettings(uint8_t index);
+    void QMCSettings(uint8_t index);
+    void CoarseDelaySettings();
+    void UpdateEvent(uint32_t XRFDC_EVENT);
+    void InterpolationFactor();
+    void DecimationFactor();
+    void DecimationFactorObs();
+    void SetFabClkOutDiv();
+    void FabWrVldWords();
+    void FabWrVldWordsObs();
+    void FabRdVldWords();
+    void FabRdVldWordsObs();
+    void ThresholdStickyClear();
+    void ThresholdClrMode();
     void ThresholdSettings(uint8_t index);
+    void DecoderMode();
+    void ResetNCOPhase();
+    void SetupFIFO(int Tile_Id);
+    void SetupFIFOObs(int Tile_Id);
+    void SetupFIFOBoth(int Tile_Id);
+    void OutputCurr();
+    void NyquistZone();
+    void InvSincFIR();
+    void CalibrationMode();
+    void DisableCoefficientsOverride();
+    void CalCoefficients(uint32_t calType, uint8_t index);
+    void CalFreeze(uint8_t index);
+    void Dither();
+    void DataScaler();
+
+
+
+
     void MstAdcTiles();
     void MstDacTiles();
     void MetalLogLevel();
     void ScratchPad();
+    uint32_t DoubleToUint32(double value, bool upper);
+    double RemapDoubleWithUint32(double original, uint32_t newPart, bool upper);
 
   public:
     //! Class factory which returns a pointer
