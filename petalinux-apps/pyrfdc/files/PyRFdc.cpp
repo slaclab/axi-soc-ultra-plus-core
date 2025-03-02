@@ -2254,8 +2254,6 @@ void PyRFdc::DriverVersion(bool upper) {
     } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDriverVersion
         data_ = DoubleToUint32(XRFdc_GetDriverVersion(), upper);
-        log_->debug("upper: %s, data_: 0x%08X\n", upper ? "true" : "false", data_);
-        log_->debug("XRFdc_GetDriverVersion = %lf\n", XRFdc_GetDriverVersion());
     }
 
     // Check if not successful
@@ -2426,41 +2424,51 @@ void PyRFdc::MstTiles() {
 
     // Check for a write
     if (!rdTxn_) {
-
         // Print all debug messages
         metal_set_log_level(METAL_LOG_DEBUG);
 
         // Set the MST value
         if (tileType_ == XRFDC_ADC_TILE) {
-            mstAdcTiles_ = (data_&0xF);
+            mstAdcTiles_ = (data_ & 0xF);
         } else {
-            mstDacTiles_ = (data_&0xF);
+            mstDacTiles_ = (data_ & 0xF);
         }
 
         // MTS Settings
         XRFdc_MultiConverter_Sync_Config settings;
 
         // Run MTS
-        log_->debug("\n=== Run Sync ===\n");
+        metal_log(METAL_LOG_INFO, "\n=== Run %s Sync ===\n",
+                  tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC");
 
         // Initialize MTS Settings
-        XRFdc_MultiConverter_Init (&settings, 0, 0, XRFDC_TILE_ID0);
-        settings.Tiles = (data_&0xF);
+        XRFdc_MultiConverter_Init(&settings, 0, 0, XRFDC_TILE_ID0);
+        settings.Tiles = (data_ & 0xF);
 
         status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, tileType_, &settings);
-        if(status == XRFDC_MTS_OK){
-            // Report Overall Latency in T1 (Sample Clocks) and Offsets (in terms of PL words) added to each FIFO
-            log_->debug("Multi-Tile-Sync completed successfully\n");
-            log_->debug("\n\n=== Multi-Tile Sync Report ===\n");
-            for(i=0; i<4; i++) {
-                if((1<<i)&settings.Tiles) {
-                    XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &factor);
-                    log_->debug("TILE[%d]: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, settings.Latency[i], factor, settings.Offset[i]);
+        if (status == XRFDC_MTS_OK) {
+            // Report Overall Latency in T1 (Sample Clocks) and Offsets (PL words) added to each FIFO
+            metal_log(METAL_LOG_INFO, "%s Multi-Tile-Sync completed successfully\n",
+                      tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC");
+
+            metal_log(METAL_LOG_INFO, "\n\n=== %s Multi-Tile Sync Report ===\n",
+                      tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC");
+
+            for (i = 0; i < 4; i++) {
+                if ((1 << i) & settings.Tiles) {
+                    if (tileType_ == XRFDC_ADC_TILE) {
+                        XRFdc_GetDecimationFactor(RFdcInstPtr_, i, 0, &factor);
+                    } else {
+                        XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &factor);
+                    }
+                    metal_log(METAL_LOG_INFO, "%s[%d]: Latency(T1) = %3d, Adjusted Delay Offset(T%d) = %3d\n",
+                              tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC",
+                              i, settings.Latency[i], factor, settings.Offset[i]);
                 }
             }
-
         } else {
-            errMsg_ = "Multi-Tile-Sync did not complete successfully. Error code is (" + std::to_string(status) + ")\n";
+            errMsg_ = "MTS failed for " + std::string(tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC") +
+                      " tiles. Error code: (" + std::to_string(status) + ")\n";
             if (tileType_ == XRFDC_ADC_TILE) {
                 mstAdcTiles_ = 0;
             } else {
@@ -2469,18 +2477,9 @@ void PyRFdc::MstTiles() {
         }
 
         // Restore the print level
-        if (metalLogLevelCopy) {
-            metal_set_log_level(METAL_LOG_DEBUG);
-        } else {
-            metal_set_log_level(METAL_LOG_ERROR);
-        }
-
+        metal_set_log_level(metalLogLevelCopy ? METAL_LOG_DEBUG : METAL_LOG_ERROR);
     } else {
-        if (tileType_ == XRFDC_ADC_TILE) {
-            data_ = uint32_t(mstAdcTiles_);
-        } else {
-            data_ = uint32_t(mstDacTiles_);
-        }
+        data_ = (tileType_ == XRFDC_ADC_TILE) ? uint32_t(mstAdcTiles_) : uint32_t(mstDacTiles_);
     }
 }
 
@@ -2550,11 +2549,13 @@ double PyRFdc::RemapDoubleWithUint32(double original, uint32_t newPart, bool upp
 
 //! Post a transaction. Master will call this method with the access attributes.
 void PyRFdc::doTransaction(rim::TransactionPtr tran) {
+    int32_t  size = int32_t(tran->size());
     uint32_t addr = uint32_t(tran->address() & 0xFFFFFFFFULL);
     uint8_t* ptr  = tran->begin();
-    uint32_t tileAddr;
-    uint32_t blockAddr;
-    bool tileOnly;
+    uint32_t tileAddr = 0;
+    uint32_t blockAddr = 0;
+    uint32_t wrdIdx = 0;
+    bool tileOnly = false;
 
      // Initialize as an empty string
      errMsg_.clear();
@@ -2563,393 +2564,401 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
     {
         std::lock_guard<std::mutex> lock(mtx_);
 
-        // Check the type of transaction
-        if (tran->type() == rim::Write || tran->type() == rim::Post) {
-            // Set the flag
-            rdTxn_ = false;
-            // Copy from ptr to data
-            memcpy(&data_, ptr, tran->size());
-        } else {
-            // Set the flag
-            rdTxn_ = true;
-        }
+        while (size > 0)
+        {
+            // Copy from (ptr + wrdIdx) to data
+            memcpy(&data_, ptr+wrdIdx, sizeof(uint32_t));
 
-        // Check if ADC/DAC type - BIT15
-        isADC_ = (((addr >> 15) & 0x1) == 0x0);
-        tileType_ = isADC_ ? XRFDC_ADC_TILE : XRFDC_DAC_TILE;
-
-        // Get TILE ID - BIT14:BIT13
-        tileId_ = (addr>>13)&0x3;
-        tileAddr = addr&0xFFF;
-
-        // Check if tile only - BIT12
-        tileOnly = (((addr >> 12) & 0x1) == 0x0);
-
-        // Get BLOCK ID and block address - BIT11:BIT10
-        blockId_  = (addr>>10)&0x3;
-        blockAddr = addr&0x3FF;
-
-        ////////////////////////////////////////////////////////////////
-        // 1st check for the global registers access and commands
-        ////////////////////////////////////////////////////////////////
-        if (addr==0x10000) {
-            tileType_ = XRFDC_ADC_TILE;
-            StartUp(-1);
-
-        } else if (addr==0x10004) {
-            tileType_ = XRFDC_DAC_TILE;
-            StartUp(-1);
-
-        } else if (addr==0x10008) {
-            tileType_ = XRFDC_ADC_TILE;
-            Shutdown(-1);
-
-        } else if (addr==0x1000C) {
-            tileType_ = XRFDC_DAC_TILE;
-            Shutdown(-1);
-
-        } else if (addr==0x10010) {
-            tileType_ = XRFDC_ADC_TILE;
-            Reset(-1);
-
-        } else if (addr==0x10014) {
-            tileType_ = XRFDC_DAC_TILE;
-            Reset(-1);
-
-        } else if (addr==0x10018) {
-            tileType_ = XRFDC_ADC_TILE;
-            CustomStartUp(-1);
-
-        } else if (addr==0x1001C) {
-            tileType_ = XRFDC_DAC_TILE;
-            CustomStartUp(-1);
-
-        } else if (addr==0x10020) {
-            tileType_ = XRFDC_ADC_TILE;
-            SetupFIFO(-1);
-
-        } else if (addr==0x10024) {
-            tileType_ = XRFDC_DAC_TILE;
-            SetupFIFO(-1);
-
-        } else if (addr==0x10028) {
-            tileType_ = XRFDC_ADC_TILE;
-            SetupFIFOObs(-1);
-
-        } else if (addr==0x1002C) {
-            tileType_ = XRFDC_ADC_TILE;
-            SetupFIFOBoth(-1);
-
-        } else if ( (addr >= 0x10030) && (addr <= 0x10034) ) {
-            MasterTile((addr>>2)&0x1);
-
-        } else if ( (addr >= 0x10038) && (addr <= 0x1003C) ) {
-            SysRefSource((addr>>2)&0x1);
-
-        } else if (addr==0x10040) {
-            IPBaseAddr();
-
-        } else if (addr==0x10048) {
-            DriverVersion(false);
-
-        } else if (addr==0x1004C) {
-            DriverVersion(true);
-
-        } else if ( (addr >= 0x10050) && (addr <= 0x1005C) ) {
-            tileType_ = XRFDC_ADC_TILE;
-            CheckTileEnabled((addr>>2)&0x3);
-
-        } else if ( (addr >= 0x10060) && (addr <= 0x1006C) ) {
-            tileType_ = XRFDC_DAC_TILE;
-            CheckTileEnabled((addr>>2)&0x3);
-
-        } else if (addr==0x20000) {
-            tileType_ = XRFDC_ADC_TILE;
-            MstTiles();
-
-        } else if (addr==0x30000) {
-            tileType_ = XRFDC_DAC_TILE;
-            MstTiles();
-
-        } else if (addr==0x40000) {
-            MetalLogLevel();
-
-        } else if (addr==0x40004) {
-            IgnoreMetalError();
-
-        } else if (addr==0x50000) {
-            ScratchPad();
-
-        } else if (addr<0x10000) {
-
-            ////////////////////////////////////////////////////////////////
-            // Check for the tile only registers access and commands
-            ////////////////////////////////////////////////////////////////
-            if (tileOnly) {
-
-                if (tileAddr==0x000) {
-                    StartUp(tileId_);
-
-                } else if (tileAddr==0x004) {
-                    Shutdown(tileId_);
-
-                } else if (tileAddr==0x008) {
-                    Reset(tileId_);
-
-                } else if (tileAddr==0x00C) {
-                    CustomStartUp(tileId_);
-
-                } else if (tileAddr==0x010) {
-                    GetIPStatus();
-
-                } else if (tileAddr==0x014) {
-                    FabClkOutDiv();
-
-                } else if (tileAddr==0x018) {
-                    SetupFIFO(tileId_);
-
-                } else if (tileAddr==0x01C) {
-                    SetupFIFOObs(tileId_);
-
-                } else if (tileAddr==0x020) {
-                    SetupFIFOBoth(tileId_);
-
-                } else if (tileAddr==0x024) {
-                    FIFOStatus();
-
-                } else if (tileAddr==0x028) {
-                    FIFOStatusObs();
-
-                } else if (tileAddr==0x02C) {
-                    ClockSource();
-
-                } else if ( (tileAddr >= 0x030) && (tileAddr <= 0x05C) ) {
-                    PLLConfig( (tileAddr-0x030)>>2 );
-
-                } else if (tileAddr==0x060) {
-                    PLLLockStatus();
-
-                } else if (tileAddr==0x064) {
-                    TileBaseAddr();
-
-                } else if (tileAddr==0x068) {
-                    NoOfADCBlocks();
-
-                } else if (tileAddr==0x06C) {
-                    NoOfDACBlock();
-
-                } else if ( (tileAddr >= 0x070) && (tileAddr <= 0x07C) ) {
-                    IsADCBlockEnabled((tileAddr>>2)&0x3);
-
-                } else if ( (tileAddr >= 0x080) && (tileAddr <= 0x08C) ) {
-                    IsDACBlockEnabled((tileAddr>>2)&0x3);
-
-                } else if (tileAddr==0x090) {
-                    IsHighSpeedADC();
-
-                } else if (tileAddr==0x098) {
-                    FabClkFreq(false);
-
-                } else if (tileAddr==0x09C) {
-                    FabClkFreq(true);
-
-                } else if ( (tileAddr >= 0x0A0) && (tileAddr <= 0x0AC) ) {
-                    tileType_ = XRFDC_ADC_TILE;
-                    CheckBlockEnabled((tileAddr>>2)&0x3);
-
-                } else if ( (tileAddr >= 0x0B0) && (tileAddr <= 0x0BC) ) {
-                    tileType_ = XRFDC_DAC_TILE;
-                    CheckBlockEnabled((tileAddr>>2)&0x3);
-
-                } else {
-                    errMsg_ = "Undefined memory";
-                }
-
-            ////////////////////////////////////////////////////////////////
-            // Else check for the tile + block registers access and commands
-            ////////////////////////////////////////////////////////////////
+            // Check the type of transaction
+            if (tran->type() == rim::Write || tran->type() == rim::Post) {
+                // Set the flag
+                rdTxn_ = false;
             } else {
-
-                if ( (blockAddr >= 0x000) && (blockAddr <= 0x008) ) {
-                    GetBlockStatus((blockAddr>>2)&0x3);
-
-                } else if ( (blockAddr >= 0x020) && (blockAddr <= 0x038) ) {
-                    MixerSettings((blockAddr>>2)&0x7);
-
-                } else if (blockAddr==0x03C) {
-                    UpdateEvent(XRFDC_EVENT_MIXER);
-
-                } else if ( (blockAddr >= 0x040) && (blockAddr <= 0x058) ) {
-                    QMCSettings((blockAddr>>2)&0x7);
-
-                } else if (blockAddr==0x05C) {
-                    UpdateEvent(XRFDC_EVENT_QMC);
-
-                } else if (blockAddr==0x060) {
-                    CoarseDelaySettings();
-
-                } else if (blockAddr==0x064) {
-                    UpdateEvent(XRFDC_EVENT_CRSE_DLY);
-
-                } else if (blockAddr==0x068) {
-                    InterpolationFactor();
-
-                } else if (blockAddr==0x070) {
-                    DecimationFactor();
-
-                } else if (blockAddr==0x074) {
-                    DecimationFactorObs();
-
-                } else if (blockAddr==0x078) {
-                    FabWrVldWords();
-
-                } else if (blockAddr==0x07C) {
-                    FabWrVldWordsObs();
-
-                } else if (blockAddr==0x080) {
-                    FabRdVldWords();
-
-                } else if (blockAddr==0x084) {
-                    FabRdVldWordsObs();
-
-                } else if (blockAddr==0x088) {
-                    ThresholdStickyClear();
-
-                } else if (blockAddr==0x08C) {
-                    ThresholdClrMode();
-
-                } else if ( (blockAddr >= 0x090) && (blockAddr <= 0x0AC) ) {
-                    ThresholdSettings((blockAddr>>2)&0x7);
-
-                } else if (blockAddr==0x0B0) {
-                    DecoderMode();
-
-                } else if (blockAddr==0x0B4) {
-                    ResetNCOPhase();
-
-                } else if (blockAddr==0x0B8) {
-                    OutputCurr();
-
-                } else if (blockAddr==0x0BC) {
-                    NyquistZone();
-
-                } else if (blockAddr==0x0C0) {
-                    InvSincFIR();
-
-                } else if (blockAddr==0x0C4) {
-                    CalibrationMode();
-
-                } else if (blockAddr==0x0C8) {
-                    DisableCoefficientsOverride();
-
-                } else if ( (blockAddr >= 0x0D0) && (blockAddr <= 0x0EC) ) {
-                    CalCoefficients(0, (blockAddr>>2)&0x7);
-
-                } else if ( (blockAddr >= 0x0F0) && (blockAddr <= 0x10C) ) {
-                    CalCoefficients(1, (blockAddr>>2)&0x7);
-
-                } else if ( (blockAddr >= 0x110) && (blockAddr <= 0x12C) ) {
-                    CalCoefficients(2, (blockAddr>>2)&0x7);
-
-                } else if ( (blockAddr >= 0x130) && (blockAddr <= 0x14C) ) {
-                    CalCoefficients(3, (blockAddr>>2)&0x7);
-
-                } else if ( (blockAddr >= 0x150) && (blockAddr <= 0x158) ) {
-                    CalFreeze((blockAddr>>2)&0x3);
-
-                } else if (blockAddr==0x15C) {
-                    Dither();
-
-                } else if (blockAddr==0x160) {
-                    DataScaler();
-
-                } else if (blockAddr==0x164) {
-                    LinkCoupling();
-
-                } else if ( (blockAddr >= 0x168) && (blockAddr <= 0x16C) ) {
-                    DSA((blockAddr>>2)&0x1);
-
-                } else if (blockAddr==0x170) {
-                    DACVOP();
-
-                } else if (blockAddr==0x174) {
-                    DACCompMode();
-
-                } else if (blockAddr==0x178) {
-                    DataPathMode();
-
-                } else if (blockAddr==0x17C) {
-                    IMRPassMode();
-
-                } else if ( (blockAddr >= 0x180) && (blockAddr <= 0x19C) ) {
-                    SignalDetector((blockAddr>>2)&0x3);
-
-                } else if (blockAddr==0x1A0) {
-                    ResetInternalFIFOWidth();
-
-                } else if (blockAddr==0x1A4) {
-                    ResetInternalFIFOWidthObs();
-
-                } else if ( (blockAddr >= 0x1A8) && (blockAddr <= 0x1AC) ) {
-                    PwrModeSettings((blockAddr>>2)&0x1);
-
-                } else if (blockAddr==0x1B0) {
-                    BlockBaseAddr();
-
-                } else if (blockAddr==0x1B4) {
-                    DataType();
-
-                } else if (blockAddr==0x1B8) {
-                    DataWidth();
-
-                } else if (blockAddr==0x1BC) {
-                    InverseSincFilter();
-
-                } else if (blockAddr==0x1C0) {
-                    MixedMode();
-
-                } else if (blockAddr==0x1C4) {
-                    IsFifoEnabled();
-
-                } else if (blockAddr==0x1C8) {
-                    ConnectedIData();
-
-                } else if (blockAddr==0x1CC) {
-                    ConnectedQData();
-
-                } else if (blockAddr==0x1D0) {
-                    IsADCDigitalPathEnabled();
-
-                } else if (blockAddr==0x1D4) {
-                    IsDACDigitalPathEnabled();
-
-                } else if (blockAddr==0x1D8) {
-                    CheckDigitalPathEnabled();
-
-                } else {
-                    errMsg_ = "Undefined memory";
-                }
+                // Set the flag
+                rdTxn_ = true;
             }
-        } else {
-            errMsg_ = "Undefined memory";
-        }
 
-        if (rdTxn_) {
-            // Copy from data to ptr
-            memcpy(ptr, &data_, sizeof(uint32_t));
-        }
+            // Check if ADC/DAC type - BIT15
+            isADC_ = (((addr >> 15) & 0x1) == 0x0);
+            tileType_ = isADC_ ? XRFDC_ADC_TILE : XRFDC_DAC_TILE;
 
-        if (tran->size() != 4) {
-            errMsg_ = "tran->size() =" + std::to_string(tran->size()) + "\n";
-        }
+            // Get TILE ID - BIT14:BIT13
+            tileId_ = (addr>>13)&0x3;
+            tileAddr = addr&0xFFF;
 
-        if (ignoreMetalError_) {
-            errMsg_.clear();
-        }
-    }
+            // Check if tile only - BIT12
+            tileOnly = (((addr >> 12) & 0x1) == 0x0);
+
+            // Get BLOCK ID and block address - BIT11:BIT10
+            blockId_  = (addr>>10)&0x3;
+            blockAddr = addr&0x3FF;
+
+            ////////////////////////////////////////////////////////////////
+            // 1st check for the global registers access and commands
+            ////////////////////////////////////////////////////////////////
+            if (addr==0x10000) {
+                tileType_ = XRFDC_ADC_TILE;
+                StartUp(-1);
+
+            } else if (addr==0x10004) {
+                tileType_ = XRFDC_DAC_TILE;
+                StartUp(-1);
+
+            } else if (addr==0x10008) {
+                tileType_ = XRFDC_ADC_TILE;
+                Shutdown(-1);
+
+            } else if (addr==0x1000C) {
+                tileType_ = XRFDC_DAC_TILE;
+                Shutdown(-1);
+
+            } else if (addr==0x10010) {
+                tileType_ = XRFDC_ADC_TILE;
+                Reset(-1);
+
+            } else if (addr==0x10014) {
+                tileType_ = XRFDC_DAC_TILE;
+                Reset(-1);
+
+            } else if (addr==0x10018) {
+                tileType_ = XRFDC_ADC_TILE;
+                CustomStartUp(-1);
+
+            } else if (addr==0x1001C) {
+                tileType_ = XRFDC_DAC_TILE;
+                CustomStartUp(-1);
+
+            } else if (addr==0x10020) {
+                tileType_ = XRFDC_ADC_TILE;
+                SetupFIFO(-1);
+
+            } else if (addr==0x10024) {
+                tileType_ = XRFDC_DAC_TILE;
+                SetupFIFO(-1);
+
+            } else if (addr==0x10028) {
+                tileType_ = XRFDC_ADC_TILE;
+                SetupFIFOObs(-1);
+
+            } else if (addr==0x1002C) {
+                tileType_ = XRFDC_ADC_TILE;
+                SetupFIFOBoth(-1);
+
+            } else if ( (addr >= 0x10030) && (addr <= 0x10034) ) {
+                MasterTile((addr>>2)&0x1);
+
+            } else if ( (addr >= 0x10038) && (addr <= 0x1003C) ) {
+                SysRefSource((addr>>2)&0x1);
+
+            } else if (addr==0x10040) {
+                IPBaseAddr();
+
+            } else if (addr==0x10048) {
+                DriverVersion(false);
+
+            } else if (addr==0x1004C) {
+                DriverVersion(true);
+
+            } else if ( (addr >= 0x10050) && (addr <= 0x1005C) ) {
+                tileType_ = XRFDC_ADC_TILE;
+                CheckTileEnabled((addr>>2)&0x3);
+
+            } else if ( (addr >= 0x10060) && (addr <= 0x1006C) ) {
+                tileType_ = XRFDC_DAC_TILE;
+                CheckTileEnabled((addr>>2)&0x3);
+
+            } else if (addr==0x20000) {
+                tileType_ = XRFDC_ADC_TILE;
+                MstTiles();
+
+            } else if (addr==0x30000) {
+                tileType_ = XRFDC_DAC_TILE;
+                MstTiles();
+
+            } else if (addr==0x40000) {
+                MetalLogLevel();
+
+            } else if (addr==0x40004) {
+                IgnoreMetalError();
+
+            } else if (addr==0x50000) {
+                ScratchPad();
+
+            } else if (addr<0x10000) {
+
+                ////////////////////////////////////////////////////////////////
+                // Check for the tile only registers access and commands
+                ////////////////////////////////////////////////////////////////
+                if (tileOnly) {
+
+                    if (tileAddr==0x000) {
+                        StartUp(tileId_);
+
+                    } else if (tileAddr==0x004) {
+                        Shutdown(tileId_);
+
+                    } else if (tileAddr==0x008) {
+                        Reset(tileId_);
+
+                    } else if (tileAddr==0x00C) {
+                        CustomStartUp(tileId_);
+
+                    } else if (tileAddr==0x010) {
+                        GetIPStatus();
+
+                    } else if (tileAddr==0x014) {
+                        FabClkOutDiv();
+
+                    } else if (tileAddr==0x018) {
+                        SetupFIFO(tileId_);
+
+                    } else if (tileAddr==0x01C) {
+                        SetupFIFOObs(tileId_);
+
+                    } else if (tileAddr==0x020) {
+                        SetupFIFOBoth(tileId_);
+
+                    } else if (tileAddr==0x024) {
+                        FIFOStatus();
+
+                    } else if (tileAddr==0x028) {
+                        FIFOStatusObs();
+
+                    } else if (tileAddr==0x02C) {
+                        ClockSource();
+
+                    } else if ( (tileAddr >= 0x030) && (tileAddr <= 0x05C) ) {
+                        PLLConfig( (tileAddr-0x030)>>2 );
+
+                    } else if (tileAddr==0x060) {
+                        PLLLockStatus();
+
+                    } else if (tileAddr==0x064) {
+                        TileBaseAddr();
+
+                    } else if (tileAddr==0x068) {
+                        NoOfADCBlocks();
+
+                    } else if (tileAddr==0x06C) {
+                        NoOfDACBlock();
+
+                    } else if ( (tileAddr >= 0x070) && (tileAddr <= 0x07C) ) {
+                        IsADCBlockEnabled((tileAddr>>2)&0x3);
+
+                    } else if ( (tileAddr >= 0x080) && (tileAddr <= 0x08C) ) {
+                        IsDACBlockEnabled((tileAddr>>2)&0x3);
+
+                    } else if (tileAddr==0x090) {
+                        IsHighSpeedADC();
+
+                    } else if (tileAddr==0x098) {
+                        FabClkFreq(false);
+
+                    } else if (tileAddr==0x09C) {
+                        FabClkFreq(true);
+
+                    } else if ( (tileAddr >= 0x0A0) && (tileAddr <= 0x0AC) ) {
+                        tileType_ = XRFDC_ADC_TILE;
+                        CheckBlockEnabled((tileAddr>>2)&0x3);
+
+                    } else if ( (tileAddr >= 0x0B0) && (tileAddr <= 0x0BC) ) {
+                        tileType_ = XRFDC_DAC_TILE;
+                        CheckBlockEnabled((tileAddr>>2)&0x3);
+
+                    } else {
+                        errMsg_ = "Undefined memory";
+                    }
+
+                ////////////////////////////////////////////////////////////////
+                // Else check for the tile + block registers access and commands
+                ////////////////////////////////////////////////////////////////
+                } else {
+
+                    if ( (blockAddr >= 0x000) && (blockAddr <= 0x008) ) {
+                        GetBlockStatus((blockAddr>>2)&0x3);
+
+                    } else if ( (blockAddr >= 0x020) && (blockAddr <= 0x038) ) {
+                        MixerSettings((blockAddr>>2)&0x7);
+
+                    } else if (blockAddr==0x03C) {
+                        UpdateEvent(XRFDC_EVENT_MIXER);
+
+                    } else if ( (blockAddr >= 0x040) && (blockAddr <= 0x058) ) {
+                        QMCSettings((blockAddr>>2)&0x7);
+
+                    } else if (blockAddr==0x05C) {
+                        UpdateEvent(XRFDC_EVENT_QMC);
+
+                    } else if (blockAddr==0x060) {
+                        CoarseDelaySettings();
+
+                    } else if (blockAddr==0x064) {
+                        UpdateEvent(XRFDC_EVENT_CRSE_DLY);
+
+                    } else if (blockAddr==0x068) {
+                        InterpolationFactor();
+
+                    } else if (blockAddr==0x070) {
+                        DecimationFactor();
+
+                    } else if (blockAddr==0x074) {
+                        DecimationFactorObs();
+
+                    } else if (blockAddr==0x078) {
+                        FabWrVldWords();
+
+                    } else if (blockAddr==0x07C) {
+                        FabWrVldWordsObs();
+
+                    } else if (blockAddr==0x080) {
+                        FabRdVldWords();
+
+                    } else if (blockAddr==0x084) {
+                        FabRdVldWordsObs();
+
+                    } else if (blockAddr==0x088) {
+                        ThresholdStickyClear();
+
+                    } else if (blockAddr==0x08C) {
+                        ThresholdClrMode();
+
+                    } else if ( (blockAddr >= 0x090) && (blockAddr <= 0x0AC) ) {
+                        ThresholdSettings((blockAddr>>2)&0x7);
+
+                    } else if (blockAddr==0x0B0) {
+                        DecoderMode();
+
+                    } else if (blockAddr==0x0B4) {
+                        ResetNCOPhase();
+
+                    } else if (blockAddr==0x0B8) {
+                        OutputCurr();
+
+                    } else if (blockAddr==0x0BC) {
+                        NyquistZone();
+
+                    } else if (blockAddr==0x0C0) {
+                        InvSincFIR();
+
+                    } else if (blockAddr==0x0C4) {
+                        CalibrationMode();
+
+                    } else if (blockAddr==0x0C8) {
+                        DisableCoefficientsOverride();
+
+                    } else if ( (blockAddr >= 0x0D0) && (blockAddr <= 0x0EC) ) {
+                        CalCoefficients(0, (blockAddr>>2)&0x7);
+
+                    } else if ( (blockAddr >= 0x0F0) && (blockAddr <= 0x10C) ) {
+                        CalCoefficients(1, (blockAddr>>2)&0x7);
+
+                    } else if ( (blockAddr >= 0x110) && (blockAddr <= 0x12C) ) {
+                        CalCoefficients(2, (blockAddr>>2)&0x7);
+
+                    } else if ( (blockAddr >= 0x130) && (blockAddr <= 0x14C) ) {
+                        CalCoefficients(3, (blockAddr>>2)&0x7);
+
+                    } else if ( (blockAddr >= 0x150) && (blockAddr <= 0x158) ) {
+                        CalFreeze((blockAddr>>2)&0x3);
+
+                    } else if (blockAddr==0x15C) {
+                        Dither();
+
+                    } else if (blockAddr==0x160) {
+                        DataScaler();
+
+                    } else if (blockAddr==0x164) {
+                        LinkCoupling();
+
+                    } else if ( (blockAddr >= 0x168) && (blockAddr <= 0x16C) ) {
+                        DSA((blockAddr>>2)&0x1);
+
+                    } else if (blockAddr==0x170) {
+                        DACVOP();
+
+                    } else if (blockAddr==0x174) {
+                        DACCompMode();
+
+                    } else if (blockAddr==0x178) {
+                        DataPathMode();
+
+                    } else if (blockAddr==0x17C) {
+                        IMRPassMode();
+
+                    } else if ( (blockAddr >= 0x180) && (blockAddr <= 0x19C) ) {
+                        SignalDetector((blockAddr>>2)&0x3);
+
+                    } else if (blockAddr==0x1A0) {
+                        ResetInternalFIFOWidth();
+
+                    } else if (blockAddr==0x1A4) {
+                        ResetInternalFIFOWidthObs();
+
+                    } else if ( (blockAddr >= 0x1A8) && (blockAddr <= 0x1AC) ) {
+                        PwrModeSettings((blockAddr>>2)&0x1);
+
+                    } else if (blockAddr==0x1B0) {
+                        BlockBaseAddr();
+
+                    } else if (blockAddr==0x1B4) {
+                        DataType();
+
+                    } else if (blockAddr==0x1B8) {
+                        DataWidth();
+
+                    } else if (blockAddr==0x1BC) {
+                        InverseSincFilter();
+
+                    } else if (blockAddr==0x1C0) {
+                        MixedMode();
+
+                    } else if (blockAddr==0x1C4) {
+                        IsFifoEnabled();
+
+                    } else if (blockAddr==0x1C8) {
+                        ConnectedIData();
+
+                    } else if (blockAddr==0x1CC) {
+                        ConnectedQData();
+
+                    } else if (blockAddr==0x1D0) {
+                        IsADCDigitalPathEnabled();
+
+                    } else if (blockAddr==0x1D4) {
+                        IsDACDigitalPathEnabled();
+
+                    } else if (blockAddr==0x1D8) {
+                        CheckDigitalPathEnabled();
+
+                    } else {
+                        errMsg_ = "Undefined memory";
+                    }
+                }
+            } else {
+                errMsg_ = "Undefined memory";
+            }
+
+            if (rdTxn_) {
+                // Copy from data to (ptr + wrdIdx)
+                memcpy(ptr+wrdIdx, &data_, sizeof(uint32_t));
+            }
+
+            if (ignoreMetalError_) {
+                errMsg_.clear();
+            }
+
+            // Increment/decrement the counters
+            size   -= sizeof(uint32_t);
+            addr   += sizeof(uint32_t);
+            wrdIdx += sizeof(uint32_t);
+
+        } // while (size > 0)
+    } // rim::TransactionLockPtr tlock = tran->lock();
+
     // Complete transaction without error
     if (errMsg_.empty()) {
         tran->done();
+
     // Complete transaction with error message
     } else {
         log_->error(errMsg_.c_str());

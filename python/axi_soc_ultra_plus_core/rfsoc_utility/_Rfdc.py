@@ -260,6 +260,8 @@ class Rfdc(pr.Device):
             number       = 4,
             stride       = 4,
             base         = pr.Bool,
+            pollInterval = 1,
+            hidden       = True,
         )
 
         self.addRemoteVariables(
@@ -271,6 +273,8 @@ class Rfdc(pr.Device):
             number       = 4,
             stride       = 4,
             base         = pr.Bool,
+            pollInterval = 1,
+            hidden       = True,
         )
 
         #######################################################################################

@@ -398,6 +398,7 @@ class RfdcTile(pr.Device):
                 mode         = 'RO',
                 number       = 4,
                 stride       = 4,
+                pollInterval = 1,
             )
 
         #######################################################################################
@@ -412,6 +413,7 @@ class RfdcTile(pr.Device):
                 mode         = 'RO',
                 number       = 4,
                 stride       = 4,
+                pollInterval = 1,
             )
 
         #######################################################################################
@@ -452,6 +454,7 @@ class RfdcTile(pr.Device):
                 number       = 4,
                 stride       = 4,
                 base         = pr.Bool,
+                pollInterval = 1,
             )
 
         if not isAdc:
@@ -464,6 +467,7 @@ class RfdcTile(pr.Device):
                 number       = 4,
                 stride       = 4,
                 base         = pr.Bool,
+                pollInterval = 1,
             )
 
         #######################################################################################

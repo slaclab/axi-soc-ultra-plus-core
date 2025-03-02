@@ -1057,6 +1057,7 @@ class RfdcBlock(pr.Device):
             bitSize      = 1,
             mode         = 'RO',
             base         = pr.Bool,
+            pollInterval = 1,
         ))
 
         #######################################################################################
@@ -1094,6 +1095,7 @@ class RfdcBlock(pr.Device):
                 bitSize      = 1,
                 mode         = 'RO',
                 base         = pr.Bool,
+                pollInterval = 1,
             ))
 
         #######################################################################################
@@ -1107,6 +1109,7 @@ class RfdcBlock(pr.Device):
                 bitSize      = 1,
                 mode         = 'RO',
                 base         = pr.Bool,
+                pollInterval = 1,
             ))
 
         #######################################################################################
