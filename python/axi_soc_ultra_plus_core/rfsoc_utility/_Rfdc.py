@@ -331,6 +331,7 @@ class Rfdc(pr.Device):
                 0 : "METAL_LOG_ERROR",
                 1 : "METAL_LOG_DEBUG",
             },
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -340,6 +341,7 @@ class Rfdc(pr.Device):
             bitSize      = 1,
             mode         = 'RW',
             base         = pr.Bool,
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -348,4 +350,5 @@ class Rfdc(pr.Device):
             offset       = 0x50000,
             bitSize      = 32,
             mode         = 'RW',
+            hidden       = True,
         ))

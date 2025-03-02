@@ -66,7 +66,7 @@ PyRFdcPtr PyRFdc::create() {
 }
 
 //! Create an block
-PyRFdc::PyRFdc() : rim::Slave(4, 4) { // Set min=max=4 bytes for only 32-bit transactions
+PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 
     log_ = rogue::Logging::create("PyRFdc");
     metal_set_log_level(METAL_LOG_ERROR);
