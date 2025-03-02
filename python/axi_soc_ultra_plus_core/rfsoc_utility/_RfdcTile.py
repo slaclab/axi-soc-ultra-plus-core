@@ -451,7 +451,7 @@ class RfdcTile(pr.Device):
                 mode         = 'RO',
                 number       = 4,
                 stride       = 4,
-                enum         = rfsoc_utility.enumStatusReturn,
+                base         = pr.Bool,
             )
 
         if not isAdc:
@@ -463,7 +463,7 @@ class RfdcTile(pr.Device):
                 mode         = 'RO',
                 number       = 4,
                 stride       = 4,
-                enum         = rfsoc_utility.enumStatusReturn,
+                base         = pr.Bool,
             )
 
         #######################################################################################

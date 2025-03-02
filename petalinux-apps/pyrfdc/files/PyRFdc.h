@@ -134,14 +134,15 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void FabClkFreq(bool upper);
     void IsFifoEnabled();
     void DriverVersion(bool upper);
+    void ConnectedIData();
+    void ConnectedQData();
     void IsADCDigitalPathEnabled();
     void IsDACDigitalPathEnabled();
     void CheckDigitalPathEnabled();
     void CheckBlockEnabled(uint8_t index);
     void CheckTileEnabled(uint8_t index);
 
-    void MstAdcTiles();
-    void MstDacTiles();
+    void MstTiles();
     void IgnoreMetalError();
     void MetalLogLevel();
     void ScratchPad();

@@ -1093,7 +1093,7 @@ class RfdcBlock(pr.Device):
                 offset       = 0x1D0,
                 bitSize      = 1,
                 mode         = 'RO',
-                enum         = rfsoc_utility.enumStatusReturn,
+                base         = pr.Bool,
             ))
 
         #######################################################################################
@@ -1106,7 +1106,7 @@ class RfdcBlock(pr.Device):
                 offset       = 0x1D4,
                 bitSize      = 1,
                 mode         = 'RO',
-                enum         = rfsoc_utility.enumStatusReturn,
+                base         = pr.Bool,
             ))
 
         #######################################################################################
@@ -1118,5 +1118,5 @@ class RfdcBlock(pr.Device):
             offset       = 0x1D8,
             bitSize      = 1,
             mode         = 'RO',
-            enum         = rfsoc_utility.enumStatusReturn,
+            base         = pr.Bool,
         ))

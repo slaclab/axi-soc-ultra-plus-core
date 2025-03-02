@@ -233,6 +233,7 @@ class Rfdc(pr.Device):
             offset       = 0x10040,
             bitSize      = 32,
             mode         = 'RO',
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -258,18 +259,8 @@ class Rfdc(pr.Device):
             mode         = 'RO',
             number       = 4,
             stride       = 4,
-            enum         = rfsoc_utility.enumStatusReturn,
+            base         = pr.Bool,
         )
-
-        for i in range(4):
-            self.add(pr.LinkVariable(
-                name         = f'IsADCTileEnabled[{i}]',
-                description  = 'If the requested RF-ADC is enabled, the function returns 1; otherwise, it returns 0',
-                mode         = 'RO',
-                dependencies = [self.CheckAdcTileEnabled[i]],
-                linkedGet    = lambda read, i=i: False if (self.CheckAdcTileEnabled[i].getDisp(read=read) == "XRFDC_FAILURE") else True,
-                value        = False,
-            ))
 
         self.addRemoteVariables(
             name         = 'CheckDacTileEnabled',
@@ -279,18 +270,8 @@ class Rfdc(pr.Device):
             mode         = 'RO',
             number       = 4,
             stride       = 4,
-            enum         = rfsoc_utility.enumStatusReturn,
+            base         = pr.Bool,
         )
-
-        for i in range(4):
-            self.add(pr.LinkVariable(
-                name         = f'IsDACTileEnabled[{i}]',
-                description  = 'If the requested RF-DAC is enabled, the function returns 1; otherwise, it returns 0',
-                mode         = 'RO',
-                dependencies = [self.CheckDacTileEnabled[i]],
-                linkedGet    = lambda read, i=i: False if (self.CheckDacTileEnabled[i].getDisp(read=read) == "XRFDC_FAILURE") else True,
-                value        = False,
-            ))
 
         #######################################################################################
         #######################################################################################
@@ -303,7 +284,7 @@ class Rfdc(pr.Device):
                 gen3       = gen3,
                 offset     = (0x0000+0x2000*i),
                 expand     = False,
-                enableDeps = [self.IsADCTileEnabled[i]],
+                enableDeps = [self.CheckAdcTileEnabled[i]],
             ))
 
         for i in range(4):
@@ -313,7 +294,7 @@ class Rfdc(pr.Device):
                 gen3       = gen3,
                 offset     = (0x8000+0x2000*i),
                 expand     = False,
-                enableDeps = [self.IsDACTileEnabled[i]],
+                enableDeps = [self.CheckDacTileEnabled[i]],
             ))
 
         #######################################################################################

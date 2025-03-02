@@ -69,9 +69,3 @@ enumUpdateThreshold = {
     0x3 : "UNDEFINED_0x3",
     0x4 : "XRFDC_UPDATE_THRESHOLD_BOTH",
 }
-
-enumStatusReturn = {
-    0x0 : "XRFDC_SUCCESS", #define XRFDC_SUCCESS 0U
-    0x1 : "XRFDC_FAILURE", #define XRFDC_FAILURE 1U
-}
-
