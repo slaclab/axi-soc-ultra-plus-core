@@ -283,16 +283,18 @@ class RfdcTile(pr.Device):
                     mode         = 'RO',
                     base         = pr.Double,
                     units        = 'MHz',
+                    disp         = '{:1.1f}',
                 ))
 
                 self.add(pr.RemoteVariable(
                     name         = 'SampleRate',
-                    description  = 'Sampling rate (GHz).',
+                    description  = 'Sampling rate (GSPS).',
                     offset       = 0x03C,
                     bitSize      = 64,
                     mode         = 'RO',
                     base         = pr.Double,
-                    units        = 'GHz',
+                    units        = 'GSPS',
+                    disp         = '{:1.3f}',
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -301,6 +303,7 @@ class RfdcTile(pr.Device):
                     offset       = 0x044,
                     bitSize      = 32,
                     mode         = 'RO',
+                    disp         = '{:d}',
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -309,6 +312,7 @@ class RfdcTile(pr.Device):
                     offset       = 0x048,
                     bitSize      = 32,
                     mode         = 'RO',
+                    disp         = '{:d}',
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -317,6 +321,7 @@ class RfdcTile(pr.Device):
                     offset       = 0x04C,
                     bitSize      = 32,
                     mode         = 'RO',
+                    disp         = '{:d}',
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -325,6 +330,7 @@ class RfdcTile(pr.Device):
                     offset       = 0x050,
                     bitSize      = 32,
                     mode         = 'RO',
+                    hidden       = True,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -333,6 +339,7 @@ class RfdcTile(pr.Device):
                     offset       = 0x054,
                     bitSize      = 64,
                     mode         = 'RO',
+                    hidden       = True,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -341,6 +348,16 @@ class RfdcTile(pr.Device):
                     offset       = 0x05C,
                     bitSize      = 32,
                     mode         = 'RO',
+                    hidden       = True,
+                ))
+
+                self.add(pr.LinkVariable(
+                    name         = 'VCO',
+                    mode         = 'RO',
+                    units        = 'GHz',
+                    disp         = '{:1.3f}',
+                    linkedGet    = lambda read: 0.0 if (self.RefClkDivider.get(read=read)<=0.0) else 1.0E-3*float(self.FeedbackDivider.get(read=read))*(self.RefClkFreq.get(read=read))/float(self.RefClkDivider.get(read=read)),
+                    dependencies = [self.RefClkFreq, self.RefClkDivider, self.FeedbackDivider],
                 ))
 
                 #######################################################################################

@@ -9,7 +9,6 @@
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetConnectedIQData
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedIQData
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoupling
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMultibandConfig
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMinSampleRate
@@ -96,6 +95,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // Init local variables
     errMsg_.clear();
     scratchPad_ = 0;
+    doubleTestReg_ = 0.0;
     metalLogLevel_ = false;
     ignoreMetalError_ = false;
 
@@ -1499,23 +1499,23 @@ void PyRFdc::LinkCoupling() {
     int status = XRFDC_SUCCESS;
     uint32_t settings = data_;
 
-    // Check for DAC tile
-    if (!isADC_) {
+    // Check if write
+    if (!rdTxn_) {
         status = XRFDC_FAILURE;
 
-    // Else ADC tile
+    // Else read
     } else {
 
-        // Check if write
-        if (!rdTxn_) {
-            status = XRFDC_FAILURE;
+        ////////////////////////////////////////////////////////////////////////////////
+        // XRFdc_GetLinkCoupling API Scheduled for deprication in 2024.1, please use the XRFdc_GetCoupling() API
+        ////////////////////////////////////////////////////////////////////////////////
+        // // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling
+        // status = XRFdc_GetLinkCoupling(RFdcInstPtr_, tileId_, blockId_, &settings);
+        ////////////////////////////////////////////////////////////////////////////////
 
-        // Else read
-        } else {
-            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling
-            status = XRFdc_GetLinkCoupling(RFdcInstPtr_, tileId_, blockId_, &settings);
-            data_ = settings;
-        }
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoupling
+        status = XRFdc_GetCoupling(RFdcInstPtr_, tileType_, tileId_, blockId_, &settings);
+        data_ = settings;
     }
 
     // Check if not successful
@@ -2518,6 +2518,15 @@ void PyRFdc::ScratchPad() {
     }
 }
 
+void PyRFdc::DoubleTestReg(bool upper) {
+    // Check for a write
+    if (!rdTxn_) {
+        doubleTestReg_ = RemapDoubleWithUint32(doubleTestReg_,data_,upper);
+    } else {
+        data_ = DoubleToUint32(doubleTestReg_,upper);
+    }
+}
+
 //! Function to convert a double into a uint32 with little endianness
 uint32_t PyRFdc::DoubleToUint32(double value, bool upper) {
 
@@ -2683,6 +2692,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x50000) {
                 ScratchPad();
+
+            } else if (addr==0x60000) {
+                DoubleTestReg(false);
+
+            } else if (addr==0x60004) {
+                DoubleTestReg(true);
 
             } else if (addr<0x10000) {
 

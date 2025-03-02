@@ -53,6 +53,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! Local variables
     std::string errMsg_;
     uint32_t scratchPad_;
+    double doubleTestReg_;
     bool metalLogLevel_;
     bool ignoreMetalError_;
 
@@ -146,6 +147,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void IgnoreMetalError();
     void MetalLogLevel();
     void ScratchPad();
+    void DoubleTestReg(bool upper);
     uint32_t DoubleToUint32(double value, bool upper);
     double RemapDoubleWithUint32(double original, uint32_t newPart, bool upper);
 

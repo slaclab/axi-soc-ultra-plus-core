@@ -246,6 +246,7 @@ class Rfdc(pr.Device):
             bitSize      = 64,
             mode         = 'RO',
             base         = pr.Double,
+            disp         = '{:1.1f}',
         ))
 
         #######################################################################################
@@ -350,5 +351,16 @@ class Rfdc(pr.Device):
             offset       = 0x50000,
             bitSize      = 32,
             mode         = 'RW',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'DoubleTestReg',
+            description  = 'Test register (no impact to RFDC module)',
+            offset       = 0x60000,
+            bitSize      = 64,
+            mode         = 'RW',
+            base         = pr.Double,
+            disp         = '{:1.3f}',
             hidden       = True,
         ))

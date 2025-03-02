@@ -46,7 +46,7 @@ class RfdcBlock(pr.Device):
 
                 if isAdc:
                     self.add(pr.RemoteVariable(
-                        name         = 'Enabled',
+                        name         = 'IsEnabled',
                         description  = 'Converter enable/disable.',
                         offset       = 0x008,
                         bitSize      = 1,
@@ -100,6 +100,7 @@ class RfdcBlock(pr.Device):
                     bitOffset    = 16,
                     mode         = 'RO',
                     pollInterval = 1,
+                    enum         = rfsoc_utility.enumMixedMode,
                 ))
 
                 if not isAdc:
@@ -111,6 +112,7 @@ class RfdcBlock(pr.Device):
                         bitOffset    = 20,
                         mode         = 'RO',
                         pollInterval = 1,
+                        enum         = rfsoc_utility.enumMixedMode,
                     ))
 
                 self.add(pr.RemoteVariable(
@@ -781,12 +783,13 @@ class RfdcBlock(pr.Device):
             ))
 
         #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling (XRFdc_GetLinkCoupling API Scheduled for deprication in 2024.1)
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoupling
         #######################################################################################
-        if isAdc:
+        if isAdc or gen3:
             self.add(pr.RemoteVariable(
                 name         = 'LinkCoupling',
-                description  = 'This API function gets the Link Coupling mode for the RF-ADC block.',
+                description  = 'This API function gets the Link Coupling mode for the RF-ADC or RF-DAC block. DAC coupling for Gen 1/2 devices is not available.',
                 offset       = 0x164,
                 bitSize      = 1,
                 mode         = 'RO',
