@@ -510,6 +510,34 @@ class RfdcTile(pr.Device):
             )
 
         #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'MaxSampleRate',
+            description  = 'Tile maximum sampling rate',
+            offset       = 0x0C0,
+            bitSize      = 64,
+            mode         = 'RO',
+            base         = pr.Double,
+            units        = 'GSPS',
+            disp         = '{:1.0f}',
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMinSampleRate
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'MinSampleRate',
+            description  = 'Tile minimum sampling rate',
+            offset       = 0x0C8,
+            bitSize      = 64,
+            mode         = 'RO',
+            base         = pr.Double,
+            units        = 'GSPS',
+            disp         = '{:1.0f}',
+        ))
+
+        #######################################################################################
         #######################################################################################
         #######################################################################################
 

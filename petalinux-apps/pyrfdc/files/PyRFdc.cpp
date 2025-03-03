@@ -4,13 +4,9 @@
  * ----------------------------------------------------------------------------
  * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
- * TODO: Add support for the following
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetTileLayout
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMinSampleRate
+ * TODO: Add support for the following ....
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MTS_Sysref_Config
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
  *
  * PyRFdc::MstTiles() + XRFdc_MultiConverter_Init + XRFDC_TILE_ID0
  *
@@ -2419,6 +2415,102 @@ void PyRFdc::CheckTileEnabled(uint8_t index) {
     }
 }
 
+void PyRFdc::TileLayout() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetTileLayout
+        data_ = uint32_t(XRFdc_GetTileLayout(RFdcInstPtr_));
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "TileLayout(): failed\n";
+    }
+}
+
+void PyRFdc::MaxSampleRate(bool upper) {
+    int status = XRFDC_SUCCESS;
+    double settings;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
+        status = XRFdc_GetMaxSampleRate(RFdcInstPtr_, tileType_, tileId_, &settings);
+        data_ = DoubleToUint32(settings, upper);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "MaxSampleRate(" + std::to_string(upper) + "): failed\n";
+    }
+}
+
+void PyRFdc::MinSampleRate(bool upper) {
+    int status = XRFDC_SUCCESS;
+    double settings;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMinSampleRate
+        status = XRFdc_GetMinSampleRate(RFdcInstPtr_, tileType_, tileId_, &settings);
+        data_ = DoubleToUint32(settings, upper);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "MinSampleRate(" + std::to_string(upper) + "): failed\n";
+    }
+}
+
+void PyRFdc::MstEnabled() {
+    int status = XRFDC_SUCCESS;
+    int i;
+    uint32_t EnablePtr = 0;
+    uint32_t settings = 0;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // Loop through the tiles
+        for (i = 0; i < 4; i++) {
+
+            // Set the value
+            EnablePtr = 0;
+
+            // Check if TILE is enabled
+            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, tileType_, i) != XRFDC_FAILURE) {
+                // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
+                XRFdc_GetMTSEnable(RFdcInstPtr_, tileType_, i, &EnablePtr);
+                settings |= ((EnablePtr&0x1)<<i);
+            }
+        }
+        // Return the MST enabled bit mask
+        data_ = settings;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "MstEnabled(" + std::to_string(tileType_) + "): failed\n";
+    }
+}
+
 void PyRFdc::MstTiles() {
     int status, i;
     uint32_t factor;
@@ -2664,11 +2756,8 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
             } else if (addr==0x10040) {
                 IPBaseAddr();
 
-            } else if (addr==0x10048) {
-                DriverVersion(false);
-
-            } else if (addr==0x1004C) {
-                DriverVersion(true);
+            } else if ( (addr >= 0x10048) && (addr <= 0x1004C) ) {
+                DriverVersion(bool((addr>>2)&0x1));
 
             } else if ( (addr >= 0x10050) && (addr <= 0x1005C) ) {
                 tileType_ = XRFDC_ADC_TILE;
@@ -2678,11 +2767,22 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                 tileType_ = XRFDC_DAC_TILE;
                 CheckTileEnabled((addr>>2)&0x3);
 
-            } else if (addr==0x20000) {
+            } else if (addr==0x10070) {
+                TileLayout();
+
+            } else if (addr==0x11000) {
+                tileType_ = XRFDC_ADC_TILE;
+                MstEnabled();
+
+            } else if (addr==0x11004) {
+                tileType_ = XRFDC_DAC_TILE;
+                MstEnabled();
+
+            } else if (addr==0x11008) {
                 tileType_ = XRFDC_ADC_TILE;
                 MstTiles();
 
-            } else if (addr==0x30000) {
+            } else if (addr==0x1100C) {
                 tileType_ = XRFDC_DAC_TILE;
                 MstTiles();
 
@@ -2768,11 +2868,8 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                     } else if (tileAddr==0x090) {
                         IsHighSpeedADC();
 
-                    } else if (tileAddr==0x098) {
-                        FabClkFreq(false);
-
-                    } else if (tileAddr==0x09C) {
-                        FabClkFreq(true);
+                    } else if ( (tileAddr >= 0x098) && (tileAddr <= 0x09C) ) {
+                        FabClkFreq(bool((tileAddr>>2)&0x1));
 
                     } else if ( (tileAddr >= 0x0A0) && (tileAddr <= 0x0AC) ) {
                         tileType_ = XRFDC_ADC_TILE;
@@ -2781,6 +2878,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                     } else if ( (tileAddr >= 0x0B0) && (tileAddr <= 0x0BC) ) {
                         tileType_ = XRFDC_DAC_TILE;
                         CheckBlockEnabled((tileAddr>>2)&0x3);
+
+                    } else if ( (tileAddr >= 0x0C0) && (tileAddr <= 0x0C4) ) {
+                        MaxSampleRate(bool((tileAddr>>2)&0x1));
+
+                    } else if ( (tileAddr >= 0x0C8) && (tileAddr <= 0x0CC) ) {
+                        MinSampleRate(bool((tileAddr>>2)&0x1));
 
                     } else {
                         errMsg_ = "Undefined memory";

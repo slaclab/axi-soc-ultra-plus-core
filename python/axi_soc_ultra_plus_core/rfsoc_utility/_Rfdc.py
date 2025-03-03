@@ -278,49 +278,69 @@ class Rfdc(pr.Device):
             hidden       = True,
         )
 
-        #######################################################################################
-        #######################################################################################
-        #######################################################################################
-
-        for i in range(4):
-            self.add(rfsoc_utility.RfdcTile(
-                name       = f'AdcTile[{i}]',
-                isAdc      = True,
-                gen3       = gen3,
-                offset     = (0x0000+0x2000*i),
-                expand     = False,
-                enableDeps = [self.CheckAdcTileEnabled[i]],
-            ))
-
-        for i in range(4):
-            self.add(rfsoc_utility.RfdcTile(
-                name       = f'DacTile[{i}]',
-                isAdc      = False,
-                gen3       = gen3,
-                offset     = (0x8000+0x2000*i),
-                expand     = False,
-                enableDeps = [self.CheckDacTileEnabled[i]],
+        if gen3:
+            #######################################################################################
+            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetTileLayout
+            #######################################################################################
+            self.add(pr.RemoteVariable(
+                name         = 'TileLayout',
+                description  = 'Gets whether the device is a DFE variant or not',
+                offset       = 0x10070,
+                bitSize      = 1,
+                mode         = 'RO',
+                enum         = {
+                    0x0 : "XRFDC_4ADC_4DAC_TILES", #define XRFDC_4ADC_4DAC_TILES 0U
+                    0x1 : "XRFDC_3ADC_2DAC_TILES", #define XRFDC_3ADC_2DAC_TILES 1U
+                },
             ))
 
         #######################################################################################
-        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
         #######################################################################################
 
         self.add(pr.RemoteVariable(
-            name         = 'MstAdcTiles',
-            description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for ADC tiles',
-            offset       = 0x20000,
+            name         = 'MstAdcEnabled',
+            description  = 'Method to get all the enabled MTS ADC tiles',
+            offset       = 0x11000,
+            bitSize      = 4,
+            mode         = 'RO',
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'MstDacEnabled',
+            description  = 'MMethod to get all the enabled MTS ADC tiles',
+            offset       = 0x11004,
+            bitSize      = 4,
+            mode         = 'RO',
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_MultiConverter_Sync_Config
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Init
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Sync
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecimationFactor
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
+        #######################################################################################
+
+        self.add(pr.RemoteVariable(
+            name         = 'MstSyncAdcTiles',
+            description  = 'Method to execute the MTS SYNC for ADC tiles',
+            offset       = 0x11008,
             bitSize      = 4,
             mode         = 'RW',
         ))
 
         self.add(pr.RemoteVariable(
-            name         = 'MstDacTiles',
-            description  = 'Method to execute the RFSoC PS rfdc-mst executable remotely for DAC tiles',
-            offset       = 0x30000,
+            name         = 'MstSyncDacTiles',
+            description  = 'Method to execute the MTS SYNC for DAC tiles',
+            offset       = 0x1100C,
             bitSize      = 4,
             mode         = 'RW',
         ))
+
+        #######################################################################################
+        #######################################################################################
+        #######################################################################################
 
         self.add(pr.RemoteVariable(
             name         = 'MetalLogLevel',
@@ -364,3 +384,27 @@ class Rfdc(pr.Device):
             disp         = '{:1.3f}',
             hidden       = True,
         ))
+
+        #######################################################################################
+        #######################################################################################
+        #######################################################################################
+
+        for i in range(4):
+            self.add(rfsoc_utility.RfdcTile(
+                name       = f'AdcTile[{i}]',
+                isAdc      = True,
+                gen3       = gen3,
+                offset     = (0x0000+0x2000*i),
+                expand     = False,
+                enableDeps = [self.CheckAdcTileEnabled[i]],
+            ))
+
+        for i in range(4):
+            self.add(rfsoc_utility.RfdcTile(
+                name       = f'DacTile[{i}]',
+                isAdc      = False,
+                gen3       = gen3,
+                offset     = (0x8000+0x2000*i),
+                expand     = False,
+                enableDeps = [self.CheckDacTileEnabled[i]],
+            ))
