@@ -255,7 +255,7 @@ class RfdcTile(pr.Device):
                     description  = 'This API function gets the clock source for the RF-ADCs/RF-DACs.',
                     offset       = 0x02C,
                     bitSize      = 1,
-                    mode         = 'RW',
+                    mode         = 'RO',
                     enum         = {
                         0 : "XRFDC_EXTERNAL_CLK",     #define XRFDC_EXTERNAL_CLK 0x0U
                         1 : "XRFDC_INTERNAL_PLL_CLK", #define XRFDC_INTERNAL_PLL_CLK 0x1U
@@ -364,16 +364,12 @@ class RfdcTile(pr.Device):
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLLockStatus
                 #######################################################################################
                 self.add(pr.RemoteVariable(
-                    name         = 'Locked',
+                    name         = 'PllLocked',
                     description  = 'This API function gets the PLL lock status for the RF-ADCs/RF-DACs.',
                     offset       = 0x060,
-                    bitSize      = 2,
+                    bitSize      = 1,
                     mode         = 'RO',
-                    enum         = {
-                        0x0 : "UNDEFINED",
-                        0x1 : "XRFDC_PLL_UNLOCKED", #define XRFDC_PLL_UNLOCKED 0x1U
-                        0x2 : "XRFDC_PLL_LOCKED",   #define XRFDC_PLL_LOCKED 0x2U
-                    },
+                    base         = pr.Bool,
                     pollInterval = 1,
                 ))
 
@@ -468,14 +464,19 @@ class RfdcTile(pr.Device):
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabClkFreq
         #######################################################################################
-        self.add(pr.RemoteVariable(
-            name         = 'FabClkFreq',
-            description  = 'Returns the PL clock frequency',
-            offset       = 0x098,
-            bitSize      = 64,
-            mode         = 'RO',
-            base         = pr.Double,
-        ))
+        #######################################################################################
+        # The reason why FabClkFreq variable is commented out is because it always returns 0.0
+        # It was returns zeros because InstancePtr->RFdc_Config.ADCTile_Config[Tile_Id].FabClkFreq
+        # and InstancePtr->RFdc_Config.DACTile_Config[Tile_Id].FabClkFreq is never set by the driver
+        #######################################################################################
+#        self.add(pr.RemoteVariable(
+#            name         = 'FabClkFreq',
+#            description  = 'Returns the PL clock frequency',
+#            offset       = 0x098,
+#            bitSize      = 64,
+#            mode         = 'RO',
+#            base         = pr.Double,
+#        ))
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckBlockEnabled

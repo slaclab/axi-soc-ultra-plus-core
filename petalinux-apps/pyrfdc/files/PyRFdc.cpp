@@ -5,19 +5,21 @@
  * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
  * TODO: Add support for the following
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiBand
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetConnectedIQData
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedIQData
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMultibandConfig
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetTileLayout
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMinSampleRate
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MTS_Sysref_Config
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetTileLayout
+ *
+ * PyRFdc::MstTiles() + XRFdc_MultiConverter_Init + XRFDC_TILE_ID0
+ *
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetConnectedIQData
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedIQData
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
- * PyRFdc::MstTiles() + XRFdc_MultiConverter_Init + XRFDC_TILE_ID0
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiBand
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMultibandConfig
  * ----------------------------------------------------------------------------
  * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory
@@ -1486,7 +1488,7 @@ void PyRFdc::PLLLockStatus() {
     } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLLockStatus
         status = XRFdc_GetPLLLockStatus(RFdcInstPtr_, tileType_, tileId_, &settings);
-        data_ = settings;
+        data_ = settings  + 1; // Adding a plus one help with software known when RemoteVariable not read yet
     }
 
     // Check if not successful

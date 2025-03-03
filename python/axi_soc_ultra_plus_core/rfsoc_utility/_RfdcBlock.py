@@ -100,7 +100,7 @@ class RfdcBlock(pr.Device):
                     bitOffset    = 16,
                     mode         = 'RO',
                     pollInterval = 1,
-                    enum         = rfsoc_utility.enumMixedMode,
+                    enum         = rfsoc_utility.enumMixedMode if isAdc else None,
                 ))
 
                 if not isAdc:
@@ -160,7 +160,7 @@ class RfdcBlock(pr.Device):
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMixerSettings
                 #######################################################################################
                 self.add(pr.RemoteVariable(
-                    name         = 'Mixer_Freq',
+                    name         = 'Freq',
                     description  = 'NCO frequency. Range: -Fs to Fs (MHz)',
                     offset       = 0x020,
                     bitSize      = 64,
@@ -171,7 +171,7 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteVariable(
-                    name         = 'Mixer_PhaseOffset',
+                    name         = 'PhaseOffset',
                     description  = 'NCO phase offset. Range: -180 to 180 (Exclusive)',
                     offset       = 0x028,
                     bitSize      = 64,
@@ -182,7 +182,7 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteVariable(
-                    name         = 'Mixer_EventSource',
+                    name         = 'EventSource',
                     description  = 'Event source for mixer settings. XRFDC_EVNT_SRC_* represents valid values.',
                     offset       = 0x030,
                     bitSize      = 3,
@@ -191,7 +191,7 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteVariable(
-                    name         = 'Mixer_CoarseMixFreq',
+                    name         = 'CoarseMixFreq',
                     description  = 'Coarse mixer frequency. XRFDC_COARSE_MIX_* represents valid values',
                     offset       = 0x034,
                     bitSize      = 5,
@@ -206,7 +206,7 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteVariable(
-                    name         = 'Mixer_MixerMode',
+                    name         = 'MixerMode',
                     description  = 'Mixer mode for fine or coarse mixer. XRFDC_MIXER_MODE_* represents valid values',
                     offset       = 0x038,
                     bitSize      = 3,
@@ -222,7 +222,7 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteVariable(
-                    name         = 'Mixer_FineMixerScale',
+                    name         = 'FineMixerScale',
                     description  = 'NCO output scale. XRFDC_MIXER_SCALE_* represents valid values',
                     offset       = 0x038,
                     bitSize      = 2,
@@ -236,7 +236,7 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteVariable(
-                    name         = 'Mixer_MixerType',
+                    name         = 'MixerType',
                     description  = 'Mixer Type indicates coarse or fine mixer. XRFDC_MIXER_TYPE_* represents valid values',
                     offset       = 0x038,
                     bitSize      = 2,
@@ -251,15 +251,22 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteCommand(
-                    name         = 'Mixer_UpdateEvent',
+                    name         = 'UpdateEvent',
                     description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
                     offset       = 0x03C,
                     bitSize      = 1,
                     function     = lambda cmd: cmd.post(1),
                 ))
 
+        self.add(pr.LinkVariable(
+            name         = 'IsMixerEnabled',
+            mode         = 'RO',
+            linkedGet    = lambda read: (self.BlockStatus.MixerMode.get(read=read) != 0),
+            dependencies = [self.BlockStatus.MixerMode],
+        ))
+
         # Adding the Mixer device
-        self.add(Mixer())
+        self.add(Mixer(enabled=False))
 
         class QMC(pr.Device):
             def __init__(self,**kwargs):
@@ -596,6 +603,9 @@ class RfdcBlock(pr.Device):
                 offset       = 0x0B8,
                 bitSize      = 32,
                 mode         = 'RO',
+                disp         = '{:d}',
+                units        = 'μA',
+                pollInterval = 5,
             ))
 
         ###########################################################################
@@ -1054,13 +1064,18 @@ class RfdcBlock(pr.Device):
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataWidth
         #######################################################################################
-        self.add(pr.RemoteVariable(
-            name         = 'DataWidth',
-            description  = 'Returns the data width for the RF-ADC or RF-DAC',
-            offset       = 0x1B8,
-            bitSize      = 32,
-            mode         = 'RO',
-        ))
+        #######################################################################################
+        # The reason why FabClkFreq variable is commented out is because it always returns 0.0
+        # It was returns zeros because ADCTile_Config[Tile_Id].ADCBlock_Digital_Config[Block_Id].DataWidth
+        # and DACTile_Config[Tile_Id].DACBlock_Digital_Config[Block_Id].DataWidth is never set by the driver
+        #######################################################################################
+#        self.add(pr.RemoteVariable(
+#            name         = 'DataWidth',
+#            description  = 'Returns the data width for the RF-ADC or RF-DAC',
+#            offset       = 0x1B8,
+#            bitSize      = 32,
+#            mode         = 'RO',
+#        ))
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInverseSincFilter
