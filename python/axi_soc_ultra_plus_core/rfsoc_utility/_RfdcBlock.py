@@ -41,6 +41,7 @@ class RfdcBlock(pr.Device):
                     bitSize      = 64,
                     mode         = 'RO',
                     base         = pr.Double,
+                    hidden       = True,
                 ))
 
                 if isAdc:
@@ -248,13 +249,12 @@ class RfdcBlock(pr.Device):
         self.add(pr.LinkVariable(
             name         = 'IsMixerEnabled',
             mode         = 'RO',
-            linkedGet    = lambda read: (self.BlockStatus.MixerMode.get(read=read) != 0),
-            dependencies = [self.BlockStatus.MixerMode],
+            linkedGet    = lambda read: (self.BlockStatus.MixerMode.get(read=read) != 0) and (self.BlockStatus.SamplingFreq.get(read=read) > 0.0),
+            dependencies = [self.BlockStatus.MixerMode, self.BlockStatus.SamplingFreq],
         ))
 
         # Adding the Mixer device
-        # self.add(Mixer(enableDeps=[self.IsMixerEnabled]))
-        self.add(Mixer(enabled=False))
+        self.add(Mixer(enableDeps=[self.IsMixerEnabled]))
 
         class QMC(pr.Device):
             def __init__(self,**kwargs):
