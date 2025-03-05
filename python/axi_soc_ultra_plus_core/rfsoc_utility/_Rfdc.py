@@ -24,7 +24,9 @@ class Rfdc(pr.Device):
         super().__init__(**kwargs)
         self.gen3      = gen3
 
-
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/IP-Version-Information-0x0000
+        #######################################################################################
         self.add(pr.RemoteVariable(
             name         = 'IpVerMajor',
             offset       = 0x10044,

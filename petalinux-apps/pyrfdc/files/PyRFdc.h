@@ -152,6 +152,9 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void IpVersion();
     void RestartSM();
     void RestartState();
+    void ClockDetector();
+    void TileCommonStatus();
+    void TileCurrentState();
 
     void MetalLogLevel();
     void IgnoreMetalError();

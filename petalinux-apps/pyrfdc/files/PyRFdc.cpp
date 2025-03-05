@@ -2598,6 +2598,7 @@ void PyRFdc::IpVersion() {
 
     // Check if read
     if (rdTxn_) {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/IP-Version-Information-0x0000
         data_ = XRFdc_ReadReg(RFdcInstPtr_, 0x0, 0x0);
 
     // Else write
@@ -2620,6 +2621,7 @@ void PyRFdc::RestartSM() {
 
     // Else write
     } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Restart-Power-On-State-Machine-Register-0x0004
         XRFdc_WriteReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_), XRFDC_RESTART_OFFSET, XRFDC_RESTART_MASK);
     }
 
@@ -2632,10 +2634,69 @@ void PyRFdc::RestartSM() {
 void PyRFdc::RestartState() {
     // Check if read
     if (rdTxn_) {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Restart-State-Register-0x0008
         data_ = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_), XRFDC_RESTART_STATE_OFFSET);
     // Else write
     } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Restart-State-Register-0x0008
         XRFdc_ClrSetReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_),  XRFDC_RESTART_STATE_OFFSET, XRFDC_PWR_STATE_MASK, data_);
+    }
+}
+
+void PyRFdc::ClockDetector() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if read
+    if (rdTxn_) {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Clock-Detector-Register-0x0084-Gen-3/DFE
+        data_ = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_), 0x0084);
+
+    // Else write
+    } else {
+        status = XRFDC_FAILURE;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "ClockDetector(): failed\n";
+    }
+}
+
+void PyRFdc::TileCommonStatus() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if read
+    if (rdTxn_) {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/RF-DAC/RF-ADC-Tile-n-Common-Status-Register-0x0228
+        data_ = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_), 0x0228);
+
+    // Else write
+    } else {
+        status = XRFDC_FAILURE;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "TileCommonStatus(): failed\n";
+    }
+}
+
+void PyRFdc::TileCurrentState() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if read
+    if (rdTxn_) {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Current-State-Register-0x000C
+        data_ = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_), 0x000C);
+
+    // Else write
+    } else {
+        status = XRFDC_FAILURE;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "TileCurrentState(): failed\n";
     }
 }
 
@@ -2958,6 +3019,15 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
                     } else if (tileAddr==0x804) {
                         RestartState();
+
+                    } else if (tileAddr==0x808) {
+                        ClockDetector();
+
+                    } else if (tileAddr==0x80C) {
+                        TileCommonStatus();
+
+                    } else if (tileAddr==0x810) {
+                        TileCurrentState();
 
                     } else {
                         errMsg_ = "Undefined memory";

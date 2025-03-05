@@ -27,6 +27,9 @@ class RfdcTile(pr.Device):
         self.gen3  = gen3
         self.isAdc = isAdc
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Restart-Power-On-State-Machine-Register-0x0004
+        #######################################################################################
         self.add(pr.RemoteCommand(
             name         = 'RestartSM',
             description  = 'Write 1 to start power-on state machine.  Auto-clear.  SM stops at stages programmed in RestartState',
@@ -35,6 +38,9 @@ class RfdcTile(pr.Device):
             function     = lambda cmd: cmd.post(1),
         ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Restart-State-Register-0x0008
+        #######################################################################################
         self.add(pr.RemoteVariable(
             name         = 'RestartStateStart',
             description  = 'Start state for power-on sequence',
@@ -53,6 +59,20 @@ class RfdcTile(pr.Device):
             bitOffset    =  0,
             mode         = 'RW',
             enum         = rfsoc_utility.powerOnSequenceSteps,
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Current-State-Register-0x000C
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'CurrentState',
+            description  = 'Current state register',
+            offset       =  0x810,
+            bitSize      =  4,
+            bitOffset    =  0,
+            mode         = 'RO',
+            enum         = rfsoc_utility.powerOnSequenceSteps,
+            pollInterval = 1,
         ))
 
         #######################################################################################
@@ -113,6 +133,67 @@ class RfdcTile(pr.Device):
             hidden       = True,
         ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Clock-Detector-Register-0x0084-Gen-3/DFE
+        #######################################################################################
+        if gen3:
+            self.add(pr.RemoteVariable(
+                name         = 'ClockDetector',
+                description  = 'Clock detector status. Asserted High when the tile clock detector has detected a valid clock on its local clock input.',
+                offset       =  0x808,
+                bitSize      =  1,
+                bitOffset    =  0,
+                mode         = 'RO',
+                pollInterval = 1,
+            ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/RF-DAC/RF-ADC-Tile-n-Common-Status-Register-0x0228
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ClockPresent',
+            description  = 'Clock present: Asserted when the reference clock for the tile is present.',
+            offset       =  0x80C,
+            bitSize      =  1,
+            bitOffset    =  0,
+            mode         = 'RO',
+            base         = pr.Bool,
+            pollInterval = 1,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'SupplyStable',
+            description  = 'Supplies up: Asserted when the external supplies to the tile are stable.',
+            offset       =  0x80C,
+            bitSize      =  1,
+            bitOffset    =  1,
+            mode         = 'RO',
+            base         = pr.Bool,
+            pollInterval = 1,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'PoweredUp',
+            description  = 'Power-up state: Asserted when the tile is in operation.',
+            offset       =  0x80C,
+            bitSize      =  1,
+            bitOffset    =  2,
+            mode         = 'RO',
+            base         = pr.Bool,
+            pollInterval = 1,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'PllLocked',
+            description  = 'PLL locked: Asserted when the tile PLL has achieved lock.',
+            offset       =  0x80C,
+            bitSize      =  1,
+            bitOffset    =  3,
+            mode         = 'RO',
+            base         = pr.Bool,
+            pollInterval = 1,
+        ))
+
         class TileStatus(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
@@ -159,8 +240,8 @@ class RfdcTile(pr.Device):
                     bitSize      = 1,
                     bitOffset    = 7,
                     mode         = 'RO',
-                    pollInterval = 1,
                     base         = pr.Bool,
+                    pollInterval = 1,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -170,8 +251,8 @@ class RfdcTile(pr.Device):
                     bitSize      = 1,
                     bitOffset    = 8,
                     mode         = 'RO',
-                    pollInterval = 1,
                     base         = pr.Bool,
+                    pollInterval = 1,
                 ))
 
         # Adding the TileStatus device
