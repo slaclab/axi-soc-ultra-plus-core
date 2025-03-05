@@ -24,6 +24,42 @@ class Rfdc(pr.Device):
         super().__init__(**kwargs)
         self.gen3      = gen3
 
+
+        self.add(pr.RemoteVariable(
+            name         = 'IpVerMajor',
+            offset       = 0x10044,
+            bitSize      = 8,
+            bitOffset    = 24,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'IpVerMinor',
+            offset       = 0x10044,
+            bitSize      = 8,
+            bitOffset    = 16,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.LinkVariable(
+            name         = 'IpCoreVersion',
+            description  = 'IP Version Information',
+            mode         = 'RO',
+            linkedGet    = lambda read: f'v{self.IpVerMajor.get(read=read)}.{self.IpVerMinor.get(read=read)}',
+            dependencies = [self.IpVerMajor,self.IpVerMinor]
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'IpCoreRevision',
+            offset       = 0x10044,
+            bitSize      = 8,
+            bitOffset    = 8,
+            mode         = 'RO',
+            disp         = '{:d}',
+        ))
+
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
         #######################################################################################
@@ -224,6 +260,7 @@ class Rfdc(pr.Device):
             offset       = 0x10038,
             bitSize      = 32,
             mode         = 'RO',
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -232,6 +269,7 @@ class Rfdc(pr.Device):
             offset       = 0x1003C,
             bitSize      = 32,
             mode         = 'RO',
+            hidden       = True,
         ))
 
         #######################################################################################

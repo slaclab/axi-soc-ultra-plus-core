@@ -2593,6 +2593,24 @@ void PyRFdc::MstTiles() {
     }
 }
 
+void PyRFdc::IpVersion() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if read
+    if (rdTxn_) {
+        data_ = XRFdc_ReadReg(RFdcInstPtr_, 0x0, 0x0);
+
+    // Else write
+    } else {
+        status = XRFDC_FAILURE;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IpVersion(): failed\n";
+    }
+}
+
 void PyRFdc::RestartSM() {
     int status = XRFDC_SUCCESS;
 
@@ -2799,6 +2817,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x10040) {
                 IPBaseAddr();
+
+            } else if (addr==0x10044) {
+                IpVersion();
 
             } else if ( (addr >= 0x10048) && (addr <= 0x1004C) ) {
                 DriverVersion(bool((addr>>2)&0x1));

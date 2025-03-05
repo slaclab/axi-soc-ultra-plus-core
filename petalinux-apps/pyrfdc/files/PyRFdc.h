@@ -149,6 +149,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MstEnabled();
     void MstTiles();
 
+    void IpVersion();
     void RestartSM();
     void RestartState();
 
