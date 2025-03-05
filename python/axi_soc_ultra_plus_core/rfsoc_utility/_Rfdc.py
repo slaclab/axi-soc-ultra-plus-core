@@ -92,6 +92,7 @@ class Rfdc(pr.Device):
             bitOffset    = 0,
             mode         = 'WO',
             enum         = rfsoc_utility.enumCustomStartUp,
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -102,6 +103,7 @@ class Rfdc(pr.Device):
             bitOffset    = 4,
             mode         = 'WO',
             enum         = rfsoc_utility.enumCustomStartUp,
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -112,6 +114,7 @@ class Rfdc(pr.Device):
             bitOffset    = 0,
             mode         = 'WO',
             enum         = rfsoc_utility.enumCustomStartUp,
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -122,6 +125,7 @@ class Rfdc(pr.Device):
             bitOffset    = 4,
             mode         = 'WO',
             enum         = rfsoc_utility.enumCustomStartUp,
+            hidden       = True,
         ))
 
         #######################################################################################

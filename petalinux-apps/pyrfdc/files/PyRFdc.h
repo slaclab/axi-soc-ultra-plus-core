@@ -148,8 +148,12 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MinSampleRate(bool upper);
     void MstEnabled();
     void MstTiles();
-    void IgnoreMetalError();
+
+    void RestartSM();
+    void RestartState();
+
     void MetalLogLevel();
+    void IgnoreMetalError();
     void ScratchPad();
     void DoubleTestReg(bool upper);
     uint32_t DoubleToUint32(double value, bool upper);

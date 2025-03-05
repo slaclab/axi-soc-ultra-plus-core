@@ -27,6 +27,34 @@ class RfdcTile(pr.Device):
         self.gen3  = gen3
         self.isAdc = isAdc
 
+        self.add(pr.RemoteCommand(
+            name         = 'RestartSM',
+            description  = 'Write 1 to start power-on state machine.  Auto-clear.  SM stops at stages programmed in RestartState',
+            offset       = 0x800,
+            bitSize      = 1,
+            function     = lambda cmd: cmd.post(1),
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'RestartStateStart',
+            description  = 'Start state for power-on sequence',
+            offset       =  0x804,
+            bitSize      =  4,
+            bitOffset    =  8,
+            mode         = 'RW',
+            enum         = rfsoc_utility.powerOnSequenceSteps,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'RestartStateEnd',
+            description  = 'End state for power-on sequence',
+            offset       =  0x804,
+            bitSize      =  4,
+            bitOffset    =  0,
+            mode         = 'RW',
+            enum         = rfsoc_utility.powerOnSequenceSteps,
+        ))
+
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
         #######################################################################################
@@ -71,6 +99,7 @@ class RfdcTile(pr.Device):
             bitOffset    = 0,
             mode         = 'WO',
             enum         = rfsoc_utility.enumCustomStartUp,
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -81,6 +110,7 @@ class RfdcTile(pr.Device):
             bitOffset    = 4,
             mode         = 'WO',
             enum         = rfsoc_utility.enumCustomStartUp,
+            hidden       = True,
         ))
 
         class TileStatus(pr.Device):

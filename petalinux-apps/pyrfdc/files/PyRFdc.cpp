@@ -26,6 +26,7 @@
 #include "rogue/Directives.h"
 
 #include "PyRFdc.h"
+#include "xrfdc_hw.h"
 
 #include <inttypes.h>
 #include <string>
@@ -2592,6 +2593,34 @@ void PyRFdc::MstTiles() {
     }
 }
 
+void PyRFdc::RestartSM() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if read
+    if (rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else write
+    } else {
+        XRFdc_WriteReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_), XRFDC_RESTART_OFFSET, XRFDC_RESTART_MASK);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "RestartSM(): failed\n";
+    }
+}
+
+void PyRFdc::RestartState() {
+    // Check if read
+    if (rdTxn_) {
+        data_ = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_), XRFDC_RESTART_STATE_OFFSET);
+    // Else write
+    } else {
+        XRFdc_ClrSetReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(tileType_, tileId_),  XRFDC_RESTART_STATE_OFFSET, XRFDC_PWR_STATE_MASK, data_);
+    }
+}
+
 void PyRFdc::MetalLogLevel() {
     // Check for a write
     if (!rdTxn_) {
@@ -2902,6 +2931,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
                     } else if ( (tileAddr >= 0x0C8) && (tileAddr <= 0x0CC) ) {
                         MinSampleRate(bool((tileAddr>>2)&0x1));
+
+                    } else if (tileAddr==0x800) {
+                        RestartSM();
+
+                    } else if (tileAddr==0x804) {
+                        RestartState();
 
                     } else {
                         errMsg_ = "Undefined memory";
