@@ -138,6 +138,7 @@ class Rfdc(pr.Device):
                 0x2 : "False",
                 0x3 : "True",
             },
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -151,6 +152,7 @@ class Rfdc(pr.Device):
                 0x2 : "False",
                 0x3 : "True",
             },
+            hidden       = True,
         ))
 
         if gen3:
@@ -168,6 +170,7 @@ class Rfdc(pr.Device):
                     0x2 : "False",
                     0x3 : "True",
                 },
+                hidden       = True,
             ))
 
             #######################################################################################
@@ -184,6 +187,7 @@ class Rfdc(pr.Device):
                     0x2 : "False",
                     0x3 : "True",
                 },
+                hidden       = True,
             ))
 
         #######################################################################################
@@ -195,6 +199,7 @@ class Rfdc(pr.Device):
             offset       = 0x10030,
             bitSize      = 32,
             mode         = 'RO',
+            hidden       = True,
         ))
 
         self.add(pr.RemoteVariable(
@@ -203,6 +208,7 @@ class Rfdc(pr.Device):
             offset       = 0x10034,
             bitSize      = 32,
             mode         = 'RO',
+            hidden       = True,
         ))
 
         #######################################################################################

@@ -98,7 +98,6 @@ class RfdcTile(pr.Device):
                     bitSize      = 1,
                     bitOffset    = 0,
                     mode         = 'RO',
-                    pollInterval = 1,
                     base         = pr.Bool,
                 ))
 
@@ -120,7 +119,7 @@ class RfdcTile(pr.Device):
                     bitSize      = 2,
                     bitOffset    = 5,
                     mode         = 'RO',
-                    pollInterval = 1,
+                    hidden       = True,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -166,6 +165,7 @@ class RfdcTile(pr.Device):
                 0x4 : "XRFDC_FAB_CLK_DIV8",
                 0x5 : "XRFDC_FAB_CLK_DIV16",
             },
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -182,6 +182,7 @@ class RfdcTile(pr.Device):
                 0x2 : "False",
                 0x3 : "True",
             },
+            hidden       = True,
         ))
 
         if gen3 and isAdc:
@@ -227,7 +228,7 @@ class RfdcTile(pr.Device):
             bitSize      = 1,
             mode         = 'RO',
             base         = pr.Bool,
-            pollInterval = 1,
+            hidden       = True,
         ))
 
         if gen3 and isAdc:
@@ -241,7 +242,7 @@ class RfdcTile(pr.Device):
                 bitSize      = 1,
                 mode         = 'RO',
                 base         = pr.Bool,
-                pollInterval = 1,
+                hidden       = True,
             ))
 
         class Pll(pr.Device):
@@ -462,6 +463,18 @@ class RfdcTile(pr.Device):
             ))
 
         #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMultibandConfig
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'MultibandConfig',
+            description  = 'Multiband Config data',
+            offset       = 0x094,
+            bitSize      = 32,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabClkFreq
         #######################################################################################
         #######################################################################################
@@ -491,7 +504,6 @@ class RfdcTile(pr.Device):
                 number       = 4,
                 stride       = 4,
                 base         = pr.Bool,
-                pollInterval = 1,
                 hidden       = True,
             )
 
@@ -505,23 +517,8 @@ class RfdcTile(pr.Device):
                 number       = 4,
                 stride       = 4,
                 base         = pr.Bool,
-                pollInterval = 1,
                 hidden       = True,
             )
-
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
-        #######################################################################################
-        self.add(pr.RemoteVariable(
-            name         = 'MaxSampleRate',
-            description  = 'Tile maximum sampling rate',
-            offset       = 0x0C0,
-            bitSize      = 64,
-            mode         = 'RO',
-            base         = pr.Double,
-            units        = 'GSPS',
-            disp         = '{:1.0f}',
-        ))
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMinSampleRate
@@ -530,6 +527,20 @@ class RfdcTile(pr.Device):
             name         = 'MinSampleRate',
             description  = 'Tile minimum sampling rate',
             offset       = 0x0C8,
+            bitSize      = 64,
+            mode         = 'RO',
+            base         = pr.Double,
+            units        = 'GSPS',
+            disp         = '{:1.0f}',
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMaxSampleRate
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'MaxSampleRate',
+            description  = 'Tile maximum sampling rate',
+            offset       = 0x0C0,
             bitSize      = 64,
             mode         = 'RO',
             base         = pr.Double,

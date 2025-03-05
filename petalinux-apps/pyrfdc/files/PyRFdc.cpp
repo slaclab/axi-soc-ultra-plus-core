@@ -7,15 +7,11 @@
  * TODO: Add support for the following ....
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MTS_Sysref_Config
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
+ * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
  *
  * PyRFdc::MstTiles() + XRFdc_MultiConverter_Init + XRFDC_TILE_ID0
  *
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetConnectedIQData
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetConnectedIQData
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiBand
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMultibandConfig
  * ----------------------------------------------------------------------------
  * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory
@@ -2434,6 +2430,25 @@ void PyRFdc::TileLayout() {
     }
 }
 
+void PyRFdc::MultibandConfig() {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMultibandConfig
+        data_ = XRFdc_GetMultibandConfig(RFdcInstPtr_, tileType_, tileId_);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "MultibandConfig(): failed\n";
+    }
+}
+
 void PyRFdc::MaxSampleRate(bool upper) {
     int status = XRFDC_SUCCESS;
     double settings;
@@ -2867,6 +2882,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
                     } else if (tileAddr==0x090) {
                         IsHighSpeedADC();
+
+                    } else if (tileAddr==0x094) {
+                        MultibandConfig();
 
                     } else if ( (tileAddr >= 0x098) && (tileAddr <= 0x09C) ) {
                         FabClkFreq(bool((tileAddr>>2)&0x1));

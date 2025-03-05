@@ -143,6 +143,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void CheckBlockEnabled(uint8_t index);
     void CheckTileEnabled(uint8_t index);
     void TileLayout();
+    void MultibandConfig();
     void MaxSampleRate(bool upper);
     void MinSampleRate(bool upper);
     void MstEnabled();

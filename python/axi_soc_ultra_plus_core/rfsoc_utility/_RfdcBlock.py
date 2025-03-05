@@ -40,7 +40,6 @@ class RfdcBlock(pr.Device):
                     offset       = 0x000,
                     bitSize      = 64,
                     mode         = 'RO',
-                    pollInterval = 1,
                     base         = pr.Double,
                 ))
 
@@ -52,7 +51,6 @@ class RfdcBlock(pr.Device):
                         bitSize      = 1,
                         bitOffset    = 0,
                         mode         = 'RO',
-                        pollInterval = 1,
                         base         = pr.Bool,
                     ))
                 else:
@@ -63,7 +61,6 @@ class RfdcBlock(pr.Device):
                         bitSize      = 4,
                         bitOffset    = 0,
                         mode         = 'RO',
-                        pollInterval = 1,
                     ))
 
                     self.add(pr.RemoteVariable(
@@ -72,7 +69,6 @@ class RfdcBlock(pr.Device):
                         bitSize      = 4,
                         bitOffset    = 4,
                         mode         = 'RO',
-                        pollInterval = 1,
                     ))
 
                 self.add(pr.RemoteVariable(
@@ -81,7 +77,6 @@ class RfdcBlock(pr.Device):
                     bitSize      = 4,
                     bitOffset    = 8,
                     mode         = 'RO',
-                    pollInterval = 1,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -90,7 +85,6 @@ class RfdcBlock(pr.Device):
                     bitSize      = 4,
                     bitOffset    = 12,
                     mode         = 'RO',
-                    pollInterval = 1,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -99,7 +93,6 @@ class RfdcBlock(pr.Device):
                     bitSize      = 4,
                     bitOffset    = 16,
                     mode         = 'RO',
-                    pollInterval = 1,
                     enum         = rfsoc_utility.enumMixedMode if isAdc else None,
                 ))
 
@@ -111,7 +104,6 @@ class RfdcBlock(pr.Device):
                         bitSize      = 4,
                         bitOffset    = 20,
                         mode         = 'RO',
-                        pollInterval = 1,
                         enum         = rfsoc_utility.enumMixedMode,
                     ))
 
@@ -122,7 +114,6 @@ class RfdcBlock(pr.Device):
                     bitSize      = 1,
                     bitOffset    = 24,
                     mode         = 'RO',
-                    pollInterval = 1,
                     base         = pr.Bool,
                 ))
 
@@ -133,7 +124,6 @@ class RfdcBlock(pr.Device):
                     bitSize      = 1,
                     bitOffset    = 25,
                     mode         = 'RO',
-                    pollInterval = 1,
                     base         = pr.Bool,
                 ))
 
@@ -144,7 +134,6 @@ class RfdcBlock(pr.Device):
                     bitSize      = 1,
                     bitOffset    = 26,
                     mode         = 'RO',
-                    pollInterval = 1,
                     base         = pr.Bool,
                 ))
 
@@ -165,7 +154,6 @@ class RfdcBlock(pr.Device):
                     offset       = 0x020,
                     bitSize      = 64,
                     mode         = 'RW',
-                    pollInterval = 1,
                     base         = pr.Double,
                     units        = 'MHz',
                 ))
@@ -176,7 +164,6 @@ class RfdcBlock(pr.Device):
                     offset       = 0x028,
                     bitSize      = 64,
                     mode         = 'RW',
-                    pollInterval = 1,
                     base         = pr.Double,
                     units        = 'degree',
                 ))
@@ -266,6 +253,7 @@ class RfdcBlock(pr.Device):
         ))
 
         # Adding the Mixer device
+        # self.add(Mixer(enableDeps=[self.IsMixerEnabled]))
         self.add(Mixer(enabled=False))
 
         class QMC(pr.Device):
@@ -311,7 +299,6 @@ class RfdcBlock(pr.Device):
                     offset       = 0x048,
                     bitSize      = 64,
                     mode         = 'RW',
-                    pollInterval = 1,
                     base         = pr.Double,
                 ))
 
@@ -321,7 +308,6 @@ class RfdcBlock(pr.Device):
                     offset       = 0x050,
                     bitSize      = 64,
                     mode         = 'RW',
-                    pollInterval = 1,
                     base         = pr.Double,
                     units        = 'degree',
                 ))
@@ -437,6 +423,7 @@ class RfdcBlock(pr.Device):
             offset       = 0x078,
             bitSize      = 32,
             mode         = 'RO' if isAdc else 'RW',
+            hidden       = True,
         ))
 
         if gen3:
@@ -449,6 +436,7 @@ class RfdcBlock(pr.Device):
                 offset       = 0x07C,
                 bitSize      = 32,
                 mode         = 'RO',
+                hidden       = True,
             ))
 
         #######################################################################################
@@ -461,6 +449,7 @@ class RfdcBlock(pr.Device):
             offset       = 0x080,
             bitSize      = 32,
             mode         = 'RW' if isAdc else 'RO',
+            hidden       = True,
         ))
 
         if gen3 and isAdc:
@@ -474,6 +463,7 @@ class RfdcBlock(pr.Device):
                 offset       = 0x084,
                 bitSize      = 32,
                 mode         = 'RW',
+                hidden       = True,
             ))
 
         class Threshold(pr.Device):
@@ -524,46 +514,45 @@ class RfdcBlock(pr.Device):
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetThresholdSettings
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetThresholdSettings
                 #######################################################################################
-                if isAdc:
+                thresholdReg = {
+                    "ThresholdMode[0]": 0x90,
+                    "ThresholdMode[1]": 0x94,
+                }
 
-                    thresholdReg = {
-                        "ThresholdMode[0]": 0x90,
-                        "ThresholdMode[1]": 0x94,
-                    }
+                for name, offset in thresholdReg.items():
+                    self.add(pr.RemoteVariable(
+                        name    = name,
+                        offset  = offset,
+                        bitSize = 2,
+                        mode    = 'RW',
+                        enum    = {
+                            0 : "OFF",
+                            1 : "sticky-over",
+                            2 : "sticky-under",
+                            3 : "hysteresis",
+                        },
+                    ))
 
-                    for name, offset in thresholdReg.items():
-                        self.add(pr.RemoteVariable(
-                            name    = name,
-                            offset  = offset,
-                            bitSize = 2,
-                            mode    = 'RW',
-                            enum    = {
-                                0 : "OFF",
-                                1 : "sticky-over",
-                                2 : "sticky-under",
-                                3 : "hysteresis",
-                            },
-                        ))
+                thresholdReg = {
+                    "ThresholdAvgVal[0]":   0x98,
+                    "ThresholdAvgVal[1]":   0x9C,
+                    "ThresholdUnderVal[0]": 0xA0,
+                    "ThresholdUnderVal[1]": 0xA4,
+                    "ThresholdOverVal[0]":  0xA8,
+                    "ThresholdOverVal[1]":  0xAC,
+                }
 
-                    thresholdReg = {
-                        "ThresholdAvgVal[0]":   0x98,
-                        "ThresholdAvgVal[1]":   0x9C,
-                        "ThresholdUnderVal[0]": 0xA0,
-                        "ThresholdUnderVal[1]": 0xA4,
-                        "ThresholdOverVal[0]":  0xA8,
-                        "ThresholdOverVal[1]":  0xAC,
-                    }
-
-                    for name, offset in thresholdReg.items():
-                        self.add(pr.RemoteVariable(
-                            name    = name,
-                            offset  = offset,
-                            bitSize = 32,
-                            mode    = 'RW',
-                        ))
+                for name, offset in thresholdReg.items():
+                    self.add(pr.RemoteVariable(
+                        name    = name,
+                        offset  = offset,
+                        bitSize = 32,
+                        mode    = 'RW',
+                    ))
 
         # Adding the Threshold device
-        self.add(Threshold())
+        if isAdc:
+            self.add(Threshold())
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDecoderMode
@@ -594,10 +583,10 @@ class RfdcBlock(pr.Device):
             function     = lambda cmd: cmd.post(1),
         ))
 
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetOutputCurr
+        #######################################################################################
         if not isAdc:
-            #######################################################################################
-            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetOutputCurr
-            #######################################################################################
             self.add(pr.RemoteVariable(
                 name         = 'OutputCurr',
                 offset       = 0x0B8,
@@ -605,8 +594,25 @@ class RfdcBlock(pr.Device):
                 mode         = 'RO',
                 disp         = '{:d}',
                 units        = 'μA',
-                pollInterval = 5,
+                pollInterval = 1,
             ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACVOP-Gen-3/DFE
+        #######################################################################################
+        if not isAdc:
+            self.add(pr.RemoteVariable(
+                name         = 'DACVOP',
+                description  = 'VOP μA current is used to update the corresponding block level registers.',
+                offset       = 0x170,
+                bitSize      = 32,
+                minimum      = 2250,
+                maximum      = 40500,
+                mode         = 'WO',
+                units        = 'μA',
+                disp         = '{:d}',
+            ))
+
 
         ###########################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetNyquistZone
@@ -831,22 +837,6 @@ class RfdcBlock(pr.Device):
                 mode         = 'RW',
                 base         = pr.Float,
                 units        = 'dB',
-            ))
-
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACVOP-Gen-3/DFE
-        #######################################################################################
-        if not isAdc:
-            self.add(pr.RemoteVariable(
-                name         = 'DACVOP',
-                description  = 'VOP μA current is used to update the corresponding block level registers.',
-                offset       = 0x170,
-                bitSize      = 32,
-                minimum      = 2250,
-                maximum      = 40500,
-                mode         = 'WO',
-                units        = 'μA',
-                disp         = '{:d}',
             ))
 
         #######################################################################################
@@ -1100,6 +1090,7 @@ class RfdcBlock(pr.Device):
                 offset       = 0x1C0,
                 bitSize      = 32,
                 mode         = 'RO',
+                hidden       = True,
             ))
 
         #######################################################################################
@@ -1112,7 +1103,7 @@ class RfdcBlock(pr.Device):
             bitSize      = 1,
             mode         = 'RO',
             base         = pr.Bool,
-            pollInterval = 1,
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -1125,6 +1116,7 @@ class RfdcBlock(pr.Device):
             bitSize      = 32,
             mode         = 'RO',
             base         = pr.Int, # s32
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -1137,6 +1129,7 @@ class RfdcBlock(pr.Device):
             bitSize      = 32,
             mode         = 'RO',
             base         = pr.Int, # s32
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -1150,7 +1143,7 @@ class RfdcBlock(pr.Device):
                 bitSize      = 1,
                 mode         = 'RO',
                 base         = pr.Bool,
-                pollInterval = 1,
+                hidden       = True,
             ))
 
         #######################################################################################
@@ -1164,7 +1157,7 @@ class RfdcBlock(pr.Device):
                 bitSize      = 1,
                 mode         = 'RO',
                 base         = pr.Bool,
-                pollInterval = 1,
+                hidden       = True,
             ))
 
         #######################################################################################
@@ -1177,4 +1170,5 @@ class RfdcBlock(pr.Device):
             bitSize      = 1,
             mode         = 'RO',
             base         = pr.Bool,
+            hidden       = True,
         ))
