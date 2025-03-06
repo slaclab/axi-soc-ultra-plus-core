@@ -101,8 +101,11 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     blockId_ = 0;
     data_ = 0;
 
-    mstAdcTiles_ = 0;
-    mstDacTiles_ = 0;
+    XRFdc_MultiConverter_Init(&mstAdcConfig_, 0, 0, XRFDC_TILE_ID0);
+    mstAdcConfig_.Tiles = 0;
+
+    XRFdc_MultiConverter_Init(&mstDacConfig_, 0, 0, XRFDC_TILE_ID0);
+    mstDacConfig_.Tiles = 0;
 
     log_->debug("PyRFdc::PyRFdc()");
 }
@@ -2527,7 +2530,79 @@ void PyRFdc::MstEnabled() {
     }
 }
 
-void PyRFdc::MstTiles() {
+void PyRFdc::MstRefTile() {
+    // Check for a write
+    if (!rdTxn_) {
+
+        if (data_ > XRFDC_TILE_ID_MAX) {
+            errMsg_ = "MstRefTile(" + std::to_string(tileType_) + "): failed\n";
+        } else {
+
+            if (tileType_ == XRFDC_ADC_TILE) {
+                mstAdcConfig_.RefTile = data_;
+            } else {
+                mstDacConfig_.RefTile = data_;
+            }
+
+        }
+
+    // Else Read
+    } else {
+        if (tileType_ == XRFDC_ADC_TILE) {
+            data_ = mstAdcConfig_.RefTile;
+        } else {
+            data_ = mstDacConfig_.RefTile;
+        }
+    }
+}
+
+void PyRFdc::MstSysRefEnable() {
+    // Check for a write
+    if (!rdTxn_) {
+
+        if (tileType_ == XRFDC_ADC_TILE) {
+            // Copy from data_ to mstAdcConfig_.SysRef_Enable
+            memcpy(&mstAdcConfig_.SysRef_Enable, &data_, sizeof(int32_t));
+        } else {
+            // Copy from data_ to  mstDacConfig_.SysRef_Enable
+            memcpy(&mstDacConfig_.SysRef_Enable, &data_, sizeof(int32_t));
+        }
+    // Else Read
+    } else {
+        if (tileType_ == XRFDC_ADC_TILE) {
+            // Copy from mstAdcConfig_.SysRef_Enable to data_
+            memcpy(&data_, &mstAdcConfig_.SysRef_Enable, sizeof(uint32_t));
+        } else {
+            // Copy from mstDacConfig_.SysRef_Enable to data_
+            memcpy(&data_, &mstDacConfig_.SysRef_Enable, sizeof(uint32_t));
+        }
+    }
+}
+
+void PyRFdc::MstTargetLatency() {
+    // Check for a write
+    if (!rdTxn_) {
+
+        if (tileType_ == XRFDC_ADC_TILE) {
+            // Copy from data_ to mstAdcConfig_.Target_Latency
+            memcpy(&mstAdcConfig_.Target_Latency, &data_, sizeof(int32_t));
+        } else {
+            // Copy from data_ to  mstDacConfig_.Target_Latency
+            memcpy(&mstDacConfig_.Target_Latency, &data_, sizeof(int32_t));
+        }
+    // Else Read
+    } else {
+        if (tileType_ == XRFDC_ADC_TILE) {
+            // Copy from mstAdcConfig_.Target_Latency to data_
+            memcpy(&data_, &mstAdcConfig_.Target_Latency, sizeof(uint32_t));
+        } else {
+            // Copy from mstDacConfig_.Target_Latency to data_
+            memcpy(&data_, &mstDacConfig_.Target_Latency, sizeof(uint32_t));
+        }
+    }
+}
+
+void PyRFdc::MstAdcTiles() {
     int status, i;
     uint32_t factor;
     bool metalLogLevelCopy = metalLogLevel_;
@@ -2537,59 +2612,89 @@ void PyRFdc::MstTiles() {
         // Print all debug messages
         metal_set_log_level(METAL_LOG_DEBUG);
 
+       // Run MTS for the ADC
+       metal_log(METAL_LOG_INFO, "\n=== Run ADC Sync ===\n");
+
         // Set the MST value
-        if (tileType_ == XRFDC_ADC_TILE) {
-            mstAdcTiles_ = (data_ & 0xF);
-        } else {
-            mstDacTiles_ = (data_ & 0xF);
-        }
+        mstAdcConfig_.Tiles = data_;
 
-        // MTS Settings
-        XRFdc_MultiConverter_Sync_Config settings;
+        // Execute the MTS Sync
+        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_ADC_TILE, &mstAdcConfig_);
 
-        // Run MTS
-        metal_log(METAL_LOG_INFO, "\n=== Run %s Sync ===\n",
-                  tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC");
-
-        // Initialize MTS Settings
-        XRFdc_MultiConverter_Init(&settings, 0, 0, XRFDC_TILE_ID0);
-        settings.Tiles = (data_ & 0xF);
-
-        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, tileType_, &settings);
         if (status == XRFDC_MTS_OK) {
-            // Report Overall Latency in T1 (Sample Clocks) and Offsets (PL words) added to each FIFO
-            metal_log(METAL_LOG_INFO, "%s Multi-Tile-Sync completed successfully\n",
-                      tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC");
+            metal_log(METAL_LOG_INFO, "ADC Multi-Tile-Sync completed successfully\n");
 
-            metal_log(METAL_LOG_INFO, "\n\n=== %s Multi-Tile Sync Report ===\n",
-                      tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC");
-
-            for (i = 0; i < 4; i++) {
-                if ((1 << i) & settings.Tiles) {
-                    if (tileType_ == XRFDC_ADC_TILE) {
-                        XRFdc_GetDecimationFactor(RFdcInstPtr_, i, 0, &factor);
-                    } else {
-                        XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &factor);
-                    }
-                    metal_log(METAL_LOG_INFO, "%s[%d]: Latency(T1) = %3d, Adjusted Delay Offset(T%d) = %3d\n",
-                              tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC",
-                              i, settings.Latency[i], factor, settings.Offset[i]);
+            /*
+            * Report Overall Latency in T1 (Sample Clocks) and
+            * Offsets (in terms of PL words) added to each FIFO
+            */
+            metal_log(METAL_LOG_INFO, "\n\n=== Multi-Tile Sync Report ===\n");
+            for(i=0; i<4; i++) {
+                if((1<<i)&mstAdcConfig_.Tiles) {
+                    XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &factor);
+                    metal_log(METAL_LOG_INFO, "ADC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, mstAdcConfig_.Latency[i], factor, mstAdcConfig_.Offset[i]);
                 }
             }
+
         } else {
-            errMsg_ = "MTS failed for " + std::string(tileType_ == XRFDC_ADC_TILE ? "ADC" : "DAC") +
-                      " tiles. Error code: (" + std::to_string(status) + ")\n";
-            if (tileType_ == XRFDC_ADC_TILE) {
-                mstAdcTiles_ = 0;
-            } else {
-                mstDacTiles_ = 0;
-            }
+            errMsg_ = "ADC Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
+            mstAdcConfig_.Tiles = 0;
         }
 
         // Restore the print level
         metal_set_log_level(metalLogLevelCopy ? METAL_LOG_DEBUG : METAL_LOG_ERROR);
+
+    // Else Read
     } else {
-        data_ = (tileType_ == XRFDC_ADC_TILE) ? uint32_t(mstAdcTiles_) : uint32_t(mstDacTiles_);
+        data_ = mstAdcConfig_.Tiles;
+    }
+}
+
+void PyRFdc::MstDacTiles() {
+    int status, i;
+    uint32_t factor;
+    bool metalLogLevelCopy = metalLogLevel_;
+
+    // Check for a write
+    if (!rdTxn_) {
+        // Print all debug messages
+        metal_set_log_level(METAL_LOG_DEBUG);
+
+        // Run MTS for the DAC
+        metal_log(METAL_LOG_INFO, "\n=== Run DAC Sync ===\n");
+
+        // Set the MST value
+        mstDacConfig_.Tiles = data_;
+
+        // Execute the MTS Sync
+        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_DAC_TILE, &mstDacConfig_);
+
+        if (status == XRFDC_MTS_OK) {
+            metal_log(METAL_LOG_INFO, "DAC Multi-Tile-Sync completed successfully\n");
+
+            /*
+            * Report Overall Latency in T1 (Sample Clocks) and
+            * Offsets (in terms of PL words) added to each FIFO
+            */
+            metal_log(METAL_LOG_INFO, "\n\n=== Multi-Tile Sync Report ===\n");
+            for(i=0; i<4; i++) {
+                if((1<<i)&mstDacConfig_.Tiles) {
+                    XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &factor);
+                    metal_log(METAL_LOG_INFO, "DAC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, mstDacConfig_.Latency[i], factor, mstDacConfig_.Offset[i]);
+                }
+            }
+
+        } else {
+            errMsg_ = "DAC Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
+            mstDacConfig_.Tiles = 0;
+        }
+
+        // Restore the print level
+        metal_set_log_level(metalLogLevelCopy ? METAL_LOG_DEBUG : METAL_LOG_ERROR);
+
+    // Else Read
+    } else {
+        data_ = mstDacConfig_.Tiles;
     }
 }
 
@@ -2906,26 +3011,47 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x11008) {
                 tileType_ = XRFDC_ADC_TILE;
-                MstTiles();
+                MstAdcTiles();
 
             } else if (addr==0x1100C) {
                 tileType_ = XRFDC_DAC_TILE;
-                MstTiles();
+                MstDacTiles();
 
-            } else if (addr==0x40000) {
+            } else if (addr==0x11010) {
+                tileType_ = XRFDC_ADC_TILE;
+                MstRefTile();
+
+            } else if (addr==0x11014) {
+                tileType_ = XRFDC_DAC_TILE;
+                MstRefTile();
+
+            } else if (addr==0x11018) {
+                tileType_ = XRFDC_ADC_TILE;
+                MstSysRefEnable();
+
+            } else if (addr==0x1101C) {
+                tileType_ = XRFDC_DAC_TILE;
+                MstSysRefEnable();
+
+            } else if (addr==0x11020) {
+                tileType_ = XRFDC_ADC_TILE;
+                MstTargetLatency();
+
+            } else if (addr==0x11024) {
+                tileType_ = XRFDC_DAC_TILE;
+                MstTargetLatency();
+
+            } else if (addr==0x12000) {
                 MetalLogLevel();
 
-            } else if (addr==0x40004) {
+            } else if (addr==0x12004) {
                 IgnoreMetalError();
 
-            } else if (addr==0x50000) {
+            } else if (addr==0x12008) {
                 ScratchPad();
 
-            } else if (addr==0x60000) {
-                DoubleTestReg(false);
-
-            } else if (addr==0x60004) {
-                DoubleTestReg(true);
+            } else if ( (addr >= 0x13000) && (addr <= 0x13004) ) {
+                DoubleTestReg(bool((addr>>2)&0x1));
 
             } else if (addr<0x10000) {
 

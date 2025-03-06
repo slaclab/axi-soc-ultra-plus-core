@@ -64,8 +64,8 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     uint8_t blockId_;
     uint32_t data_;
 
-    uint8_t mstAdcTiles_;
-    uint8_t mstDacTiles_;
+    XRFdc_MultiConverter_Sync_Config mstAdcConfig_;
+    XRFdc_MultiConverter_Sync_Config mstDacConfig_;
 
     //! Application functions
     void StartUp(int Tile_Id);
@@ -146,8 +146,13 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MultibandConfig();
     void MaxSampleRate(bool upper);
     void MinSampleRate(bool upper);
+
     void MstEnabled();
-    void MstTiles();
+    void MstRefTile();
+    void MstSysRefEnable();
+    void MstTargetLatency();
+    void MstAdcTiles();
+    void MstDacTiles();
 
     void IpVersion();
     void RestartSM();

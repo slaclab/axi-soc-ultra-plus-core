@@ -19,10 +19,14 @@ import axi_soc_ultra_plus_core.rfsoc_utility as rfsoc_utility
 class Rfdc(pr.Device):
     def __init__(
             self,
+            enAdcTile = [True,True,True,True],
+            enDacTile = [True,True,True,True],
             gen3      = True, # True if using RFSoC GEN3 Hardware
             **kwargs):
         super().__init__(**kwargs)
         self.gen3      = gen3
+        self.enAdcTile = enAdcTile
+        self.enDacTile = enDacTile
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/IP-Version-Information-0x0000
@@ -344,49 +348,111 @@ class Rfdc(pr.Device):
                 },
             ))
 
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
-        #######################################################################################
+        class Mst(pr.Device):
+            def __init__(self,**kwargs):
+                super().__init__(**kwargs)
+                #######################################################################################
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
+                #######################################################################################
 
-        self.add(pr.RemoteVariable(
-            name         = 'MstAdcEnabled',
-            description  = 'Method to get all the enabled MTS ADC tiles',
-            offset       = 0x11000,
-            bitSize      = 4,
-            mode         = 'RO',
-        ))
+                self.add(pr.RemoteVariable(
+                    name         = 'IsAdcEnabled',
+                    description  = 'Method to get all the enabled MTS ADC tiles',
+                    offset       = 0x11000,
+                    bitSize      = 4,
+                    mode         = 'RO',
+                ))
 
-        self.add(pr.RemoteVariable(
-            name         = 'MstDacEnabled',
-            description  = 'MMethod to get all the enabled MTS ADC tiles',
-            offset       = 0x11004,
-            bitSize      = 4,
-            mode         = 'RO',
-        ))
+                self.add(pr.RemoteVariable(
+                    name         = 'IsDacEnabled',
+                    description  = 'MMethod to get all the enabled MTS ADC tiles',
+                    offset       = 0x11004,
+                    bitSize      = 4,
+                    mode         = 'RO',
+                ))
 
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_MultiConverter_Sync_Config
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Init
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Sync
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecimationFactor
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
-        #######################################################################################
+                #######################################################################################
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_MultiConverter_Sync_Config
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Init
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Sync
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecimationFactor
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
+                #######################################################################################
 
-        self.add(pr.RemoteVariable(
-            name         = 'MstSyncAdcTiles',
-            description  = 'Method to execute the MTS SYNC for ADC tiles',
-            offset       = 0x11008,
-            bitSize      = 4,
-            mode         = 'RW',
-        ))
+                self.add(pr.RemoteVariable(
+                    name         = 'SyncAdcTiles',
+                    description  = 'Method to execute the MTS SYNC for ADC tiles',
+                    offset       = 0x11008,
+                    bitSize      = 4,
+                    mode         = 'RW',
+                ))
 
-        self.add(pr.RemoteVariable(
-            name         = 'MstSyncDacTiles',
-            description  = 'Method to execute the MTS SYNC for DAC tiles',
-            offset       = 0x1100C,
-            bitSize      = 4,
-            mode         = 'RW',
-        ))
+                self.add(pr.RemoteVariable(
+                    name         = 'SyncDacTiles',
+                    description  = 'Method to execute the MTS SYNC for DAC tiles',
+                    offset       = 0x1100C,
+                    bitSize      = 4,
+                    mode         = 'RW',
+                ))
+
+                #######################################################################################
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_MultiConverter_Sync_Config
+                #######################################################################################
+
+                self.add(pr.RemoteVariable(
+                    name         = 'AdcRefTile',
+                    description  = 'Reference tile',
+                    offset       = 0x11010,
+                    bitSize      = 4,
+                    mode         = 'RW',
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'DacRefTile',
+                    description  = 'Reference tile',
+                    offset       = 0x11014,
+                    bitSize      = 4,
+                    mode         = 'RW',
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'AdcSysRefEnable',
+                    description  = 'Set to 1 (default) to keep SYSREF capture enabled after MTS runs. Set to 0 to disable SYSREF capture',
+                    offset       = 0x11018,
+                    bitSize      = 1,
+                    mode         = 'RW',
+                    base         = pr.Bool,
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'DacSysRefEnable',
+                    description  = 'Set to 1 (default) to keep SYSREF capture enabled after MTS runs. Set to 0 to disable SYSREF capture',
+                    offset       = 0x1101C,
+                    bitSize      = 1,
+                    mode         = 'RW',
+                    base         = pr.Bool,
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'AdcTargetLatency',
+                    description  = 'Sets the target relative latency. This is required to be set for multi-device alignment, or deterministic latency use-cases. It is not required to be set for single-device alignment.',
+                    offset       = 0x11020,
+                    bitSize      = 32,
+                    mode         = 'RW',
+                    base         = pr.Int, # s32
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'DacTargetLatency',
+                    description  = 'Sets the target relative latency. This is required to be set for multi-device alignment, or deterministic latency use-cases. It is not required to be set for single-device alignment.',
+                    offset       = 0x11024,
+                    bitSize      = 4,
+                    mode         = 'RW',
+                    base         = pr.Int, # s32
+                ))
+
+        # Adding the MTS device
+        self.add(Mst())
 
         #######################################################################################
         #######################################################################################
@@ -395,7 +461,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'MetalLogLevel',
             description  = 'Sets the bare metal driver logging level printing in the serial console',
-            offset       = 0x40000,
+            offset       = 0x12000,
             bitSize      = 1,
             mode         = 'RW',
             enum         = {
@@ -408,7 +474,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'IgnoreMetalError',
             description  = 'Used to bypass the bare metal driver error returns (debugging only)',
-            offset       = 0x40004,
+            offset       = 0x12004,
             bitSize      = 1,
             mode         = 'RW',
             base         = pr.Bool,
@@ -418,7 +484,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'Scratchpad',
             description  = 'Test register (no impact to RFDC module)',
-            offset       = 0x50000,
+            offset       = 0x12008,
             bitSize      = 32,
             mode         = 'RW',
             hidden       = True,
@@ -427,7 +493,7 @@ class Rfdc(pr.Device):
         self.add(pr.RemoteVariable(
             name         = 'DoubleTestReg',
             description  = 'Test register (no impact to RFDC module)',
-            offset       = 0x60000,
+            offset       = 0x13000,
             bitSize      = 64,
             mode         = 'RW',
             base         = pr.Double,
@@ -440,24 +506,26 @@ class Rfdc(pr.Device):
         #######################################################################################
 
         for i in range(4):
-            self.add(rfsoc_utility.RfdcTile(
-                name       = f'AdcTile[{i}]',
-                isAdc      = True,
-                gen3       = gen3,
-                offset     = (0x0000+0x2000*i),
-                expand     = False,
-                enableDeps = [self.CheckAdcTileEnabled[i]],
-            ))
+            if self.enAdcTile[i]:
+                self.add(rfsoc_utility.RfdcTile(
+                    name       = f'AdcTile[{i}]',
+                    isAdc      = True,
+                    gen3       = gen3,
+                    offset     = (0x0000+0x2000*i),
+                    expand     = False,
+                    enableDeps = [self.CheckAdcTileEnabled[i]],
+                ))
 
         for i in range(4):
-            self.add(rfsoc_utility.RfdcTile(
-                name       = f'DacTile[{i}]',
-                isAdc      = False,
-                gen3       = gen3,
-                offset     = (0x8000+0x2000*i),
-                expand     = False,
-                enableDeps = [self.CheckDacTileEnabled[i]],
-            ))
+            if self.enDacTile[i]:
+                self.add(rfsoc_utility.RfdcTile(
+                    name       = f'DacTile[{i}]',
+                    isAdc      = False,
+                    gen3       = gen3,
+                    offset     = (0x8000+0x2000*i),
+                    expand     = False,
+                    enableDeps = [self.CheckDacTileEnabled[i]],
+                ))
 
     def Init(self):
         print( f'{self.path}: Initialize RFDC')
@@ -467,7 +535,7 @@ class Rfdc(pr.Device):
 
         # Title Reset
         for i in range(4):
-            if (self.CheckAdcTileEnabled[i].get() != 0):
+            if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0):
                 self.AdcTile[i].Reset()
-            if (self.CheckDacTileEnabled[i].get() != 0):
+            if self.enDacTile[i] and (self.CheckDacTileEnabled[i].get() != 0):
                 self.DacTile[i].Reset()
