@@ -152,8 +152,9 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MstSysrefConfig();
     void MstSysRefEnable();
     void MstTargetLatency();
-    void MstAdcTiles();
-    void MstDacTiles();
+    void MstTiles();
+    void MstSyncAdc();
+    void MstSyncDac();
 
     void IpVersion();
     void RestartSM();

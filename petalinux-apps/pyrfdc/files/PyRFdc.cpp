@@ -2608,7 +2608,29 @@ void PyRFdc::MstTargetLatency() {
     }
 }
 
-void PyRFdc::MstAdcTiles() {
+void PyRFdc::MstTiles() {
+    // Check for a write
+    if (!rdTxn_) {
+
+        if (tileType_ == XRFDC_ADC_TILE) {
+            mstAdcConfig_.Tiles = data_;
+        } else {
+            mstDacConfig_.Tiles = data_;
+        }
+
+    // Else Read
+    } else {
+
+        if (tileType_ == XRFDC_ADC_TILE) {
+            data_ = mstAdcConfig_.Tiles;
+        } else {
+            data_ = mstDacConfig_.Tiles;
+        }
+
+    }
+}
+
+void PyRFdc::MstSyncAdc() {
     int status, i;
     uint32_t factor;
     bool metalLogLevelCopy = metalLogLevel_;
@@ -2620,9 +2642,6 @@ void PyRFdc::MstAdcTiles() {
 
        // Run MTS for the ADC
        metal_log(METAL_LOG_INFO, "\n=== Run ADC Sync ===\n");
-
-        // Set the MST value
-        mstAdcConfig_.Tiles = data_;
 
         // Execute the MTS Sync
         status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_ADC_TILE, &mstAdcConfig_);
@@ -2643,8 +2662,7 @@ void PyRFdc::MstAdcTiles() {
             }
 
         } else {
-            errMsg_ = "ADC Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
-            mstAdcConfig_.Tiles = 0;
+            errMsg_ = "MstSyncAdc: ADC Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
         }
 
         // Restore the print level
@@ -2652,11 +2670,11 @@ void PyRFdc::MstAdcTiles() {
 
     // Else Read
     } else {
-        data_ = mstAdcConfig_.Tiles;
+        data_ = 1;
     }
 }
 
-void PyRFdc::MstDacTiles() {
+void PyRFdc::MstSyncDac() {
     int status, i;
     uint32_t factor;
     bool metalLogLevelCopy = metalLogLevel_;
@@ -2668,9 +2686,6 @@ void PyRFdc::MstDacTiles() {
 
         // Run MTS for the DAC
         metal_log(METAL_LOG_INFO, "\n=== Run DAC Sync ===\n");
-
-        // Set the MST value
-        mstDacConfig_.Tiles = data_;
 
         // Execute the MTS Sync
         status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_DAC_TILE, &mstDacConfig_);
@@ -2691,8 +2706,7 @@ void PyRFdc::MstDacTiles() {
             }
 
         } else {
-            errMsg_ = "DAC Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
-            mstDacConfig_.Tiles = 0;
+            errMsg_ = "MstSyncDac: DAC Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
         }
 
         // Restore the print level
@@ -2700,7 +2714,7 @@ void PyRFdc::MstDacTiles() {
 
     // Else Read
     } else {
-        data_ = mstDacConfig_.Tiles;
+        data_ = 1;
     }
 }
 
@@ -3017,11 +3031,11 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x11008) {
                 tileType_ = XRFDC_ADC_TILE;
-                MstAdcTiles();
+                MstSyncAdc();
 
             } else if (addr==0x1100C) {
                 tileType_ = XRFDC_DAC_TILE;
-                MstDacTiles();
+                MstSyncDac();
 
             } else if (addr==0x11010) {
                 tileType_ = XRFDC_ADC_TILE;
@@ -3046,6 +3060,14 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
             } else if (addr==0x11024) {
                 tileType_ = XRFDC_DAC_TILE;
                 MstTargetLatency();
+
+            } else if (addr==0x11028) {
+                tileType_ = XRFDC_ADC_TILE;
+                MstTiles();
+
+            } else if (addr==0x1102C) {
+                tileType_ = XRFDC_DAC_TILE;
+                MstTiles();
 
             } else if (addr==0x11100) {
                 MstSysrefConfig();

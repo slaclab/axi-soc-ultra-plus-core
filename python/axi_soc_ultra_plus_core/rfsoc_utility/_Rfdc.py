@@ -379,25 +379,41 @@ class Rfdc(pr.Device):
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
                 #######################################################################################
 
-                self.add(pr.RemoteVariable(
+                self.add(pr.RemoteCommand(
                     name         = 'SyncAdcTiles',
                     description  = 'Method to execute the MTS SYNC for ADC tiles',
                     offset       = 0x11008,
-                    bitSize      = 4,
-                    mode         = 'RW',
+                    bitSize      = 1,
+                    function     = lambda cmd: cmd.set(1),
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(pr.RemoteCommand(
                     name         = 'SyncDacTiles',
                     description  = 'Method to execute the MTS SYNC for DAC tiles',
                     offset       = 0x1100C,
-                    bitSize      = 4,
-                    mode         = 'RW',
+                    bitSize      = 1,
+                    function     = lambda cmd: cmd.set(1),
                 ))
 
                 #######################################################################################
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_MultiConverter_Sync_Config
                 #######################################################################################
+
+                self.add(pr.RemoteVariable(
+                    name         = 'AdcTiles',
+                    description  = 'Bitmask indicating which tiles to align. BitX enables MTS for TileX. Tile0 must always be enabled.',
+                    offset       = 0x11028,
+                    bitSize      = 4,
+                    mode         = 'RW',
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'DacTiles',
+                    description  = 'Bitmask indicating which tiles to align. BitX enables MTS for TileX. Tile0 must always be enabled.',
+                    offset       = 0x1102C,
+                    bitSize      = 4,
+                    mode         = 'RW',
+                ))
 
                 self.add(pr.RemoteVariable(
                     name         = 'AdcRefTile',
