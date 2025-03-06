@@ -14,6 +14,7 @@ import surf.xilinx             as xil
 import axi_soc_ultra_plus_core as core
 
 import click
+import time
 
 class AxiSocCore(pr.Device):
     """This class maps to axi-soc-ultra-plus-core/shared/rtl/AxiSocUltraPlusReg.vhd"""
@@ -71,3 +72,32 @@ class AxiSocCore(pr.Device):
             if ( self.numDmaLanes is not DMA_SIZE_G ):
                 click.secho(f'WARNING: {self.path}.numDmaLanes = {self.numDmaLanes} != {self.path}.AxiVersion.DMA_SIZE_G = {DMA_SIZE_G}', bg='cyan')
         self.startArmed = False
+
+    def UserRst(self):
+        # Send a local reset
+        self.AxiVersion.UserRst()
+
+        # Initialize watchdog counter
+        watchdog_counter = 0
+        watchdog_limit = 10  # 10 iterations of 0.1s = 1 second
+
+        # Wait for the AXI-Lite to recover from reset
+        while (watchdog_counter < watchdog_limit):
+            if (not self.AxiVersion.AppReset.get()):
+                watchdog_counter += 1
+            else:
+                watchdog_counter = 0  # Reset watchdog if condition is broken
+            time.sleep(0.1)
+
+    def DspRstWait(self):
+        # Initialize watchdog counter
+        watchdog_counter = 0
+        watchdog_limit = 10  # 10 iterations of 0.1s = 1 second
+
+        # Wait for the AXI-Lite to recover from reset
+        while (watchdog_counter < watchdog_limit):
+            if (not self.AxiVersion.DspReset.get()):
+                watchdog_counter += 1
+            else:
+                watchdog_counter = 0  # Reset watchdog if condition is broken
+            time.sleep(0.1)

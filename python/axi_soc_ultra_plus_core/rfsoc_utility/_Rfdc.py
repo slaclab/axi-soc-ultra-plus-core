@@ -458,3 +458,16 @@ class Rfdc(pr.Device):
                 expand     = False,
                 enableDeps = [self.CheckDacTileEnabled[i]],
             ))
+
+    def Init(self):
+        print( f'{self.path}: Initialize RFDC')
+        # Global RFDC Reset
+        self.ResetAllAdc
+        self.ResetAllDac
+
+        # Title Reset
+        for i in range(4):
+            if (self.CheckAdcTileEnabled[i].get() != 0):
+                self.AdcTile[i].Reset()
+            if (self.CheckDacTileEnabled[i].get() != 0):
+                self.DacTile[i].Reset()

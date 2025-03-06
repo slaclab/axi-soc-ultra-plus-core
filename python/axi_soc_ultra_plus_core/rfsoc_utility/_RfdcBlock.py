@@ -426,18 +426,21 @@ class RfdcBlock(pr.Device):
             hidden       = True,
         ))
 
-        if gen3:
-            #######################################################################################
-            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabWrVldWordsObs-Gen-3/DFE
-            #######################################################################################
-            self.add(pr.RemoteVariable(
-                name         = 'FabWrVldWordsObs',
-                description  = 'Write PL data rate for the observation channel of the requested RF-ADCis returned back to the caller',
-                offset       = 0x07C,
-                bitSize      = 32,
-                mode         = 'RO',
-                hidden       = True,
-            ))
+        #######################################################################################
+        # XRFdc_GetFabWrVldWordsObs appears to always return XRFDC_FAILURE
+        #######################################################################################
+#        if gen3:
+#            #######################################################################################
+#            # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabWrVldWordsObs-Gen-3/DFE
+#            #######################################################################################
+#            self.add(pr.RemoteVariable(
+#                name         = 'FabWrVldWordsObs',
+#                description  = 'Write PL data rate for the observation channel of the requested RF-ADCis returned back to the caller',
+#                offset       = 0x07C,
+#                bitSize      = 32,
+#                mode         = 'RO',
+#                hidden       = True,
+#            ))
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetFabRdVldWords
