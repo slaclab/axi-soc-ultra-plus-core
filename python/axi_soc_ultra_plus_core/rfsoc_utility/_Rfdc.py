@@ -416,6 +416,15 @@ class Rfdc(pr.Device):
                 ))
 
                 self.add(pr.RemoteVariable(
+                    name         = 'SysRefConfig',
+                    description  = 'Used to enable and disable the sysref',
+                    offset       = 0x11100,
+                    bitSize      = 1,
+                    mode         = 'RW',
+                    base         = pr.Bool,
+                ))
+
+                self.add(pr.RemoteVariable(
                     name         = 'AdcSysRefEnable',
                     description  = 'Set to 1 (default) to keep SYSREF capture enabled after MTS runs. Set to 0 to disable SYSREF capture',
                     offset       = 0x11018,
@@ -446,7 +455,7 @@ class Rfdc(pr.Device):
                     name         = 'DacTargetLatency',
                     description  = 'Sets the target relative latency. This is required to be set for multi-device alignment, or deterministic latency use-cases. It is not required to be set for single-device alignment.',
                     offset       = 0x11024,
-                    bitSize      = 4,
+                    bitSize      = 32,
                     mode         = 'RW',
                     base         = pr.Int, # s32
                 ))

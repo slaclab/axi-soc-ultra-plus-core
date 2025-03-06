@@ -5,13 +5,9 @@
  * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
  * TODO: Add support for the following ....
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MTS_Sysref_Config
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
- *
- * PyRFdc::MstTiles() + XRFdc_MultiConverter_Init + XRFDC_TILE_ID0
- *
  * ----------------------------------------------------------------------------
  * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory
@@ -2556,26 +2552,36 @@ void PyRFdc::MstRefTile() {
     }
 }
 
+void PyRFdc::MstSysrefConfig() {
+    // Check if read
+    if (rdTxn_) {
+        data_ = (XRFdc_ReadReg(RFdcInstPtr_, (XRFDC_DRP_BASE(XRFDC_DAC_TILE, 0) + XRFDC_HSCOM_ADDR), XRFDC_MTS_SRCAP_T1)>>10)&0x1;
+    // Else write
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MTS_Sysref_Config
+        XRFdc_MTS_Sysref_Config(RFdcInstPtr_,  &mstDacConfig_,  &mstAdcConfig_, (data_&0x1));
+    }
+}
+
 void PyRFdc::MstSysRefEnable() {
     // Check for a write
     if (!rdTxn_) {
 
         if (tileType_ == XRFDC_ADC_TILE) {
-            // Copy from data_ to mstAdcConfig_.SysRef_Enable
-            memcpy(&mstAdcConfig_.SysRef_Enable, &data_, sizeof(int32_t));
+            mstAdcConfig_.SysRef_Enable = data_;
         } else {
-            // Copy from data_ to  mstDacConfig_.SysRef_Enable
-            memcpy(&mstDacConfig_.SysRef_Enable, &data_, sizeof(int32_t));
+            mstDacConfig_.SysRef_Enable = data_;
         }
+
     // Else Read
     } else {
+
         if (tileType_ == XRFDC_ADC_TILE) {
-            // Copy from mstAdcConfig_.SysRef_Enable to data_
-            memcpy(&data_, &mstAdcConfig_.SysRef_Enable, sizeof(uint32_t));
+            data_ = mstAdcConfig_.SysRef_Enable;
         } else {
-            // Copy from mstDacConfig_.SysRef_Enable to data_
-            memcpy(&data_, &mstDacConfig_.SysRef_Enable, sizeof(uint32_t));
+            data_ = mstDacConfig_.SysRef_Enable;
         }
+
     }
 }
 
@@ -3040,6 +3046,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
             } else if (addr==0x11024) {
                 tileType_ = XRFDC_DAC_TILE;
                 MstTargetLatency();
+
+            } else if (addr==0x11100) {
+                MstSysrefConfig();
 
             } else if (addr==0x12000) {
                 MetalLogLevel();
