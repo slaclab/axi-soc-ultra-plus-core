@@ -4,7 +4,12 @@
  * ----------------------------------------------------------------------------
  * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
- * TODO: Add support for the following ....
+ * Complementary mapping to Rfdc, RfdcTile, and RfdcBlock python classes
+ * https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py
+ * https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/python/axi_soc_ultra_plus_core/rfsoc_utility/_RfdcTile.py
+ * https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/python/axi_soc_ultra_plus_core/rfsoc_utility/_RfdcBlock.py
+ * ----------------------------------------------------------------------------
+ * TODO: Add support for the following in the future....
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE

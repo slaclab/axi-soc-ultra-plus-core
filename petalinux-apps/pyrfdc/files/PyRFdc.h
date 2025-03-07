@@ -4,6 +4,11 @@
  * ----------------------------------------------------------------------------
  * Description: Wrapper on the XRFDC bare metal function class for rogue access
  * ----------------------------------------------------------------------------
+ * Complementary mapping to Rfdc, RfdcTile, and RfdcBlock python classes
+ * https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py
+ * https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/python/axi_soc_ultra_plus_core/rfsoc_utility/_RfdcTile.py
+ * https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/python/axi_soc_ultra_plus_core/rfsoc_utility/_RfdcBlock.py
+ * ----------------------------------------------------------------------------
  * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory
  * of this distribution and at:
