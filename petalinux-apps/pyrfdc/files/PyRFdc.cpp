@@ -10,7 +10,6 @@
  * https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/python/axi_soc_ultra_plus_core/rfsoc_utility/_RfdcBlock.py
  * ----------------------------------------------------------------------------
  * TODO: Add support for the following in the future....
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
  * ----------------------------------------------------------------------------
@@ -102,14 +101,16 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     blockId_ = 0;
     data_ = 0;
 
-    XRFdc_MultiConverter_Init(&mstAdcConfig_, 0, 0, XRFDC_TILE_ID0);
-    mstAdcConfig_.Tiles = 0;
-    std::fill_n(mtsAdcfactor_, 4, 0);
+    XRFdc_MultiConverter_Init(&mstConfig_[0], 0, 0, XRFDC_TILE_ID0);
+    XRFdc_MultiConverter_Init(&mstConfig_[1], 0, 0, XRFDC_TILE_ID0);
+    mstConfig_[0].Tiles = 0;
+    mstConfig_[1].Tiles = 0;
 
+    std::fill_n(&mtsfactor_[0][0], 2 * 4, 0);
 
-    XRFdc_MultiConverter_Init(&mstDacConfig_, 0, 0, XRFDC_TILE_ID0);
-    mstDacConfig_.Tiles = 0;
-    std::fill_n(mtsDacfactor_, 4, 0);
+    std::fill_n(&pllConfigSrcAdc_[0][0], 2 * 4, 0);
+    std::fill_n(&pllConfigRefClkFreq_[0][0], 2 * 4, 0.0);
+    std::fill_n(&pllConfigSmplRate_[0][0], 2 * 4, 0.0);
 
     log_->debug("PyRFdc::PyRFdc()");
 }
@@ -2499,6 +2500,69 @@ void PyRFdc::MinSampleRate(bool upper) {
     }
 }
 
+void PyRFdc::DynamicPLLConfig(uint8_t index) {
+    int status = XRFDC_SUCCESS;
+
+    // Check if write
+    if (!rdTxn_) {
+        switch (index) {
+            case 0:
+                pllConfigRefClkFreq_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigRefClkFreq_[tileType_][tileId_], data_, false);
+                break;
+            case 1:
+                pllConfigRefClkFreq_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigRefClkFreq_[tileType_][tileId_], data_, true);
+                break;
+            case 2:
+                pllConfigSmplRate_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigSmplRate_[tileType_][tileId_], data_, false);
+                break;
+            case 3:
+                pllConfigSmplRate_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigSmplRate_[tileType_][tileId_], data_, true);
+                break;
+            case 4:
+                pllConfigSrcAdc_[tileType_][tileId_] = uint8_t(data_&0x1);
+                break;
+            case 5:
+                // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
+                status = XRFdc_DynamicPLLConfig(RFdcInstPtr_, tileType_, tileId_, pllConfigSrcAdc_[tileType_][tileId_], pllConfigRefClkFreq_[tileType_][tileId_], pllConfigSmplRate_[tileType_][tileId_]);
+                break;
+            default:
+                status = XRFDC_FAILURE;
+                break;
+        }
+
+    // Else read
+    } else {
+        switch (index) {
+            case 0:
+                data_ = DoubleToUint32(pllConfigRefClkFreq_[tileType_][tileId_], false);
+                break;
+            case 1:
+                data_ = DoubleToUint32(pllConfigRefClkFreq_[tileType_][tileId_], true);
+                break;
+            case 2:
+                data_ = DoubleToUint32(pllConfigSmplRate_[tileType_][tileId_], false);
+                break;
+            case 3:
+                data_ = DoubleToUint32(pllConfigSmplRate_[tileType_][tileId_], true);
+                break;
+            case 4:
+                data_ = uint32_t(pllConfigSrcAdc_[tileType_][tileId_]);
+                break;
+            case 5:
+                data_ = XRFDC_SUCCESS;
+                break;
+            default:
+                status = XRFDC_FAILURE;
+                break;
+        }
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "DynamicPLLConfig(" + std::to_string(index) + "): failed\n";
+    }
+}
+
 void PyRFdc::MstEnabled() {
     int status = XRFDC_SUCCESS;
     int i;
@@ -2541,22 +2605,13 @@ void PyRFdc::MstRefTile() {
         if (data_ > XRFDC_TILE_ID_MAX) {
             errMsg_ = "MstRefTile(" + std::to_string(tileType_) + "): failed\n";
         } else {
-
-            if (tileType_ == XRFDC_ADC_TILE) {
-                mstAdcConfig_.RefTile = data_;
-            } else {
-                mstDacConfig_.RefTile = data_;
-            }
-
+            mstConfig_[tileType_].RefTile = data_;
         }
 
     // Else Read
     } else {
-        if (tileType_ == XRFDC_ADC_TILE) {
-            data_ = mstAdcConfig_.RefTile;
-        } else {
-            data_ = mstDacConfig_.RefTile;
-        }
+        data_ = mstConfig_[tileType_].RefTile;
+
     }
 }
 
@@ -2567,28 +2622,18 @@ void PyRFdc::MstSysrefConfig() {
     // Else write
     } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MTS_Sysref_Config
-        XRFdc_MTS_Sysref_Config(RFdcInstPtr_,  &mstDacConfig_,  &mstAdcConfig_, (data_&0x1));
+        XRFdc_MTS_Sysref_Config(RFdcInstPtr_,  &mstConfig_[XRFDC_DAC_TILE],  &mstConfig_[XRFDC_ADC_TILE], (data_&0x1));
     }
 }
 
 void PyRFdc::MstSysRefEnable() {
     // Check for a write
     if (!rdTxn_) {
-
-        if (tileType_ == XRFDC_ADC_TILE) {
-            mstAdcConfig_.SysRef_Enable = data_;
-        } else {
-            mstDacConfig_.SysRef_Enable = data_;
-        }
+        mstConfig_[tileType_].SysRef_Enable = data_;
 
     // Else Read
     } else {
-
-        if (tileType_ == XRFDC_ADC_TILE) {
-            data_ = mstAdcConfig_.SysRef_Enable;
-        } else {
-            data_ = mstDacConfig_.SysRef_Enable;
-        }
+        data_ = mstConfig_[tileType_].SysRef_Enable;
 
     }
 }
@@ -2596,45 +2641,24 @@ void PyRFdc::MstSysRefEnable() {
 void PyRFdc::MstTargetLatency() {
     // Check for a write
     if (!rdTxn_) {
+        // Copy from data_ to mstConfig_[tileType_].Target_Latency
+        memcpy(&mstConfig_[tileType_].Target_Latency, &data_, sizeof(int32_t));
 
-        if (tileType_ == XRFDC_ADC_TILE) {
-            // Copy from data_ to mstAdcConfig_.Target_Latency
-            memcpy(&mstAdcConfig_.Target_Latency, &data_, sizeof(int32_t));
-        } else {
-            // Copy from data_ to  mstDacConfig_.Target_Latency
-            memcpy(&mstDacConfig_.Target_Latency, &data_, sizeof(int32_t));
-        }
     // Else Read
     } else {
-        if (tileType_ == XRFDC_ADC_TILE) {
-            // Copy from mstAdcConfig_.Target_Latency to data_
-            memcpy(&data_, &mstAdcConfig_.Target_Latency, sizeof(uint32_t));
-        } else {
-            // Copy from mstDacConfig_.Target_Latency to data_
-            memcpy(&data_, &mstDacConfig_.Target_Latency, sizeof(uint32_t));
-        }
+        // Copy from mstConfig_[tileType_].Target_Latency to data_
+        memcpy(&data_, &mstConfig_[tileType_].Target_Latency, sizeof(uint32_t));
     }
 }
 
 void PyRFdc::MstTiles() {
     // Check for a write
     if (!rdTxn_) {
-
-        if (tileType_ == XRFDC_ADC_TILE) {
-            mstAdcConfig_.Tiles = data_;
-        } else {
-            mstDacConfig_.Tiles = data_;
-        }
+        mstConfig_[tileType_].Tiles = data_;
 
     // Else Read
     } else {
-
-        if (tileType_ == XRFDC_ADC_TILE) {
-            data_ = mstAdcConfig_.Tiles;
-        } else {
-            data_ = mstDacConfig_.Tiles;
-        }
-
+        data_ = mstConfig_[tileType_].Tiles;
     }
 }
 
@@ -2644,9 +2668,9 @@ void PyRFdc::MstSyncAdc() {
 
     // Reset status values
     for(i=0; i<4; i++) {
-        mtsAdcfactor_[i] = 0;
-        mstAdcConfig_.Latency[i] = 0;
-        mstAdcConfig_.Offset[i] = 0;
+        mtsfactor_[0][i] = 0;
+        mstConfig_[0].Latency[i] = 0;
+        mstConfig_[0].Offset[i] = 0;
     }
 
     // Check for a write
@@ -2658,7 +2682,7 @@ void PyRFdc::MstSyncAdc() {
        metal_log(METAL_LOG_INFO, "\n=== Run ADC Sync ===\n");
 
         // Execute the MTS Sync
-        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_ADC_TILE, &mstAdcConfig_);
+        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_ADC_TILE, &mstConfig_[0]);
 
         if (status == XRFDC_MTS_OK) {
             metal_log(METAL_LOG_INFO, "ADC Multi-Tile-Sync completed successfully\n");
@@ -2669,9 +2693,9 @@ void PyRFdc::MstSyncAdc() {
             */
             metal_log(METAL_LOG_INFO, "\n\n=== Multi-Tile Sync Report ===\n");
             for(i=0; i<4; i++) {
-                if((1<<i)&mstAdcConfig_.Tiles) {
-                    XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &mtsAdcfactor_[i]);
-                    metal_log(METAL_LOG_INFO, "ADC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, mstAdcConfig_.Latency[i], mtsAdcfactor_[i], mstAdcConfig_.Offset[i]);
+                if((1<<i)&mstConfig_[0].Tiles) {
+                    XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &mtsfactor_[0][i]);
+                    metal_log(METAL_LOG_INFO, "ADC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, mstConfig_[0].Latency[i], mtsfactor_[0][i], mstConfig_[0].Offset[i]);
                 }
             }
 
@@ -2694,9 +2718,9 @@ void PyRFdc::MstSyncDac() {
 
     // Reset status values
     for(i=0; i<4; i++) {
-        mtsDacfactor_[i] = 0;
-        mstDacConfig_.Latency[i] = 0;
-        mstDacConfig_.Offset[i] = 0;
+        mtsfactor_[1][i] = 0;
+        mstConfig_[1].Latency[i] = 0;
+        mstConfig_[1].Offset[i] = 0;
     }
 
     // Check for a write
@@ -2708,7 +2732,7 @@ void PyRFdc::MstSyncDac() {
         metal_log(METAL_LOG_INFO, "\n=== Run DAC Sync ===\n");
 
         // Execute the MTS Sync
-        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_DAC_TILE, &mstDacConfig_);
+        status = XRFdc_MultiConverter_Sync(RFdcInstPtr_, XRFDC_DAC_TILE, &mstConfig_[1]);
 
         if (status == XRFDC_MTS_OK) {
             metal_log(METAL_LOG_INFO, "DAC Multi-Tile-Sync completed successfully\n");
@@ -2719,9 +2743,9 @@ void PyRFdc::MstSyncDac() {
             */
             metal_log(METAL_LOG_INFO, "\n\n=== Multi-Tile Sync Report ===\n");
             for(i=0; i<4; i++) {
-                if((1<<i)&mstDacConfig_.Tiles) {
-                    XRFdc_GetDecimationFactor(RFdcInstPtr_, i, 0, &mtsDacfactor_[i]);
-                    metal_log(METAL_LOG_INFO, "DAC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, mstDacConfig_.Latency[i], mtsDacfactor_[i], mstDacConfig_.Offset[i]);
+                if((1<<i)&mstConfig_[1].Tiles) {
+                    XRFdc_GetDecimationFactor(RFdcInstPtr_, i, 0, &mtsfactor_[1][i]);
+                    metal_log(METAL_LOG_INFO, "DAC%d: Latency(T1) =%3d, Adjusted Delay Offset(T%d) =%3d\n", i, mstConfig_[1].Latency[i], mtsfactor_[1][i], mstConfig_[1].Offset[i]);
                 }
             }
 
@@ -2748,11 +2772,11 @@ void PyRFdc::MstLatency(uint8_t index) {
     // Else read
     } else {
         if (tileType_ == XRFDC_ADC_TILE) {
-            // Copy from mstAdcConfig_.Latency[index] to data_
-            memcpy(&data_, &mstAdcConfig_.Latency[index], sizeof(uint32_t));
+            // Copy from mstConfig_[0].Latency[index] to data_
+            memcpy(&data_, &mstConfig_[0].Latency[index], sizeof(uint32_t));
         } else {
-            // Copy from mstDacConfig_.Latency[index] to data_
-            memcpy(&data_, &mstDacConfig_.Latency[index], sizeof(uint32_t));
+            // Copy from mstConfig_[1].Latency[index] to data_
+            memcpy(&data_, &mstConfig_[1].Latency[index], sizeof(uint32_t));
         }
     }
 
@@ -2772,11 +2796,11 @@ void PyRFdc::MstOffset(uint8_t index) {
     // Else read
     } else {
         if (tileType_ == XRFDC_ADC_TILE) {
-            // Copy from mstAdcConfig_.Offset[index] to data_
-            memcpy(&data_, &mstAdcConfig_.Offset[index], sizeof(uint32_t));
+            // Copy from mstConfig_[0].Offset[index] to data_
+            memcpy(&data_, &mstConfig_[0].Offset[index], sizeof(uint32_t));
         } else {
-            // Copy from mstDacConfig_.Offset[index] to data_
-            memcpy(&data_, &mstDacConfig_.Offset[index], sizeof(uint32_t));
+            // Copy from mstConfig_[1].Offset[index] to data_
+            memcpy(&data_, &mstConfig_[1].Offset[index], sizeof(uint32_t));
         }
     }
 
@@ -2796,9 +2820,9 @@ void PyRFdc::MstFactor(uint8_t index) {
     // Else read
     } else {
         if (tileType_ == XRFDC_ADC_TILE) {
-            data_ = mtsAdcfactor_[index];
+            data_ = mtsfactor_[0][index];
         } else {
-            data_ = mtsDacfactor_[index];
+            data_ = mtsfactor_[1][index];
         }
     }
 
@@ -3284,6 +3308,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
                     } else if ( (tileAddr >= 0x0C8) && (tileAddr <= 0x0CC) ) {
                         MinSampleRate(bool((tileAddr>>2)&0x1));
+
+                    } else if ( (tileAddr >= 0x100) && (tileAddr <= 0x11C) ) {
+                        DynamicPLLConfig((tileAddr>>2)&0x7);
 
                     } else if (tileAddr==0x800) {
                         RestartSM();

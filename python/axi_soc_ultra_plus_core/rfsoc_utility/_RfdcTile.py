@@ -48,7 +48,7 @@ class RfdcTile(pr.Device):
             bitSize      =  4,
             bitOffset    =  8,
             mode         = 'RW',
-            enum         = rfsoc_utility.powerOnSequenceSteps,
+            enum         = rfsoc_utility.enumState,
         ))
 
         self.add(pr.RemoteVariable(
@@ -58,7 +58,7 @@ class RfdcTile(pr.Device):
             bitSize      =  4,
             bitOffset    =  0,
             mode         = 'RW',
-            enum         = rfsoc_utility.powerOnSequenceSteps,
+            enum         = rfsoc_utility.enumState,
         ))
 
         #######################################################################################
@@ -71,7 +71,7 @@ class RfdcTile(pr.Device):
             bitSize      =  4,
             bitOffset    =  0,
             mode         = 'RO',
-            enum         = rfsoc_utility.powerOnSequenceSteps,
+            enum         = rfsoc_utility.enumState,
             pollInterval = 1,
         ))
 
@@ -133,68 +133,6 @@ class RfdcTile(pr.Device):
             hidden       = True,
         ))
 
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Clock-Detector-Register-0x0084-Gen-3/DFE
-        #######################################################################################
-        if gen3:
-            self.add(pr.RemoteVariable(
-                name         = 'ClockDetector',
-                description  = 'Clock detector status. Asserted High when the tile clock detector has detected a valid clock on its local clock input.',
-                offset       =  0x808,
-                bitSize      =  1,
-                bitOffset    =  0,
-                mode         = 'RO',
-                base         = pr.Bool,
-                pollInterval = 1,
-            ))
-
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/RF-DAC/RF-ADC-Tile-n-Common-Status-Register-0x0228
-        #######################################################################################
-        self.add(pr.RemoteVariable(
-            name         = 'ClockPresent',
-            description  = 'Clock present: Asserted when the reference clock for the tile is present.',
-            offset       =  0x80C,
-            bitSize      =  1,
-            bitOffset    =  0,
-            mode         = 'RO',
-            base         = pr.Bool,
-            pollInterval = 1,
-        ))
-
-        self.add(pr.RemoteVariable(
-            name         = 'SupplyStable',
-            description  = 'Supplies up: Asserted when the external supplies to the tile are stable.',
-            offset       =  0x80C,
-            bitSize      =  1,
-            bitOffset    =  1,
-            mode         = 'RO',
-            base         = pr.Bool,
-            pollInterval = 1,
-        ))
-
-        self.add(pr.RemoteVariable(
-            name         = 'PoweredUp',
-            description  = 'Power-up state: Asserted when the tile is in operation.',
-            offset       =  0x80C,
-            bitSize      =  1,
-            bitOffset    =  2,
-            mode         = 'RO',
-            base         = pr.Bool,
-            pollInterval = 1,
-        ))
-
-        self.add(pr.RemoteVariable(
-            name         = 'PllLocked',
-            description  = 'PLL locked: Asserted when the tile PLL has achieved lock.',
-            offset       =  0x80C,
-            bitSize      =  1,
-            bitOffset    =  3,
-            mode         = 'RO',
-            base         = pr.Bool,
-            pollInterval = 1,
-        ))
-
         class TileStatus(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
@@ -221,7 +159,7 @@ class RfdcTile(pr.Device):
                     bitOffset    = 1,
                     mode         = 'RO',
                     pollInterval = 1,
-                    enum         = rfsoc_utility.powerOnSequenceSteps,
+                    enum         = rfsoc_utility.enumState,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -359,7 +297,7 @@ class RfdcTile(pr.Device):
                 hidden       = True,
             ))
 
-        class Pll(pr.Device):
+        class PllStatus(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
                 #######################################################################################
@@ -371,10 +309,7 @@ class RfdcTile(pr.Device):
                     offset       = 0x02C,
                     bitSize      = 1,
                     mode         = 'RO',
-                    enum         = {
-                        0 : "XRFDC_EXTERNAL_CLK",     #define XRFDC_EXTERNAL_CLK 0x0U
-                        1 : "XRFDC_INTERNAL_PLL_CLK", #define XRFDC_INTERNAL_PLL_CLK 0x1U
-                    },
+                    enum         = rfsoc_utility.enumRefClkSource,
                 ))
 
                 #######################################################################################
@@ -478,18 +413,134 @@ class RfdcTile(pr.Device):
                 #######################################################################################
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLLockStatus
                 #######################################################################################
+#######################################################################################
+# Commented out because there is an annoying metal debug print when autopolling via the XRFdc_GetPLLLockStatus API
+# Using directly memory read access instead off PllLocked at offset instead
+#######################################################################################
+#                self.add(pr.RemoteVariable(
+#                    name         = 'PllLocked',
+#                    description  = 'This API function gets the PLL lock status for the RF-ADCs/RF-DACs.',
+#                    offset       = 0x060,
+#                    bitSize      = 1,
+#                    mode         = 'RO',
+#                    base         = pr.Bool,
+#                    pollInterval = 1,
+#                ))
+
+                #######################################################################################
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Clock-Detector-Register-0x0084-Gen-3/DFE
+                #######################################################################################
+                if gen3:
+                    self.add(pr.RemoteVariable(
+                        name         = 'ClockDetector',
+                        description  = 'Clock detector status. Asserted High when the tile clock detector has detected a valid clock on its local clock input.',
+                        offset       =  0x808,
+                        bitSize      =  1,
+                        bitOffset    =  0,
+                        mode         = 'RO',
+                        base         = pr.Bool,
+                        pollInterval = 1,
+                    ))
+
+                #######################################################################################
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/RF-DAC/RF-ADC-Tile-n-Common-Status-Register-0x0228
+                #######################################################################################
                 self.add(pr.RemoteVariable(
-                    name         = 'PllLocked',
-                    description  = 'This API function gets the PLL lock status for the RF-ADCs/RF-DACs.',
-                    offset       = 0x060,
-                    bitSize      = 1,
+                    name         = 'ClockPresent',
+                    description  = 'Clock present: Asserted when the reference clock for the tile is present.',
+                    offset       =  0x80C,
+                    bitSize      =  1,
+                    bitOffset    =  0,
                     mode         = 'RO',
                     base         = pr.Bool,
                     pollInterval = 1,
                 ))
 
-        # Adding the PLL device
-        self.add(Pll())
+                self.add(pr.RemoteVariable(
+                    name         = 'SupplyStable',
+                    description  = 'Supplies up: Asserted when the external supplies to the tile are stable.',
+                    offset       =  0x80C,
+                    bitSize      =  1,
+                    bitOffset    =  1,
+                    mode         = 'RO',
+                    base         = pr.Bool,
+                    pollInterval = 1,
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'PoweredUp',
+                    description  = 'Power-up state: Asserted when the tile is in operation.',
+                    offset       =  0x80C,
+                    bitSize      =  1,
+                    bitOffset    =  2,
+                    mode         = 'RO',
+                    base         = pr.Bool,
+                    pollInterval = 1,
+                ))
+
+
+                self.add(pr.RemoteVariable(
+                    name         = 'PllLocked',
+                    description  = 'PLL locked: Asserted when the tile PLL has achieved lock.',
+                    offset       =  0x80C,
+                    bitSize      =  1,
+                    bitOffset    =  3,
+                    mode         = 'RO',
+                    base         = pr.Bool,
+                    pollInterval = 1,
+                ))
+
+        # Adding the PllStatus device
+        self.add(PllStatus())
+
+        class PllConfig(pr.Device):
+            def __init__(self,**kwargs):
+                super().__init__(**kwargs)
+
+                self.add(pr.RemoteVariable(
+                    name         = 'ClockSource',
+                    description  = 'This API function gets the clock source for the RF-ADCs/RF-DACs.',
+                    offset       = 0x110,
+                    bitSize      = 1,
+                    mode         = 'RW',
+                    enum         = rfsoc_utility.enumRefClkSource,
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'RefClkFreq',
+                    description  = 'Reference clock frequency (MHz).',
+                    offset       = 0x100,
+                    bitSize      = 64,
+                    mode         = 'RW',
+                    base         = pr.Double,
+                    units        = 'MHz',
+                    disp         = '{:1.1f}',
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'SampleRate',
+                    description  = 'Sampling rate (MSPS).',
+                    offset       = 0x108,
+                    bitSize      = 64,
+                    mode         = 'RW',
+                    base         = pr.Double,
+                    units        = 'MSPS',
+                    disp         = '{:1.1f}',
+                ))
+
+                #######################################################################################
+                # ttps://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
+                #######################################################################################
+                self.add(pr.RemoteCommand(
+                    name         = 'PllConfigUpdate',
+                    description  = 'This API function update the PLL configration',
+                    offset       = 0x114,
+                    bitSize      = 1,
+                    function     = lambda cmd: cmd.set(1),
+                ))
+
+        # Adding the PllConfig device
+        self.add(PllConfig())
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_TileBaseAddr

@@ -35,13 +35,14 @@ class RfdcBlock(pr.Device):
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetBlockStatus
                 #######################################################################################
                 self.add(pr.RemoteVariable(
-                    name         = 'SamplingFreq',
-                    description  = 'Sampling frequency',
+                    name         = 'SampleRate',
+                    description  = 'Sampling rate (GSPS).',
                     offset       = 0x000,
                     bitSize      = 64,
                     mode         = 'RO',
                     base         = pr.Double,
-                    hidden       = True,
+                    units        = 'GSPS',
+                    disp         = '{:1.3f}',
                 ))
 
                 if isAdc:
@@ -249,8 +250,8 @@ class RfdcBlock(pr.Device):
         self.add(pr.LinkVariable(
             name         = 'IsMixerEnabled',
             mode         = 'RO',
-            linkedGet    = lambda read: (self.BlockStatus.MixerMode.get(read=read) != 0) and (self.BlockStatus.SamplingFreq.get(read=read) > 0.0),
-            dependencies = [self.BlockStatus.MixerMode, self.BlockStatus.SamplingFreq],
+            linkedGet    = lambda read: (self.BlockStatus.MixerMode.get(read=read) != 0) and (self.BlockStatus.SampleRate.get(read=read) > 0.0),
+            dependencies = [self.BlockStatus.MixerMode, self.BlockStatus.SampleRate],
         ))
 
         # Adding the Mixer device

@@ -17,7 +17,7 @@ enumCustomStartUp = {
     0xF : "XRFDC_STATE_FULL",
 }
 
-powerOnSequenceSteps = {
+enumState = {
     0:  'Device_Power-up_and_Configuration[0]',
     1:  'Device_Power-up_and_Configuration[1]',
     2:  'Device_Power-up_and_Configuration[2]',
@@ -76,4 +76,9 @@ enumMixedMode = {
     0x2 : "XRFDC_MIXER_MODE_C2R", #define XRFDC_MIXER_MODE_C2R 0x2U
     0x3 : "XRFDC_MIXER_MODE_R2C", #define XRFDC_MIXER_MODE_R2C 0x3U
     0x4 : "XRFDC_MIXER_MODE_R2R", #define XRFDC_MIXER_MODE_R2R 0x4U
+}
+
+enumRefClkSource = {
+    0 : "XRFDC_EXTERNAL_CLK",     #define XRFDC_EXTERNAL_CLK 0x0U
+    1 : "XRFDC_INTERNAL_PLL_CLK", #define XRFDC_INTERNAL_PLL_CLK 0x1U
 }
