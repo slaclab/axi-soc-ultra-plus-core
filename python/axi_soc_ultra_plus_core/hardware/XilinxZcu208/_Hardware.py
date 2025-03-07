@@ -61,6 +61,7 @@ class Hardware(pr.Device):
             self.Lmk.PwrUpLmkChip()
             self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
             self.Lmk.Init()
+            self.Lmk.SYNC_EN.set(1)
             self.Lmk.enable.set(False)
 
             # Load the LMX configuration from the TICS Pro software HEX export
