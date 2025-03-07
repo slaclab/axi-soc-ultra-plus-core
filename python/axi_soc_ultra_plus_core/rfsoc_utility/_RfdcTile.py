@@ -144,6 +144,7 @@ class RfdcTile(pr.Device):
                 bitSize      =  1,
                 bitOffset    =  0,
                 mode         = 'RO',
+                base         = pr.Bool,
                 pollInterval = 1,
             ))
 
@@ -311,6 +312,7 @@ class RfdcTile(pr.Device):
                     0x2 : "False",
                     0x3 : "True",
                 },
+                hidden       = True,
             ))
 
             #######################################################################################
@@ -327,6 +329,7 @@ class RfdcTile(pr.Device):
                     0x2 : "False",
                     0x3 : "True",
                 },
+                hidden       = True,
             ))
 
         #######################################################################################
@@ -643,6 +646,7 @@ class RfdcTile(pr.Device):
             base         = pr.Double,
             units        = 'GSPS',
             disp         = '{:1.0f}',
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -657,6 +661,7 @@ class RfdcTile(pr.Device):
             base         = pr.Double,
             units        = 'GSPS',
             disp         = '{:1.0f}',
+            hidden       = True,
         ))
 
         #######################################################################################

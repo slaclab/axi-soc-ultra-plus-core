@@ -818,29 +818,35 @@ class RfdcBlock(pr.Device):
                 },
             ))
 
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_DSA_Settings-Gen-3/DFE
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDSA-Gen-3/DFE
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDSA-Gen-3/DFE
-        #######################################################################################
         if isAdc and gen3:
-            self.add(pr.RemoteVariable(
-                name         = 'DSA_DisableRTS',
-                description  = 'This disables the real time signals from setting the attenuation',
-                offset       = 0x168,
-                bitSize      = 32,
-                mode         = 'RW',
-            ))
+            class DSA(pr.Device):
+                def __init__(self,**kwargs):
+                    super().__init__(**kwargs)
+                    #######################################################################################
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_DSA_Settings-Gen-3/DFE
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDSA-Gen-3/DFE
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDSA-Gen-3/DFE
+                    #######################################################################################
+                    self.add(pr.RemoteVariable(
+                        name         = 'DisableRTS',
+                        description  = 'This disables the real time signals from setting the attenuation',
+                        offset       = 0x168,
+                        bitSize      = 32,
+                        mode         = 'RW',
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'DSA_Attenuation',
-                description  = 'The attenuation 0 - 27 dB',
-                offset       = 0x16C,
-                bitSize      = 32,
-                mode         = 'RW',
-                base         = pr.Float,
-                units        = 'dB',
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'Attenuation',
+                        description  = 'The attenuation 0 - 27 dB',
+                        offset       = 0x16C,
+                        bitSize      = 32,
+                        mode         = 'RW',
+                        base         = pr.Float,
+                        units        = 'dB',
+                    ))
+
+            # Adding the DSA device
+            self.add(DSA())
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACCompMode-Gen-3/DFE
@@ -894,92 +900,99 @@ class RfdcBlock(pr.Device):
                 },
             ))
 
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Signal_Detector_Settings-Gen-3/DFE
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetSignalDetector-Gen-3/DFE
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSignalDetector-Gen-3/DFE
-        #######################################################################################
         if isAdc and gen3:
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_Mode',
-                description  = 'Whether to use Average or Randomized mode.',
-                offset       = 0x180,
-                bitSize      = 1,
-                mode         = 'RW',
-                enum         = {
-                    0x0 : "XRFDC_SIGDET_MODE_AVG",  #define XRFDC_SIGDET_MODE_AVG 0U
-                    0x1 : "XRFDC_SIGDET_MODE_RNDM", #define XRFDC_SIGDET_MODE_RNDM 1U
-                },
-            ))
+            class SignalDetector(pr.Device):
+                def __init__(self,**kwargs):
+                    super().__init__(**kwargs)
+                    #######################################################################################
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Signal_Detector_Settings-Gen-3/DFE
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetSignalDetector-Gen-3/DFE
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSignalDetector-Gen-3/DFE
+                    #######################################################################################
 
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_TimeConstant',
-                description  = 'Time constant of the leaky integrator.',
-                offset       = 0x184,
-                bitSize      = 3,
-                mode         = 'RW',
-                enum         = {
-                    0 : "XRFDC_SIGDET_TC_2_0",  #define XRFDC_SIGDET_TC_2_0 0   = 2^0 Cycles
-                    1 : "XRFDC_SIGDET_TC_2_2",  #define XRFDC_SIGDET_TC_2_2 1   = 2^2 Cycles
-                    2 : "XRFDC_SIGDET_TC_2_4",  #define XRFDC_SIGDET_TC_2_4 2   = 2^4 Cycles
-                    3 : "XRFDC_SIGDET_TC_2_8",  #define XRFDC_SIGDET_TC_2_8 3   = 2^8 Cycles
-                    4 : "XRFDC_SIGDET_TC_2_12", #define XRFDC_SIGDET_TC_2_12 4  = 2^12 Cycles
-                    5 : "XRFDC_SIGDET_TC_2_14", #define XRFDC_SIGDET_TC_2_14 5  = 2^14 Cycles
-                    6 : "XRFDC_SIGDET_TC_2_16", #define XRFDC_SIGDET_TC_2_16 6  = 2^16 Cycles
-                    7 : "XRFDC_SIGDET_TC_2_18", #define XRFDC_SIGDET_TC_2_18 7  = 2^18 Cycles
-                },
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'Mode',
+                        description  = 'Whether to use Average or Randomized mode.',
+                        offset       = 0x180,
+                        bitSize      = 1,
+                        mode         = 'RW',
+                        enum         = {
+                            0x0 : "XRFDC_SIGDET_MODE_AVG",  #define XRFDC_SIGDET_MODE_AVG 0U
+                            0x1 : "XRFDC_SIGDET_MODE_RNDM", #define XRFDC_SIGDET_MODE_RNDM 1U
+                        },
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_Flush',
-                description  = 'Flush the leaky integrator.',
-                offset       = 0x188,
-                bitSize      = 1,
-                mode         = 'RW',
-                base         = pr.Bool,
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'TimeConstant',
+                        description  = 'Time constant of the leaky integrator.',
+                        offset       = 0x184,
+                        bitSize      = 3,
+                        mode         = 'RW',
+                        enum         = {
+                            0 : "XRFDC_SIGDET_TC_2_0",  #define XRFDC_SIGDET_TC_2_0 0   = 2^0 Cycles
+                            1 : "XRFDC_SIGDET_TC_2_2",  #define XRFDC_SIGDET_TC_2_2 1   = 2^2 Cycles
+                            2 : "XRFDC_SIGDET_TC_2_4",  #define XRFDC_SIGDET_TC_2_4 2   = 2^4 Cycles
+                            3 : "XRFDC_SIGDET_TC_2_8",  #define XRFDC_SIGDET_TC_2_8 3   = 2^8 Cycles
+                            4 : "XRFDC_SIGDET_TC_2_12", #define XRFDC_SIGDET_TC_2_12 4  = 2^12 Cycles
+                            5 : "XRFDC_SIGDET_TC_2_14", #define XRFDC_SIGDET_TC_2_14 5  = 2^14 Cycles
+                            6 : "XRFDC_SIGDET_TC_2_16", #define XRFDC_SIGDET_TC_2_16 6  = 2^16 Cycles
+                            7 : "XRFDC_SIGDET_TC_2_18", #define XRFDC_SIGDET_TC_2_18 7  = 2^18 Cycles
+                        },
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_EnableIntegrator',
-                description  = 'Enable the leaky integrator.',
-                offset       = 0x18C,
-                bitSize      = 1,
-                mode         = 'RW',
-                base         = pr.Bool,
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'Flush',
+                        description  = 'Flush the leaky integrator.',
+                        offset       = 0x188,
+                        bitSize      = 1,
+                        mode         = 'RW',
+                        base         = pr.Bool,
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_Threshold',
-                description  = 'The threshold for signal detection.',
-                offset       = 0x190,
-                bitSize      = 16,
-                mode         = 'RW',
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'EnableIntegrator',
+                        description  = 'Enable the leaky integrator.',
+                        offset       = 0x18C,
+                        bitSize      = 1,
+                        mode         = 'RW',
+                        base         = pr.Bool,
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_ThresholdOnTriggerCnt',
-                description  = 'The number of times value must exceed Threshold before turning on.',
-                offset       = 0x194,
-                bitSize      = 16,
-                mode         = 'RW',
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'Threshold',
+                        description  = 'The threshold for signal detection.',
+                        offset       = 0x190,
+                        bitSize      = 16,
+                        mode         = 'RW',
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_ThresholdOffTriggerCnt',
-                description  = 'The number of times value must exceed Threshold before turning off.',
-                offset       = 0x198,
-                bitSize      = 16,
-                mode         = 'RW',
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'ThresholdOnTriggerCnt',
+                        description  = 'The number of times value must exceed Threshold before turning on.',
+                        offset       = 0x194,
+                        bitSize      = 16,
+                        mode         = 'RW',
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'SignalDetector_HysteresisEnable',
-                description  = 'Enable hysteresis on signal on.',
-                offset       = 0x19C,
-                bitSize      = 1,
-                mode         = 'RW',
-                base         = pr.Bool,
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'ThresholdOffTriggerCnt',
+                        description  = 'The number of times value must exceed Threshold before turning off.',
+                        offset       = 0x198,
+                        bitSize      = 16,
+                        mode         = 'RW',
+                    ))
+
+                    self.add(pr.RemoteVariable(
+                        name         = 'HysteresisEnable',
+                        description  = 'Enable hysteresis on signal on.',
+                        offset       = 0x19C,
+                        bitSize      = 1,
+                        mode         = 'RW',
+                        base         = pr.Bool,
+                    ))
+
+            # Adding the SignalDetector device
+            self.add(SignalDetector())
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_ResetInternalFIFOWidth-Gen-3/DFE
@@ -991,6 +1004,7 @@ class RfdcBlock(pr.Device):
                 offset       = 0x1A0,
                 bitSize      = 1,
                 function     = lambda cmd: cmd.post(1),
+                hidden       = True,
             ))
 
         #######################################################################################
@@ -1003,29 +1017,36 @@ class RfdcBlock(pr.Device):
                 offset       = 0x1A4,
                 bitSize      = 1,
                 function     = lambda cmd: cmd.post(1),
+                hidden       = True,
             ))
 
-        #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Pwr_Mode_Settings-Gen-3/DFE
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetPwrMode-Gen-3/DFE
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPwrMode-Gen-3/DFE
-        #######################################################################################
         if gen3:
-            self.add(pr.RemoteVariable(
-                name         = 'PwrModeSettings_DisableIPControl',
-                description  = 'This disables the real time signals from setting the power mode: 0 to leave RTS control enabled, 1 to disable RTS control.',
-                offset       = 0x1A8,
-                bitSize      = 1,
-                mode         = 'RW',
-            ))
+            class PwrModeSettings(pr.Device):
+                def __init__(self,**kwargs):
+                    super().__init__(**kwargs)
+                    #######################################################################################
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Pwr_Mode_Settings-Gen-3/DFE
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetPwrMode-Gen-3/DFE
+                    # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPwrMode-Gen-3/DFE
+                    #######################################################################################
+                    self.add(pr.RemoteVariable(
+                        name         = 'DisableIPControl',
+                        description  = 'This disables the real time signals from setting the power mode: 0 to leave RTS control enabled, 1 to disable RTS control.',
+                        offset       = 0x1A8,
+                        bitSize      = 1,
+                        mode         = 'RW',
+                    ))
 
-            self.add(pr.RemoteVariable(
-                name         = 'PwrModeSettings_PwrMode',
-                description  = '0 to power down, 1 to power up.',
-                offset       = 0x1AC,
-                bitSize      = 1,
-                mode         = 'RW',
-            ))
+                    self.add(pr.RemoteVariable(
+                        name         = 'PwrMode',
+                        description  = '0 to power down, 1 to power up.',
+                        offset       = 0x1AC,
+                        bitSize      = 1,
+                        mode         = 'RW',
+                    ))
+
+            # Adding the DSA device
+            self.add(PwrModeSettings())
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_BlockBaseAddr

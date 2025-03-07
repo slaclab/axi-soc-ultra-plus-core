@@ -347,6 +347,7 @@ class Rfdc(pr.Device):
                     0x0 : "XRFDC_4ADC_4DAC_TILES", #define XRFDC_4ADC_4DAC_TILES 0U
                     0x1 : "XRFDC_3ADC_2DAC_TILES", #define XRFDC_3ADC_2DAC_TILES 1U
                 },
+                hidden       = True,
             ))
 
         class Mst(pr.Device):
