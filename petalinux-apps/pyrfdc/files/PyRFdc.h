@@ -71,6 +71,8 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
 
     XRFdc_MultiConverter_Sync_Config mstAdcConfig_;
     XRFdc_MultiConverter_Sync_Config mstDacConfig_;
+    uint32_t mtsAdcfactor_[4];
+    uint32_t mtsDacfactor_[4];
 
     //! Application functions
     void StartUp(int Tile_Id);
@@ -160,6 +162,9 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MstTiles();
     void MstSyncAdc();
     void MstSyncDac();
+    void MstLatency(uint8_t index);
+    void MstOffset(uint8_t index);
+    void MstFactor(uint8_t index);
 
     void IpVersion();
     void RestartSM();

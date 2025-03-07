@@ -259,27 +259,6 @@ class Rfdc(pr.Device):
         ))
 
         #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSysRefSource
-        #######################################################################################
-        self.add(pr.RemoteVariable(
-            name         = 'SysRefAdcSource',
-            description  = 'Returns the source of the SYSREF (internal or external).',
-            offset       = 0x10038,
-            bitSize      = 32,
-            mode         = 'RO',
-            hidden       = True,
-        ))
-
-        self.add(pr.RemoteVariable(
-            name         = 'SysRefDacSource',
-            description  = 'Returns the source of the SYSREF (internal or external).',
-            offset       = 0x1003C,
-            bitSize      = 32,
-            mode         = 'RO',
-            hidden       = True,
-        ))
-
-        #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Get_IPBaseAddr
         #######################################################################################
         self.add(pr.RemoteVariable(
@@ -353,6 +332,27 @@ class Rfdc(pr.Device):
         class Mst(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
+                #######################################################################################
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSysRefSource
+                #######################################################################################
+                self.add(pr.RemoteVariable(
+                    name         = 'SysRefAdcSource',
+                    description  = 'Returns the source of the SYSREF (internal or external).',
+                    offset       = 0x10038,
+                    bitSize      = 32,
+                    mode         = 'RO',
+                    hidden       = True,
+                ))
+
+                self.add(pr.RemoteVariable(
+                    name         = 'SysRefDacSource',
+                    description  = 'Returns the source of the SYSREF (internal or external).',
+                    offset       = 0x1003C,
+                    bitSize      = 32,
+                    mode         = 'RO',
+                    hidden       = True,
+                ))
+
                 #######################################################################################
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
                 #######################################################################################
@@ -477,6 +477,90 @@ class Rfdc(pr.Device):
                     mode         = 'RW',
                     base         = pr.Int, # s32
                 ))
+
+                class MstStatus(pr.Device):
+                    def __init__(self,**kwargs):
+                        super().__init__(**kwargs)
+                        #######################################################################################
+                        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_MultiConverter_Sync_Config
+                        #######################################################################################
+                        self.addRemoteVariables(
+                            name         = 'AdcLatency',
+                            offset       = 0x11200,
+                            bitSize      = 32,
+                            mode         = 'RO',
+                            number       = 4,
+                            stride       = 4,
+                            base         = pr.Int, # s32
+                            pollInterval = 1,
+                        )
+
+                        self.addRemoteVariables(
+                            name         = 'AdcOffset',
+                            offset       = 0x11220,
+                            bitSize      = 32,
+                            mode         = 'RO',
+                            number       = 4,
+                            stride       = 4,
+                            base         = pr.Int, # s32
+                            pollInterval = 1,
+                        )
+
+                        #######################################################################################
+                        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecimationFactor
+                        #######################################################################################
+                        self.addRemoteVariables(
+                            name         = 'AdcDecimationFactor',
+                            offset       = 0x11240,
+                            bitSize      = 32,
+                            mode         = 'RO',
+                            number       = 4,
+                            stride       = 4,
+                            base         = pr.Int, # s32
+                            pollInterval = 1,
+                        )
+
+                        #######################################################################################
+                        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_MultiConverter_Sync_Config
+                        #######################################################################################
+                        self.addRemoteVariables(
+                            name         = 'DacLatency',
+                            offset       = 0x11210,
+                            bitSize      = 32,
+                            mode         = 'RO',
+                            number       = 4,
+                            stride       = 4,
+                            base         = pr.Int, # s32
+                            pollInterval = 1,
+                        )
+
+                        self.addRemoteVariables(
+                            name         = 'DacOffset',
+                            offset       = 0x11230,
+                            bitSize      = 32,
+                            mode         = 'RO',
+                            number       = 4,
+                            stride       = 4,
+                            base         = pr.Int, # s32
+                            pollInterval = 1,
+                        )
+
+                        #######################################################################################
+                        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
+                        #######################################################################################
+                        self.addRemoteVariables(
+                            name         = 'DacInterpolationFactor',
+                            offset       = 0x11250,
+                            bitSize      = 32,
+                            mode         = 'RO',
+                            number       = 4,
+                            stride       = 4,
+                            base         = pr.Int, # s32
+                            pollInterval = 1,
+                        )
+
+                # Adding the MTS device
+                self.add(MstStatus())
 
         # Adding the MTS device
         self.add(Mst())
