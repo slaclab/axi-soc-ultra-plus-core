@@ -22,8 +22,9 @@ class Rfdc(pr.Device):
             enAdcTile = [True,True,True,True],
             enDacTile = [True,True,True,True],
             gen3      = True, # True if using RFSoC GEN3 Hardware
+            hidden    = True,
             **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(hidden=hidden,**kwargs)
         self.gen3      = gen3
         self.enAdcTile = enAdcTile
         self.enDacTile = enDacTile
