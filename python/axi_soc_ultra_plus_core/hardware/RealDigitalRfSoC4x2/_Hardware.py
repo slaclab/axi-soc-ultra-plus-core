@@ -119,6 +119,7 @@ class Hardware(pr.Device):
             self.Lmk.PwrUpLmkChip()
             self.Lmk.LoadCodeLoaderHexFile(lmkConfig)
             self.Lmk.Init()
+            self.Lmk.SYNC_EN.set(1)
             self.Lmk.LmkReg_0x016E.set(value=0x13,verify=False) # STATUS_LD2 = PLL2 DLD
             self.Lmk.enable.set(False)
 
