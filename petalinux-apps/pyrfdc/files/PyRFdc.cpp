@@ -87,6 +87,13 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 
     XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
 
+    // Work around for MaxSampleRate until I figure out how to properly
+    //get the ConfigPtr (and/or devicetree) to set this configuration properly
+    for(j=0; j<4; j++) {
+        RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate = 5.9;
+        RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate = 10.0;
+    }
+
     // Init local variables
     errMsg_.clear();
     scratchPad_ = 0;
@@ -137,7 +144,9 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 
                 // Get the default QMC configuration
                 if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                    XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                    if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
+                        XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                    }
                 }
                 mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
 
@@ -218,7 +227,7 @@ void PyRFdc::Reset(int Tile_Id) {
                 mtsfactor_[i][j] = 0;
 
                 // Set the default PLL configuration
-                 if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
                     XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
                 }
                 clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
@@ -237,8 +246,10 @@ void PyRFdc::Reset(int Tile_Id) {
 
                     // Get the default Mixer configuration
                     if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                        if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
-                            XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                        if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
+                            if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
+                                XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                            }
                         }
                     }
                     mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
@@ -380,11 +391,14 @@ void PyRFdc::MixerSettings(uint8_t index) {
                 mixerConfig_[tileType_][tileId_][blockId_].MixerType      = uint8_t( (data_>>16) & 0xFF);
                 break;
             case 7:
-                // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetMixerSettings
-                status = XRFdc_SetMixerSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &mixerConfig_[tileType_][tileId_][blockId_]);
-                if (status != XRFDC_FAILURE) {
-                    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_UpdateEvent
-                    status = XRFdc_UpdateEvent(RFdcInstPtr_, tileType_, tileId_, blockId_, XRFDC_EVENT_MIXER);
+                status = XRFDC_FAILURE;
+                if ((tileType_==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(tileType_, tileId_, blockId_), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
+                    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetMixerSettings
+                    status = XRFdc_SetMixerSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &mixerConfig_[tileType_][tileId_][blockId_]);
+                    if (status != XRFDC_FAILURE) {
+                        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_UpdateEvent
+                        status = XRFdc_UpdateEvent(RFdcInstPtr_, tileType_, tileId_, blockId_, XRFDC_EVENT_MIXER);
+                    }
                 }
                 break;
             default:
