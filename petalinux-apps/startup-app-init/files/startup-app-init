@@ -66,7 +66,7 @@ fi
 # Ensure persistent SSH keys are used
 mkdir -p /boot/ssh
 if [ ! -f /boot/ssh/ssh_host_ed25519_key ]; then
-   echo "Generating new SSH host keys..."
+   # echo "Generating new SSH host keys..."
    ssh-keygen -A
    mv /etc/ssh/ssh_host_* /boot/ssh/
 fi
@@ -76,7 +76,7 @@ for keyfile in /boot/ssh/ssh_host_*; do
    link_path="/etc/ssh/$(basename "$keyfile")"
    if [ ! -L "$link_path" ] || [ "$(readlink "$link_path")" != "$keyfile" ]; then
       cp -f "$keyfile" "$link_path"
-      echo "Copied $keyfile to $link_path"
+      # echo "Copied $keyfile to $link_path"
       chmod 600 /etc/ssh/ssh_host_*
       chown root:root /etc/ssh/ssh_host_*
    fi
