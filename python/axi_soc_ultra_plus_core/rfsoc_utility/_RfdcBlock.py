@@ -240,11 +240,19 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteCommand(
-                    name         = 'UpdateEvent',
-                    description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
+                    name         = 'PushConfig',
+                    description  = 'This API function to execute XRFdc_SetMixerSettings',
                     offset       = 0x03C,
                     bitSize      = 1,
-                    function     = lambda cmd: cmd.post(1),
+                    function     = lambda cmd: cmd.set(1),
+                ))
+
+                self.add(pr.RemoteCommand(
+                    name         = 'UpdateEvent',
+                    description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
+                    offset       = 0x1DC,
+                    bitSize      = 1,
+                    function     = lambda cmd: cmd.set(1),
                 ))
 
         self.add(pr.LinkVariable(
@@ -323,11 +331,19 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteCommand(
-                    name         = 'UpdateEvent',
-                    description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
+                    name         = 'PushConfig',
+                    description  = 'This API function to execute XRFdc_GetQMCSettings',
                     offset       = 0x05C,
                     bitSize      = 1,
-                    function     = lambda cmd: cmd.post(1),
+                    function     = lambda cmd: cmd.set(1),
+                ))
+
+                self.add(pr.RemoteCommand(
+                    name         = 'UpdateEvent',
+                    description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
+                    offset       = 0x1E0,
+                    bitSize      = 1,
+                    function     = lambda cmd: cmd.set(1),
                 ))
 
         # Adding the QMC device
@@ -366,7 +382,7 @@ class RfdcBlock(pr.Device):
                     description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
                     offset       = 0x064,
                     bitSize      = 1,
-                    function     = lambda cmd: cmd.post(1),
+                    function     = lambda cmd: cmd.set(1),
                 ))
 
         # Adding the CoarseDelay device
@@ -584,7 +600,7 @@ class RfdcBlock(pr.Device):
             description  = 'This API function arms the NCO phase reset of the current block phase accumulator',
             offset       = 0x0B4,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
         ))
 
         #######################################################################################
@@ -1004,7 +1020,7 @@ class RfdcBlock(pr.Device):
                 description  = 'This API function resets the internal FIFO width to conform with rate change and mixer settings for the RF-ADC/RF-DAC.',
                 offset       = 0x1A0,
                 bitSize      = 1,
-                function     = lambda cmd: cmd.post(1),
+                function     = lambda cmd: cmd.set(1),
                 hidden       = True,
             ))
 
@@ -1017,7 +1033,7 @@ class RfdcBlock(pr.Device):
                 description  = 'This API function resets the internal observation FIFO width to conform with rate change and mixer settings for the RF-ADC.',
                 offset       = 0x1A4,
                 bitSize      = 1,
-                function     = lambda cmd: cmd.post(1),
+                function     = lambda cmd: cmd.set(1),
                 hidden       = True,
             ))
 

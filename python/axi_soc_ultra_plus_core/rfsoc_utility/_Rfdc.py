@@ -644,20 +644,6 @@ class Rfdc(pr.Device):
         self.ResetAllAdc()
         self.ResetAllDac()
 
-        # Update the PLL configuration to defaults
-        for i in range(4):
-            if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0):
-                self.AdcTile[i].PllConfig.ClockSource.set(self.AdcTile[i].PllStatus.ClockSource.get())
-                self.AdcTile[i].PllConfig.RefClkFreq.set(self.AdcTile[i].PllStatus.RefClkFreq.get())
-                self.AdcTile[i].PllConfig.SampleRate.set(self.AdcTile[i].PllStatus.SampleRate.get()*1000.0)
-                self.AdcTile[i].PllConfig.PllConfigUpdate()
-
-            if self.enDacTile[i] and (self.CheckDacTileEnabled[i].get() != 0):
-                self.DacTile[i].PllConfig.ClockSource.set(self.DacTile[i].PllStatus.ClockSource.get())
-                self.DacTile[i].PllConfig.RefClkFreq.set(self.DacTile[i].PllStatus.RefClkFreq.get())
-                self.DacTile[i].PllConfig.SampleRate.set(self.DacTile[i].PllStatus.SampleRate.get()*1000.0)
-                self.DacTile[i].PllConfig.PllConfigUpdate()
-
         # Title Reset
         for i in range(4):
             if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0):

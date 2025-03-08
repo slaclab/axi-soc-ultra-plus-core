@@ -72,9 +72,17 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     XRFdc_MultiConverter_Sync_Config mstConfig_[2];
     uint32_t mtsfactor_[2][4];
 
-    uint8_t pllConfigSrcAdc_[2][4];
-    double pllConfigRefClkFreq_[2][4];
-    double pllConfigSmplRate_[2][4];
+    uint32_t clkSrcDefault_[2][4];
+    uint32_t clkSrcConfig_[2][4];
+
+    XRFdc_PLL_Settings pllDefault_[2][4];
+    XRFdc_PLL_Settings pllConfig_[2][4];
+
+    XRFdc_QMC_Settings qmcDefault_[2][4][4];
+    XRFdc_QMC_Settings qmcConfig_[2][4][4];
+
+    XRFdc_Mixer_Settings mixerDefault_[2][4][4];
+    XRFdc_Mixer_Settings mixerConfig_[2][4][4];
 
     //! Application functions
     void StartUp(int Tile_Id);

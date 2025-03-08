@@ -529,7 +529,7 @@ class RfdcTile(pr.Device):
                 ))
 
                 #######################################################################################
-                # ttps://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
+                # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
                 #######################################################################################
                 self.add(pr.RemoteCommand(
                     name         = 'PllConfigUpdate',

@@ -61,7 +61,7 @@ PyRFdcPtr PyRFdc::create() {
 
 //! Create an block
 PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
-
+    int i, j, k;
     log_ = rogue::Logging::create("PyRFdc");
     metal_set_log_level(METAL_LOG_ERROR);
 
@@ -101,16 +101,40 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     blockId_ = 0;
     data_ = 0;
 
-    XRFdc_MultiConverter_Init(&mstConfig_[0], 0, 0, XRFDC_TILE_ID0);
-    XRFdc_MultiConverter_Init(&mstConfig_[1], 0, 0, XRFDC_TILE_ID0);
-    mstConfig_[0].Tiles = 0;
-    mstConfig_[1].Tiles = 0;
+    // Loop through type indexes
+    for(i=0; i<2; i++) {
+        // Init the MTS configurations
+        XRFdc_MultiConverter_Init(&mstConfig_[i], 0, 0, XRFDC_TILE_ID0);
+        mstConfig_[i].Tiles = 0;
 
-    std::fill_n(&mtsfactor_[0][0], 2 * 4, 0);
+        // Loop through tile indexes
+        for(j=0; j<4; j++) {
+            // Init the MTS factor status
+            mtsfactor_[i][j] = 0;
 
-    std::fill_n(&pllConfigSrcAdc_[0][0], 2 * 4, 0);
-    std::fill_n(&pllConfigRefClkFreq_[0][0], 2 * 4, 0.0);
-    std::fill_n(&pllConfigSmplRate_[0][0], 2 * 4, 0.0);
+            // Get the default Clock source
+            XRFdc_GetClockSource(RFdcInstPtr_, tileType_, tileId_, &clkSrcDefault_[i][j]);
+            clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
+
+            // Get the default PLL configuration
+            XRFdc_GetPLLConfig(RFdcInstPtr_, i, j, &pllDefault_[i][j]);
+            pllDefault_[i][j].SampleRate = 1000.0*pllDefault_[i][j].SampleRate; // Convert from GSPS to MSPS
+            pllConfig_[i][j] = pllDefault_[i][j];
+
+            // Loop through block indexes
+            for(k=0; k<4; k++) {
+
+                // Get the default QMC configuration
+                XRFdc_GetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]);
+                qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
+
+                // Get the default QMC configuration
+                XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+
+            }
+        }
+    }
 
     log_->debug("PyRFdc::PyRFdc()");
 }
@@ -159,7 +183,7 @@ void PyRFdc::Shutdown(int Tile_Id) {
 
 void PyRFdc::Reset(int Tile_Id) {
     int status = XRFDC_SUCCESS;
-
+    int i, j, k;
 
     // Check if read
     if (rdTxn_) {
@@ -169,6 +193,49 @@ void PyRFdc::Reset(int Tile_Id) {
     } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
         status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
+
+        // Check for global TYPE reset
+        if (Tile_Id<0) {
+            // Init the i variable
+            i = tileType_;
+
+            // Init the MTS configurations
+            XRFdc_MultiConverter_Init(&mstConfig_[i], 0, 0, XRFDC_TILE_ID0);
+            mstConfig_[i].Tiles = 0;
+
+            // Loop through tile indexes
+            for(j=0; j<4; j++) {
+                // Init the MTS factor status
+                mtsfactor_[i][j] = 0;
+
+                // Set the default PLL configuration
+                if ((XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) && (pllDefault_[i][j].Enabled > 0)) {
+                    XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
+                }
+                clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
+                pllConfig_[i][j] = pllDefault_[i][j];
+
+                // Loop through block indexes
+                for(k=0; k<4; k++) {
+
+                    // Set the default QMC configuration
+                    if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                        XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]);
+                    }
+                    qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
+
+                    // Get the default Mixer configuration
+                    if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                        XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                    }
+                    mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+
+                }
+            }
+
+            // Execute reset again after restoring the settings
+            status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
+        }
     }
 
     // Check if not successful
@@ -271,78 +338,73 @@ void PyRFdc::GetBlockStatus(uint8_t index) {
 
 void PyRFdc::MixerSettings(uint8_t index) {
     int status = XRFDC_SUCCESS;
-    XRFdc_Mixer_Settings settings;
-
-    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMixerSettings
-    status = XRFdc_GetMixerSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &settings);
 
     // Check if write
     if (!rdTxn_) {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Mixer_Settings
         switch (index) {
             case 0:
-                settings.Freq  = RemapDoubleWithUint32(settings.Freq, data_, false);
+                mixerConfig_[tileType_][tileId_][blockId_].Freq  = RemapDoubleWithUint32(mixerConfig_[tileType_][tileId_][blockId_].Freq, data_, false);
                 break;
             case 1:
-                settings.Freq  = RemapDoubleWithUint32(settings.Freq, data_, true);
+                mixerConfig_[tileType_][tileId_][blockId_].Freq  = RemapDoubleWithUint32(mixerConfig_[tileType_][tileId_][blockId_].Freq, data_, true);
                 break;
             case 2:
-                settings.PhaseOffset  = RemapDoubleWithUint32(settings.PhaseOffset, data_, false);
+                mixerConfig_[tileType_][tileId_][blockId_].PhaseOffset  = RemapDoubleWithUint32(mixerConfig_[tileType_][tileId_][blockId_].PhaseOffset, data_, false);
                 break;
             case 3:
-                settings.PhaseOffset  = RemapDoubleWithUint32(settings.PhaseOffset, data_, true);
+                mixerConfig_[tileType_][tileId_][blockId_].PhaseOffset  = RemapDoubleWithUint32(mixerConfig_[tileType_][tileId_][blockId_].PhaseOffset, data_, true);
                 break;
             case 4:
-                settings.EventSource = data_;
+                mixerConfig_[tileType_][tileId_][blockId_].EventSource = data_;
                 break;
             case 5:
-                settings.CoarseMixFreq = data_;
+                mixerConfig_[tileType_][tileId_][blockId_].CoarseMixFreq = data_;
                 break;
             case 6:
-                settings.MixerMode      = uint32_t((data_>>0)  & 0xFF);
-                settings.FineMixerScale = uint8_t( (data_>>8)  & 0xFF);
-                settings.MixerType      = uint8_t( (data_>>16) & 0xFF);
+                mixerConfig_[tileType_][tileId_][blockId_].MixerMode      = uint32_t((data_>>0)  & 0xFF);
+                mixerConfig_[tileType_][tileId_][blockId_].FineMixerScale = uint8_t( (data_>>8)  & 0xFF);
+                mixerConfig_[tileType_][tileId_][blockId_].MixerType      = uint8_t( (data_>>16) & 0xFF);
                 break;
             case 7:
-                status = XRFDC_FAILURE;
+                // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetMixerSettings
+                status = XRFdc_SetMixerSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &mixerConfig_[tileType_][tileId_][blockId_]);
                 break;
             default:
                 status = XRFDC_FAILURE;
                 break;
         }
-        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetMixerSettings
-        status = XRFdc_SetMixerSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &settings);
 
     // Else read
     } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Mixer_Settings
         switch (index) {
             case 0:
-                data_  = DoubleToUint32(settings.Freq, false);
+                data_  = DoubleToUint32(mixerConfig_[tileType_][tileId_][blockId_].Freq, false);
                 break;
             case 1:
-                data_  = DoubleToUint32(settings.Freq, true);
+                data_  = DoubleToUint32(mixerConfig_[tileType_][tileId_][blockId_].Freq, true);
                 break;
             case 2:
-                data_  = DoubleToUint32(settings.PhaseOffset, false);
+                data_  = DoubleToUint32(mixerConfig_[tileType_][tileId_][blockId_].PhaseOffset, false);
                 break;
             case 3:
-                data_  = DoubleToUint32(settings.PhaseOffset, true);
+                data_  = DoubleToUint32(mixerConfig_[tileType_][tileId_][blockId_].PhaseOffset, true);
                 break;
             case 4:
-                data_ = settings.EventSource;
+                data_ = mixerConfig_[tileType_][tileId_][blockId_].EventSource;
                 break;
             case 5:
-                data_ = settings.CoarseMixFreq;
+                data_ = mixerConfig_[tileType_][tileId_][blockId_].CoarseMixFreq;
                 break;
             case 6:
-                data_  = uint32_t(settings.MixerMode&0xFF)      <<0;  // BIT7:BIT0
-                data_ |= uint32_t(settings.FineMixerScale&0xFF) <<8;  // BIT15:BIT8
-                data_ |= uint32_t(settings.MixerType&0xFF)      <<16; // BIT23:BIT16
+                data_  = uint32_t(mixerConfig_[tileType_][tileId_][blockId_].MixerMode&0xFF)      <<0;  // BIT7:BIT0
+                data_ |= uint32_t(mixerConfig_[tileType_][tileId_][blockId_].FineMixerScale&0xFF) <<8;  // BIT15:BIT8
+                data_ |= uint32_t(mixerConfig_[tileType_][tileId_][blockId_].MixerType&0xFF)      <<16; // BIT23:BIT16
 
                 break;
             case 7:
-                status = XRFDC_FAILURE;
+                data_ = XRFDC_SUCCESS;
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -358,75 +420,70 @@ void PyRFdc::MixerSettings(uint8_t index) {
 
 void PyRFdc::QMCSettings(uint8_t index) {
     int status = XRFDC_SUCCESS;
-    XRFdc_QMC_Settings settings;
-
-    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetQMCSettings
-    status = XRFdc_GetQMCSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &settings);
 
     // Check if write
     if (!rdTxn_) {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_QMC_Settings
         switch (index) {
             case 0:
-                settings.EnablePhase = (data_>>0)&0x1;
-                settings.EnableGain  = (data_>>1)&0x1;
+                qmcConfig_[tileType_][tileId_][blockId_].EnablePhase = (data_>>0)&0x1;
+                qmcConfig_[tileType_][tileId_][blockId_].EnableGain  = (data_>>1)&0x1;
                 break;
             case 1:
-                settings.EventSource = data_;
+                qmcConfig_[tileType_][tileId_][blockId_].EventSource = data_;
                 break;
             case 2:
-                settings.GainCorrectionFactor  = RemapDoubleWithUint32(settings.GainCorrectionFactor, data_, false);
+                qmcConfig_[tileType_][tileId_][blockId_].GainCorrectionFactor  = RemapDoubleWithUint32(qmcConfig_[tileType_][tileId_][blockId_].GainCorrectionFactor, data_, false);
                 break;
             case 3:
-                settings.GainCorrectionFactor  = RemapDoubleWithUint32(settings.GainCorrectionFactor, data_, true);
+                qmcConfig_[tileType_][tileId_][blockId_].GainCorrectionFactor  = RemapDoubleWithUint32(qmcConfig_[tileType_][tileId_][blockId_].GainCorrectionFactor, data_, true);
                 break;
             case 4:
-                settings.PhaseCorrectionFactor  = RemapDoubleWithUint32(settings.PhaseCorrectionFactor, data_, false);
+                qmcConfig_[tileType_][tileId_][blockId_].PhaseCorrectionFactor  = RemapDoubleWithUint32(qmcConfig_[tileType_][tileId_][blockId_].PhaseCorrectionFactor, data_, false);
                 break;
             case 5:
-                settings.PhaseCorrectionFactor  = RemapDoubleWithUint32(settings.PhaseCorrectionFactor, data_, true);
+                qmcConfig_[tileType_][tileId_][blockId_].PhaseCorrectionFactor  = RemapDoubleWithUint32(qmcConfig_[tileType_][tileId_][blockId_].PhaseCorrectionFactor, data_, true);
                 break;
             case 6:
-                settings.OffsetCorrectionFactor = data_;
+                qmcConfig_[tileType_][tileId_][blockId_].OffsetCorrectionFactor = data_;
                 break;
             case 7:
-                status = XRFDC_FAILURE;
+                // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetQMCSettings
+                status = XRFdc_SetQMCSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &qmcConfig_[tileType_][tileId_][blockId_]);
                 break;
             default:
                 status = XRFDC_FAILURE;
                 break;
         }
-        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetQMCSettings
-        status = XRFdc_SetQMCSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &settings);
 
     // Else read
     } else {
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_QMC_Settings
         switch (index) {
             case 0:
-                data_  = uint32_t(settings.EnablePhase&0x1) <<0; // BIT0
-                data_ |= uint32_t(settings.EnableGain &0x1) <<1; // BIT1
+                data_  = uint32_t(qmcConfig_[tileType_][tileId_][blockId_].EnablePhase&0x1) <<0; // BIT0
+                data_ |= uint32_t(qmcConfig_[tileType_][tileId_][blockId_].EnableGain &0x1) <<1; // BIT1
                 break;
             case 1:
-                data_ = settings.EventSource;
+                data_ = qmcConfig_[tileType_][tileId_][blockId_].EventSource;
                 break;
             case 2:
-                data_  = DoubleToUint32(settings.GainCorrectionFactor, false);
+                data_  = DoubleToUint32(qmcConfig_[tileType_][tileId_][blockId_].GainCorrectionFactor, false);
                 break;
             case 3:
-                data_  = DoubleToUint32(settings.GainCorrectionFactor, true);
+                data_  = DoubleToUint32(qmcConfig_[tileType_][tileId_][blockId_].GainCorrectionFactor, true);
                 break;
             case 4:
-                data_  = DoubleToUint32(settings.PhaseCorrectionFactor, false);
+                data_  = DoubleToUint32(qmcConfig_[tileType_][tileId_][blockId_].PhaseCorrectionFactor, false);
                 break;
             case 5:
-                data_  = DoubleToUint32(settings.PhaseCorrectionFactor, true);
+                data_  = DoubleToUint32(qmcConfig_[tileType_][tileId_][blockId_].PhaseCorrectionFactor, true);
                 break;
             case 6:
-                data_ = settings.OffsetCorrectionFactor;
+                data_ = qmcConfig_[tileType_][tileId_][blockId_].OffsetCorrectionFactor;
                 break;
             case 7:
-                status = XRFDC_FAILURE;
+                data_ = XRFDC_SUCCESS;
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -480,7 +537,7 @@ void PyRFdc::UpdateEvent(uint32_t XRFDC_EVENT) {
 
     // Else read
     } else {
-        status = XRFDC_FAILURE;
+        data_ = XRFDC_SUCCESS;
     }
 
     // Check if not successful
@@ -910,7 +967,7 @@ void PyRFdc::ResetNCOPhase() {
 
     // Else read
     } else {
-        status = XRFDC_FAILURE;
+        data_ = XRFDC_SUCCESS;
     }
 
     // Check if not successful
@@ -1803,7 +1860,7 @@ void PyRFdc::ResetInternalFIFOWidth() {
 
     // Else read
     } else {
-        status = XRFDC_FAILURE;
+        data_ = XRFDC_SUCCESS;
     }
 
     // Check if not successful
@@ -1829,7 +1886,7 @@ void PyRFdc::ResetInternalFIFOWidthObs() {
 
         // Else read
         } else {
-            status = XRFDC_FAILURE;
+            data_ = XRFDC_SUCCESS;
         }
     }
 
@@ -2507,23 +2564,23 @@ void PyRFdc::DynamicPLLConfig(uint8_t index) {
     if (!rdTxn_) {
         switch (index) {
             case 0:
-                pllConfigRefClkFreq_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigRefClkFreq_[tileType_][tileId_], data_, false);
+                pllConfig_[tileType_][tileId_].RefClkFreq = RemapDoubleWithUint32(pllConfig_[tileType_][tileId_].RefClkFreq, data_, false);
                 break;
             case 1:
-                pllConfigRefClkFreq_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigRefClkFreq_[tileType_][tileId_], data_, true);
+                pllConfig_[tileType_][tileId_].RefClkFreq = RemapDoubleWithUint32(pllConfig_[tileType_][tileId_].RefClkFreq, data_, true);
                 break;
             case 2:
-                pllConfigSmplRate_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigSmplRate_[tileType_][tileId_], data_, false);
+                pllConfig_[tileType_][tileId_].SampleRate = RemapDoubleWithUint32(pllConfig_[tileType_][tileId_].SampleRate, data_, false);
                 break;
             case 3:
-                pllConfigSmplRate_[tileType_][tileId_] = RemapDoubleWithUint32(pllConfigSmplRate_[tileType_][tileId_], data_, true);
+                pllConfig_[tileType_][tileId_].SampleRate = RemapDoubleWithUint32(pllConfig_[tileType_][tileId_].SampleRate, data_, true);
                 break;
             case 4:
-                pllConfigSrcAdc_[tileType_][tileId_] = uint8_t(data_&0x1);
+                clkSrcConfig_[tileType_][tileId_] = data_;
                 break;
             case 5:
                 // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_DynamicPLLConfig
-                status = XRFdc_DynamicPLLConfig(RFdcInstPtr_, tileType_, tileId_, pllConfigSrcAdc_[tileType_][tileId_], pllConfigRefClkFreq_[tileType_][tileId_], pllConfigSmplRate_[tileType_][tileId_]);
+                status = XRFdc_DynamicPLLConfig(RFdcInstPtr_, tileType_, tileId_, uint8_t(clkSrcConfig_[tileType_][tileId_]), pllConfig_[tileType_][tileId_].RefClkFreq, pllConfig_[tileType_][tileId_].SampleRate);
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -2534,19 +2591,19 @@ void PyRFdc::DynamicPLLConfig(uint8_t index) {
     } else {
         switch (index) {
             case 0:
-                data_ = DoubleToUint32(pllConfigRefClkFreq_[tileType_][tileId_], false);
+                data_ = DoubleToUint32(pllConfig_[tileType_][tileId_].RefClkFreq, false);
                 break;
             case 1:
-                data_ = DoubleToUint32(pllConfigRefClkFreq_[tileType_][tileId_], true);
+                data_ = DoubleToUint32(pllConfig_[tileType_][tileId_].RefClkFreq, true);
                 break;
             case 2:
-                data_ = DoubleToUint32(pllConfigSmplRate_[tileType_][tileId_], false);
+                data_ = DoubleToUint32(pllConfig_[tileType_][tileId_].SampleRate, false);
                 break;
             case 3:
-                data_ = DoubleToUint32(pllConfigSmplRate_[tileType_][tileId_], true);
+                data_ = DoubleToUint32(pllConfig_[tileType_][tileId_].SampleRate, true);
                 break;
             case 4:
-                data_ = uint32_t(pllConfigSrcAdc_[tileType_][tileId_]);
+                data_ = clkSrcConfig_[tileType_][tileId_];
                 break;
             case 5:
                 data_ = XRFDC_SUCCESS;
@@ -3339,17 +3396,11 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                     if ( (blockAddr >= 0x000) && (blockAddr <= 0x008) ) {
                         GetBlockStatus((blockAddr>>2)&0x3);
 
-                    } else if ( (blockAddr >= 0x020) && (blockAddr <= 0x038) ) {
+                    } else if ( (blockAddr >= 0x020) && (blockAddr <= 0x03C) ) {
                         MixerSettings((blockAddr>>2)&0x7);
 
-                    } else if (blockAddr==0x03C) {
-                        UpdateEvent(XRFDC_EVENT_MIXER);
-
-                    } else if ( (blockAddr >= 0x040) && (blockAddr <= 0x058) ) {
+                    } else if ( (blockAddr >= 0x040) && (blockAddr <= 0x05C) ) {
                         QMCSettings((blockAddr>>2)&0x7);
-
-                    } else if (blockAddr==0x05C) {
-                        UpdateEvent(XRFDC_EVENT_QMC);
 
                     } else if (blockAddr==0x060) {
                         CoarseDelaySettings();
@@ -3491,6 +3542,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
                     } else if (blockAddr==0x1D8) {
                         CheckDigitalPathEnabled();
+
+                    } else if (blockAddr==0x1DC) {
+                        UpdateEvent(XRFDC_EVENT_MIXER);
+
+                    } else if (blockAddr==0x1E0) {
+                        UpdateEvent(XRFDC_EVENT_QMC);
 
                     } else {
                         errMsg_ = "Undefined memory";
