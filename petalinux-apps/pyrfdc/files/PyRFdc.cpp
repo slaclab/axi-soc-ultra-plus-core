@@ -229,13 +229,17 @@ void PyRFdc::Reset(int Tile_Id) {
 
                     // Set the default QMC configuration
                     if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                        XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]);
+                        if (XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
+                            XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
+                        }
                     }
                     qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
 
                     // Get the default Mixer configuration
                     if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                        XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                        if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
+                            XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                        }
                     }
                     mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
 
@@ -378,6 +382,10 @@ void PyRFdc::MixerSettings(uint8_t index) {
             case 7:
                 // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetMixerSettings
                 status = XRFdc_SetMixerSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &mixerConfig_[tileType_][tileId_][blockId_]);
+                if (status != XRFDC_FAILURE) {
+                    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_UpdateEvent
+                    status = XRFdc_UpdateEvent(RFdcInstPtr_, tileType_, tileId_, blockId_, XRFDC_EVENT_MIXER);
+                }
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -459,6 +467,10 @@ void PyRFdc::QMCSettings(uint8_t index) {
             case 7:
                 // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetQMCSettings
                 status = XRFdc_SetQMCSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &qmcConfig_[tileType_][tileId_][blockId_]);
+                if (status != XRFDC_FAILURE) {
+                    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_UpdateEvent
+                    status = XRFdc_UpdateEvent(RFdcInstPtr_, tileType_, tileId_, blockId_, XRFDC_EVENT_QMC);
+                }
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -3475,12 +3487,6 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
                     } else if (blockAddr==0x1D8) {
                         CheckDigitalPathEnabled();
-
-                    } else if (blockAddr==0x1DC) {
-                        UpdateEvent(XRFDC_EVENT_MIXER);
-
-                    } else if (blockAddr==0x1E0) {
-                        UpdateEvent(XRFDC_EVENT_QMC);
 
                     } else {
                         errMsg_ = "Undefined memory";

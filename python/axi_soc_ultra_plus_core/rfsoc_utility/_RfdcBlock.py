@@ -240,17 +240,9 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteCommand(
-                    name         = 'PushConfig',
-                    description  = 'This API function to execute XRFdc_SetMixerSettings',
-                    offset       = 0x03C,
-                    bitSize      = 1,
-                    function     = lambda cmd: cmd.set(1),
-                ))
-
-                self.add(pr.RemoteCommand(
                     name         = 'UpdateEvent',
                     description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
-                    offset       = 0x1DC,
+                    offset       = 0x03C,
                     bitSize      = 1,
                     function     = lambda cmd: cmd.set(1),
                 ))
@@ -331,17 +323,9 @@ class RfdcBlock(pr.Device):
                 ))
 
                 self.add(pr.RemoteCommand(
-                    name         = 'PushConfig',
-                    description  = 'This API function to execute XRFdc_GetQMCSettings',
-                    offset       = 0x05C,
-                    bitSize      = 1,
-                    function     = lambda cmd: cmd.set(1),
-                ))
-
-                self.add(pr.RemoteCommand(
                     name         = 'UpdateEvent',
                     description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
-                    offset       = 0x1E0,
+                    offset       = 0x05C,
                     bitSize      = 1,
                     function     = lambda cmd: cmd.set(1),
                 ))

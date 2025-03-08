@@ -19,15 +19,14 @@ import axi_soc_ultra_plus_core.rfsoc_utility as rfsoc_utility
 class Rfdc(pr.Device):
     def __init__(
             self,
-            enAdcTile = [True,True,True,True],
-            enDacTile = [True,True,True,True],
+            enAdcTile = None,
+            enDacTile = None,
             gen3      = True, # True if using RFSoC GEN3 Hardware
-            hidden    = True,
             **kwargs):
-        super().__init__(hidden=hidden,**kwargs)
+        super().__init__(**kwargs)
         self.gen3      = gen3
-        self.enAdcTile = enAdcTile
-        self.enDacTile = enDacTile
+        self.enAdcTile = [True,True,True,True] if enAdcTile is None else enAdcTile
+        self.enDacTile = [True,True,True,True] if enDacTile is None else enDacTile
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/IP-Version-Information-0x0000
@@ -76,6 +75,7 @@ class Rfdc(pr.Device):
             offset       = 0x10000,
             bitSize      = 1,
             function     = lambda cmd: cmd.post(1),
+            hidden       = True,
         ))
 
         self.add(pr.RemoteCommand(
@@ -84,6 +84,7 @@ class Rfdc(pr.Device):
             offset       = 0x10004,
             bitSize      = 1,
             function     = lambda cmd: cmd.post(1),
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -95,6 +96,7 @@ class Rfdc(pr.Device):
             offset       = 0x10008,
             bitSize      = 1,
             function     = lambda cmd: cmd.post(1),
+            hidden       = True,
         ))
 
         self.add(pr.RemoteCommand(
@@ -103,6 +105,7 @@ class Rfdc(pr.Device):
             offset       = 0x1000C,
             bitSize      = 1,
             function     = lambda cmd: cmd.post(1),
+            hidden       = True,
         ))
 
         #######################################################################################

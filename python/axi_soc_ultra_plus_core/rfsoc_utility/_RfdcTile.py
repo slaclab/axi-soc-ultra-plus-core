@@ -84,6 +84,7 @@ class RfdcTile(pr.Device):
             offset       = 0x000,
             bitSize      = 1,
             function     = lambda cmd: cmd.post(1),
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -95,6 +96,7 @@ class RfdcTile(pr.Device):
             offset       = 0x004,
             bitSize      = 1,
             function     = lambda cmd: cmd.post(1),
+            hidden       = True,
         ))
 
         #######################################################################################
