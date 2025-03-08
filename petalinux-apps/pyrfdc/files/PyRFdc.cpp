@@ -113,7 +113,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
             mtsfactor_[i][j] = 0;
 
             // Get the default Clock source
-            XRFdc_GetClockSource(RFdcInstPtr_, tileType_, tileId_, &clkSrcDefault_[i][j]);
+            XRFdc_GetClockSource(RFdcInstPtr_, i, j, &clkSrcDefault_[i][j]);
             clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
 
             // Get the default PLL configuration
