@@ -55,6 +55,7 @@
 		num-insts = <0x1>;
 		param-list = [ ];
 		reg = <0x4 0x90000000 0x0 0x40000>;
+		interrupts = <0 90 4>;
+		interrupt-parent = <&gic>;
 	};
 };
-

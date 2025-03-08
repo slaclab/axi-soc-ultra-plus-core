@@ -9,6 +9,9 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
+# Clear terminal output
+echo -ne "\033c"
+
 # Set default values
 rfdc=1
 
@@ -41,6 +44,17 @@ if ! awk -v current="$PETALINUX_VER" -v expected="$EXPECTED_VERSION" \
    'BEGIN {exit !(current == expected)}'; then
    echo "Error: PETALINUX_VER is not set to $EXPECTED_VERSION"
    exit 1
+fi
+
+# Check total buffer size
+TOTAL_BUFFER_SIZE=$(( (dmaTxBuffCount + dmaRxBuffCount) * dmaBuffSize ))
+MAX_BUFFER_SIZE=$((0x60000000)) # 1.5 GB (1610612736 bytes)
+if (( TOTAL_BUFFER_SIZE > MAX_BUFFER_SIZE )); then
+    HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B --format="%.2f" "$TOTAL_BUFFER_SIZE")
+    HEX_SIZE=$(printf "0x%X" "$TOTAL_BUFFER_SIZE")
+    echo "Error: Total buffer size exceeds 1.5 GB (0x60000000)."
+    echo "Current size: $HUMAN_SIZE ($HEX_SIZE)"
+    exit 1
 fi
 
 ##############################################################################
@@ -138,13 +152,8 @@ then
    done
 fi
 
-##############################################################################
-
 # Re-configure before building kernel
 petalinux-config --silentconfig
-
-# Build kernel
-petalinux-build -c kernel
 
 ##############################################################################
 
@@ -195,11 +204,17 @@ echo IMAGE_INSTALL:append = \" axiversiondump\" >> build/conf/local.conf
 # Check if including RFDC utility
 if [ "$rfdc" -eq 1 ]
 then
-    # Add RFDC selftest application
-    petalinux-create apps --template install -n rfdc-test
-    echo CONFIG_rfdc-test=y >> project-spec/configs/rootfs_config
-    cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-test project-spec/meta-user/recipes-apps/.
-    echo IMAGE_INSTALL:append = \" rfdc-test\" >> build/conf/local.conf
+   # Add RFDC-CLI application
+   petalinux-create apps --template install -n rfdc-cli
+   echo CONFIG_rfdc-cli=y >> project-spec/configs/rootfs_config
+   cp -rf $axi_soc_ultra_plus_core/petalinux-apps/rfdc-cli project-spec/meta-user/recipes-apps/.
+   echo IMAGE_INSTALL:append = \" rfdc-cli\" >> build/conf/local.conf
+
+   # Add Rogue Python RFDC Module
+   petalinux-create apps --template install -n pyrfdc
+   echo CONFIG_pyrfdc=y >> project-spec/configs/rootfs_config
+   cp -rf $axi_soc_ultra_plus_core/petalinux-apps/pyrfdc project-spec/meta-user/recipes-apps/.
+   echo IMAGE_INSTALL:append = \" pyrfdc\" >> build/conf/local.conf
 fi
 
 ##############################################################################
@@ -228,7 +243,7 @@ echo CONFIG_iperf3   >> project-spec/meta-user/conf/user-rootfsconfig
 
 ##############################################################################
 
-# Finalize the System Image
+# Build Everything!
 petalinux-build
 
 # Create boot files

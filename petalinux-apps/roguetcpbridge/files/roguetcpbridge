@@ -20,13 +20,75 @@ import ipaddress
 import time
 import argparse
 
-# rogue.Logging.setLevel(rogue.Logging.Debug)
+#################################################################
 
-##############################################################################
-## Refer to https://jira.slac.stanford.edu/browse/ESROGUE-549 if you want to
-## have more than 100 TCP streams.  That JIRA ticket explains how to configure
-## the kernel to support all 2048 possible lanes (8 DMA lanes x 256 TDEST)
-##############################################################################
+if False:
+    # Set Rogue logging level globally to WARNING to suppress unwanted debug messages
+    rogue.Logging.setLevel(rogue.Logging.Warning)
+
+    # Enable Debug logging ONLY for PyRFdc
+    rogue.Logging.setFilter("pyrogue.PyRFdc", rogue.Logging.Debug)
+
+#################################################################
+
+class ZynqTcpServer(object):
+    def __init__(self,numLane,numDest):
+
+        # Memory server on port [9000:9001]
+        print( 'Starting Memory TcpServer at Port=9000')
+        self.memMap = rogue.hardware.axi.AxiMemMap('/dev/axi_memory_map')
+        self.memServer = rogue.interfaces.memory.TcpServer('*', 9000)
+        self.memServer >> self.memMap
+
+        # Data server on port [10000+512*lane+2*tdest:10000+512*lane+2*tdest+1]
+        self.dmaStream = [[None] * numDest for _ in range(numLane)]
+        self.dataServer = [[None] * numDest for _ in range(numLane)]
+        for lane in range(numLane):
+            for tdest in range(numDest):
+                port = 10000+512*lane+2*tdest
+                print( f'Starting Stream TcpServer at Port={port} and Port={port+1} for DMA[{lane}][{tdest}]' )
+                self.dmaStream[lane][tdest] = rogue.hardware.axi.AxiStreamDma('/dev/axi_stream_dma_0', 256*lane+tdest, True)
+                self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
+                self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
+
+        # PyRFdc Integration
+        self.apiMap = None
+        self.rfdcApi = None
+
+        try:
+            import PyRFdc
+            print("PyRFdc module imported successfully.")
+
+            # Memory server on port [9002:9003]
+            self.apiMap = rogue.interfaces.memory.TcpServer('*', 9002)
+            self.rfdcApi = PyRFdc.PyRFdc()
+            self.apiMap >> self.rfdcApi
+
+        except (ImportError, ModuleNotFoundError):
+            print("PyRFdc module is not installed.")
+        except Exception as e:
+            print(f"Error initializing PyRFdc: {e}")
+
+    def __enter__(self):
+        """Enable using the class as a context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Shutdown when exiting the 'with' block."""
+        print("Shutting down TCP servers...")
+        del self.memServer
+        del self.memMap
+        del self.dataServer
+        del self.dmaStream
+
+        if self.apiMap:
+            del self.apiMap
+        if self.rfdcApi:
+            del self.rfdcApi
+
+        print("Shutdown complete.")
+
+#################################################################
 
 if __name__ == "__main__":
 
@@ -34,6 +96,12 @@ if __name__ == "__main__":
 
     # Set the argument parser
     parser = argparse.ArgumentParser()
+
+    ##############################################################################
+    ## Refer to https://jira.slac.stanford.edu/browse/ESROGUE-549 if you want to
+    ## have more than 100 TCP streams.  That JIRA ticket explains how to configure
+    ## the kernel to support all 2048 possible lanes (8 DMA lanes x 256 TDEST)
+    ##############################################################################
 
     # Add arguments
     parser.add_argument(
@@ -57,44 +125,26 @@ if __name__ == "__main__":
 
     #################################################################
 
-    class ZynqTcpServer(object):
-
-        def __init__(self):
-
-            # Memory server on port 9000
-            print( 'Starting Memory TcpServer at Port=9000')
-            self.memMap = rogue.hardware.axi.AxiMemMap('/dev/axi_memory_map')
-            self.memServer = rogue.interfaces.memory.TcpServer('*', 9000)
-            self.memServer >> self.memMap
-
-            # Data server on port 10000+512*lane+2*tdest
-            self.dmaStream = [[None for x in range(args.tdest)] for y in range(args.lane)]
-            self.dataServer = [[None for x in range(args.tdest)] for y in range(args.lane)]
-            for lane in range(args.lane):
-                for tdest in range(args.tdest):
-                    port = 10000+512*lane+2*tdest
-                    print( f'Starting Stream TcpServer at Port={port} and Port={port+1} for DMA[{lane}][{tdest}]' )
-                    self.dmaStream[lane][tdest] = rogue.hardware.axi.AxiStreamDma('/dev/axi_stream_dma_0', 256*lane+tdest, True)
-                    self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
-                    self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
-
     def eth0_ready():
-        command = 'ip -4 -o addr show eth0'.split()
-        return (subprocess.check_output(command).decode() != '')
-
-    #################################################################
+        """Check if eth0 has an IP address."""
+        try:
+            command = 'ip -4 -o addr show eth0'.split()
+            return bool(subprocess.check_output(command).strip())
+        except subprocess.CalledProcessError:
+            return False
 
     # Wait for NIC to be ready
     while(eth0_ready() is False):
         print('Waiting for eth0 to get IP address')
         time.sleep(5.0)
 
-    # Create the server
-    server = ZynqTcpServer()
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print('Stopping TcpServers')
+    #################################################################
+
+    # Create the TCP bridge
+    with ZynqTcpServer(
+        numLane = args.lane,
+        numDest = args.tdest,
+    ) as server:
+        pyrogue.waitCntrlC()
 
     #################################################################

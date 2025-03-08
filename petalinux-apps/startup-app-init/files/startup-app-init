@@ -25,7 +25,7 @@ then
    mount /dev/mmcblk0p2 /app
 fi
 
-###########################################################################
+##############################################################################
 
 # Standard SD-memory[1] card interface
 if [ -d "/run/media/boot-mmcblk1p1" ]
@@ -43,7 +43,7 @@ then
    mount /dev/mmcblk1p2 /app
 fi
 
-###########################################################################
+##############################################################################
 
 # KR260 using USB mounted SD-memory card
 if [ -d "/run/media/sda1" ]
@@ -61,7 +61,31 @@ then
    mount /dev/sda2 /app
 fi
 
-###########################################################################
+##############################################################################
+
+# Ensure persistent SSH keys are used
+mkdir -p /boot/ssh
+if [ ! -f /boot/ssh/ssh_host_ed25519_key ]; then
+   # echo "Generating new SSH host keys..."
+   ssh-keygen -A
+   mv /etc/ssh/ssh_host_* /boot/ssh/
+fi
+
+# Copy all SSH host keys from persistent storage to rootfs
+for keyfile in /boot/ssh/ssh_host_*; do
+   link_path="/etc/ssh/$(basename "$keyfile")"
+   if [ ! -L "$link_path" ] || [ "$(readlink "$link_path")" != "$keyfile" ]; then
+      cp -f "$keyfile" "$link_path"
+      # echo "Copied $keyfile to $link_path"
+      chmod 600 /etc/ssh/ssh_host_*
+      chown root:root /etc/ssh/ssh_host_*
+   fi
+done
+
+# Restarting SSH service
+/usr/sbin/sshd
+
+##############################################################################
 
 # Check if mac file exists in SD boot partition
 if [ -f "/boot/mac" ]
@@ -80,7 +104,7 @@ then
    ip addr add $(cat /boot/ip)/24 dev eth0
 fi
 
-###########################################################################
+##############################################################################
 
 # Check if drivers already load before loading 2nd stage bitstream
 if [ -f "/proc/axi_stream_dma_0" ]
@@ -94,7 +118,7 @@ then
    rmmod -s axi_stream_dma
 fi
 
-###########################################################################
+##############################################################################
 
 # Load the user's firmware (PL) .bit file (A.K.A. "2nd stage boot")
 if [ -f "/boot/system.bit" ]
@@ -111,7 +135,7 @@ fi
 insmod /lib/modules/$(uname -r)/updates/axi_memory_map.ko
 insmod /lib/modules/$(uname -r)/updates/axi_stream_dma.ko
 
-###########################################################################
+##############################################################################
 
 # Dump AxiVersion Status
 /usr/bin/axiversiondump
@@ -126,4 +150,4 @@ else
    /usr/bin/roguetcpbridge
 fi
 
-###########################################################################
+##############################################################################
