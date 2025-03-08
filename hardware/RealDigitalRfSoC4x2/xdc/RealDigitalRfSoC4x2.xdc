@@ -63,38 +63,6 @@ set_property -dict { PACKAGE_PIN AU10 IOSTANDARD LVCMOS18 } [get_ports { userLed
 
 ##############################################################################
 
-## ADC TILE 224
-#set_property PACKAGE_PIN AP2 [get_ports { adcP[0] }]
-#set_property PACKAGE_PIN AP1 [get_ports { adcN[0] }]
-#set_property PACKAGE_PIN AM2 [get_ports { adcP[1] }]
-#set_property PACKAGE_PIN AM1 [get_ports { adcN[1] }]
-#set_property PACKAGE_PIN AF5 [get_ports { adcClkP[0] }]
-#set_property PACKAGE_PIN AF4 [get_ports { adcClkN[0] }]
-
-## ADC TILE 226
-#set_property PACKAGE_PIN AF2 [get_ports { adcP[2] }]
-#set_property PACKAGE_PIN AF1 [get_ports { adcN[2] }]
-#set_property PACKAGE_PIN AD2 [get_ports { adcP[3] }]
-#set_property PACKAGE_PIN AD1 [get_ports { adcN[3] }]
-#set_property PACKAGE_PIN AB5 [get_ports { adcClkP[1] }]
-#set_property PACKAGE_PIN AB4 [get_ports { adcClkN[1] }]
-
-## DAC TILE 228
-#set_property PACKAGE_PIN U2 [get_ports { dacP[0] }]
-#set_property PACKAGE_PIN U1 [get_ports { dacN[0] }]
-#set_property PACKAGE_PIN R5 [get_ports { dacClkP[0] }]
-#set_property PACKAGE_PIN R4 [get_ports { dacClkN[0] }]
-#set_property PACKAGE_PIN U5 [get_ports { sysRefP }]
-#set_property PACKAGE_PIN U4 [get_ports { sysRefN }]
-
-## DAC TILE 230
-#set_property PACKAGE_PIN J2 [get_ports { dacP[1] }]
-#set_property PACKAGE_PIN J1 [get_ports { dacN[1] }]
-#set_property PACKAGE_PIN N5 [get_ports { dacClkP[1] }]
-#set_property PACKAGE_PIN N4 [get_ports { dacClkN[1] }]
-
-##############################################################################
-
 set_property PACKAGE_PIN J15 [get_ports {ddrDm[0]}]
 set_property PACKAGE_PIN N14 [get_ports {ddrDm[1]}]
 set_property PACKAGE_PIN D18 [get_ports {ddrDm[2]}]
