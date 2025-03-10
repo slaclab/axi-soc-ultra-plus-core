@@ -116,7 +116,7 @@ class Rfdc(pr.Device):
             description  = 'This API function resets ALL ADC tiles',
             offset       = 0x10010,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: cmd.set(1), # Make sure to set rogue.root timeout > 2.0
         ))
 
         self.add(pr.RemoteCommand(
@@ -124,7 +124,7 @@ class Rfdc(pr.Device):
             description  = 'This API function resets ALL DAC tiles',
             offset       = 0x10014,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: cmd.set(1), # Make sure to set rogue.root timeout > 2.0
         ))
 
         #######################################################################################

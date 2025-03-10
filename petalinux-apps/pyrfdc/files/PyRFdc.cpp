@@ -217,6 +217,13 @@ void PyRFdc::Reset(int Tile_Id) {
             // Init the i variable
             i = tileType_;
 
+            // Reset all the Tiles that have their PLL's enabled
+            for(j=0; j<4; j++) {
+                if ((pllDefault_[i][j].Enabled > 0) && (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE)) {
+                    XRFdc_Reset(RFdcInstPtr_, i, j);
+                }
+            }
+
             // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Init
             XRFdc_MultiConverter_Init(&mstConfig_[i], 0, 0, XRFDC_TILE_ID0);
             mstConfig_[i].Tiles = 0;
@@ -258,7 +265,7 @@ void PyRFdc::Reset(int Tile_Id) {
             }
 
             // Execute reset again after restoring the settings
-            status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
+            status = XRFdc_Reset(RFdcInstPtr_, i, -1);
         }
     }
 
