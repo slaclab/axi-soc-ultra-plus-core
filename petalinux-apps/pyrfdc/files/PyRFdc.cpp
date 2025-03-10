@@ -166,7 +166,7 @@ void PyRFdc::StartUp(int Tile_Id) {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
@@ -185,7 +185,7 @@ void PyRFdc::Shutdown(int Tile_Id) {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
@@ -205,7 +205,7 @@ void PyRFdc::Reset(int Tile_Id) {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
@@ -435,7 +435,7 @@ void PyRFdc::MixerSettings(uint8_t index) {
 
                 break;
             case 7:
-                data_ = XRFDC_SUCCESS;
+                data_ = 1; // Always return 1 so this is a set() and not posted() cmd
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -518,7 +518,7 @@ void PyRFdc::QMCSettings(uint8_t index) {
                 data_ = qmcConfig_[tileType_][tileId_][blockId_].OffsetCorrectionFactor;
                 break;
             case 7:
-                data_ = XRFDC_SUCCESS;
+                data_ = 1; // Always return 1 so this is a set() and not posted() cmd
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -572,7 +572,7 @@ void PyRFdc::UpdateEvent(uint32_t XRFDC_EVENT) {
 
     // Else read
     } else {
-        data_ = XRFDC_SUCCESS;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 
     // Check if not successful
@@ -1002,7 +1002,7 @@ void PyRFdc::ResetNCOPhase() {
 
     // Else read
     } else {
-        data_ = XRFDC_SUCCESS;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 
     // Check if not successful
@@ -1895,7 +1895,7 @@ void PyRFdc::ResetInternalFIFOWidth() {
 
     // Else read
     } else {
-        data_ = XRFDC_SUCCESS;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 
     // Check if not successful
@@ -1921,7 +1921,7 @@ void PyRFdc::ResetInternalFIFOWidthObs() {
 
         // Else read
         } else {
-            data_ = XRFDC_SUCCESS;
+            data_ = 1; // Always return 1 so this is a set() and not posted() cmd
         }
     }
 
@@ -2641,7 +2641,7 @@ void PyRFdc::DynamicPLLConfig(uint8_t index) {
                 data_ = clkSrcConfig_[tileType_][tileId_];
                 break;
             case 5:
-                data_ = XRFDC_SUCCESS;
+                data_ = 1; // Always return 1 so this is a set() and not posted() cmd
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -2788,7 +2788,7 @@ void PyRFdc::MstSync() {
 
     // Else Read
     } else {
-        data_ = 1;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 }
 
@@ -2872,7 +2872,7 @@ void PyRFdc::RestartSM() {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
