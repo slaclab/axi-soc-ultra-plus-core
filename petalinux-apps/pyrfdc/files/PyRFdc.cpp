@@ -166,7 +166,7 @@ void PyRFdc::StartUp(int Tile_Id) {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
@@ -185,7 +185,7 @@ void PyRFdc::Shutdown(int Tile_Id) {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
@@ -205,7 +205,7 @@ void PyRFdc::Reset(int Tile_Id) {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
@@ -216,6 +216,13 @@ void PyRFdc::Reset(int Tile_Id) {
         if (Tile_Id<0) {
             // Init the i variable
             i = tileType_;
+
+            // Reset all the Tiles that have their PLL's enabled
+            for(j=0; j<4; j++) {
+                if ((pllDefault_[i][j].Enabled > 0) && (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE)) {
+                    XRFdc_Reset(RFdcInstPtr_, i, j);
+                }
+            }
 
             // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Init
             XRFdc_MultiConverter_Init(&mstConfig_[i], 0, 0, XRFDC_TILE_ID0);
@@ -258,7 +265,7 @@ void PyRFdc::Reset(int Tile_Id) {
             }
 
             // Execute reset again after restoring the settings
-            status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
+            status = XRFdc_Reset(RFdcInstPtr_, i, -1);
         }
     }
 
@@ -435,7 +442,7 @@ void PyRFdc::MixerSettings(uint8_t index) {
 
                 break;
             case 7:
-                data_ = XRFDC_SUCCESS;
+                data_ = 1; // Always return 1 so this is a set() and not posted() cmd
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -518,7 +525,7 @@ void PyRFdc::QMCSettings(uint8_t index) {
                 data_ = qmcConfig_[tileType_][tileId_][blockId_].OffsetCorrectionFactor;
                 break;
             case 7:
-                data_ = XRFDC_SUCCESS;
+                data_ = 1; // Always return 1 so this is a set() and not posted() cmd
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -572,7 +579,7 @@ void PyRFdc::UpdateEvent(uint32_t XRFDC_EVENT) {
 
     // Else read
     } else {
-        data_ = XRFDC_SUCCESS;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 
     // Check if not successful
@@ -1002,7 +1009,7 @@ void PyRFdc::ResetNCOPhase() {
 
     // Else read
     } else {
-        data_ = XRFDC_SUCCESS;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 
     // Check if not successful
@@ -1895,7 +1902,7 @@ void PyRFdc::ResetInternalFIFOWidth() {
 
     // Else read
     } else {
-        data_ = XRFDC_SUCCESS;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 
     // Check if not successful
@@ -1921,7 +1928,7 @@ void PyRFdc::ResetInternalFIFOWidthObs() {
 
         // Else read
         } else {
-            data_ = XRFDC_SUCCESS;
+            data_ = 1; // Always return 1 so this is a set() and not posted() cmd
         }
     }
 
@@ -2641,7 +2648,7 @@ void PyRFdc::DynamicPLLConfig(uint8_t index) {
                 data_ = clkSrcConfig_[tileType_][tileId_];
                 break;
             case 5:
-                data_ = XRFDC_SUCCESS;
+                data_ = 1; // Always return 1 so this is a set() and not posted() cmd
                 break;
             default:
                 status = XRFDC_FAILURE;
@@ -2788,7 +2795,7 @@ void PyRFdc::MstSync() {
 
     // Else Read
     } else {
-        data_ = 1;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
     }
 }
 
@@ -2872,7 +2879,7 @@ void PyRFdc::RestartSM() {
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
 
     // Else write
     } else {
