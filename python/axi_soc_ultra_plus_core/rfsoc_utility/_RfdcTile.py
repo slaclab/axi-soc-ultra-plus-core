@@ -35,7 +35,7 @@ class RfdcTile(pr.Device):
             description  = 'Write 1 to start power-on state machine.  Auto-clear.  SM stops at stages programmed in RestartState',
             offset       = 0x800,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
         ))
 
         #######################################################################################
@@ -83,7 +83,7 @@ class RfdcTile(pr.Device):
             description  = 'This API function restarts a given tile',
             offset       = 0x000,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
             hidden       = True,
         ))
 
@@ -95,7 +95,7 @@ class RfdcTile(pr.Device):
             description  = 'This API function stops a given tile',
             offset       = 0x004,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
             hidden       = True,
         ))
 
@@ -107,7 +107,7 @@ class RfdcTile(pr.Device):
             description  = 'This API function resets a given tile',
             offset       = 0x008,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
         ))
 
         #######################################################################################

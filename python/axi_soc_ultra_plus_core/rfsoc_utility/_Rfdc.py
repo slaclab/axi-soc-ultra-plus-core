@@ -74,7 +74,7 @@ class Rfdc(pr.Device):
             description  = 'This API function restarts ALL ADC tiles',
             offset       = 0x10000,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
             hidden       = True,
         ))
 
@@ -83,7 +83,7 @@ class Rfdc(pr.Device):
             description  = 'This API function restarts ALL DAC tiles',
             offset       = 0x10004,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
             hidden       = True,
         ))
 
@@ -95,7 +95,7 @@ class Rfdc(pr.Device):
             description  = 'This API function stops ALL ADC tiles',
             offset       = 0x10008,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
             hidden       = True,
         ))
 
@@ -104,7 +104,7 @@ class Rfdc(pr.Device):
             description  = 'This API function stops ALL DAC tiles',
             offset       = 0x1000C,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1),
             hidden       = True,
         ))
 
@@ -116,7 +116,7 @@ class Rfdc(pr.Device):
             description  = 'This API function resets ALL ADC tiles',
             offset       = 0x10010,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1), # Make sure to set rogue.root timeout > 2.0
         ))
 
         self.add(pr.RemoteCommand(
@@ -124,7 +124,7 @@ class Rfdc(pr.Device):
             description  = 'This API function resets ALL DAC tiles',
             offset       = 0x10014,
             bitSize      = 1,
-            function     = lambda cmd: cmd.post(1),
+            function     = lambda cmd: cmd.set(1), # Make sure to set rogue.root timeout > 2.0
         ))
 
         #######################################################################################
