@@ -137,12 +137,25 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
             for(k=0; k<4; k++) {
 
                 // Get the default QMC configuration
+                qmcDefault_[i][j][k].EnablePhase = 0;
+                qmcDefault_[i][j][k].EnableGain = 0;
+                qmcDefault_[i][j][k].GainCorrectionFactor = -1.0;
+                qmcDefault_[i][j][k].PhaseCorrectionFactor = -1.0;
+                qmcDefault_[i][j][k].OffsetCorrectionFactor = 0;
+                qmcDefault_[i][j][k].EventSource = 0;
                 if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
                     XRFdc_GetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]);
                 }
                 qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
 
                 // Get the default QMC configuration
+                mixerDefault_[i][j][k].Freq = -1.0;
+                mixerDefault_[i][j][k].PhaseOffset = -1.0;
+                mixerDefault_[i][j][k].EventSource = 0xFFFFFFFF;
+                mixerDefault_[i][j][k].CoarseMixFreq = 0xFFFFFFFF;
+                mixerDefault_[i][j][k].MixerMode = 0xFFFFFFFF;
+                mixerDefault_[i][j][k].FineMixerScale = 0xFF;
+                mixerDefault_[i][j][k].MixerType = 0xFF;
                 if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
                     if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
                         XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
