@@ -73,7 +73,7 @@ class AxiSocCore(pr.Device):
                 click.secho(f'WARNING: {self.path}.numDmaLanes = {self.numDmaLanes} != {self.path}.AxiVersion.DMA_SIZE_G = {DMA_SIZE_G}', bg='cyan')
         self.startArmed = False
 
-    def UserRst(self):
+    def UserRst(self, timeout=0):
         # Send a local reset
         self.AxiVersion.UserRst()
 
@@ -81,23 +81,47 @@ class AxiSocCore(pr.Device):
         watchdog_counter = 0
         watchdog_limit = 10  # 10 iterations of 0.1s = 1 second
 
+        # Convert timeout from seconds to iterations of 0.1s
+        timeout_iterations = int(timeout / 0.1) if timeout > 0 else float('inf')
+        timeout_counter = 0
+
         # Wait for the AXI-Lite to recover from reset
-        while (watchdog_counter < watchdog_limit):
-            if (not self.AxiVersion.AppReset.get()):
+        while watchdog_counter < watchdog_limit:
+            if not self.AxiVersion.AppReset.get():
                 watchdog_counter += 1
             else:
                 watchdog_counter = 0  # Reset watchdog if condition is broken
+
+            # Handle timeout condition
+            if timeout_counter >= timeout_iterations:
+                return True  # Timed out
+
+            timeout_counter += 1
             time.sleep(0.1)
 
-    def DspRstWait(self):
+        return False  # Watchdog condition met
+
+    def DspRstWait(self, timeout=0):
         # Initialize watchdog counter
         watchdog_counter = 0
         watchdog_limit = 10  # 10 iterations of 0.1s = 1 second
 
+        # Convert timeout from seconds to iterations of 0.1s
+        timeout_iterations = int(timeout / 0.1) if timeout > 0 else float('inf')
+        timeout_counter = 0
+
         # Wait for the AXI-Lite to recover from reset
-        while (watchdog_counter < watchdog_limit):
-            if (not self.AxiVersion.DspReset.get()):
+        while watchdog_counter < watchdog_limit:
+            if not self.AxiVersion.DspReset.get():
                 watchdog_counter += 1
             else:
                 watchdog_counter = 0  # Reset watchdog if condition is broken
+
+            # Handle timeout condition
+            if timeout_counter >= timeout_iterations:
+                return True  # Timed out
+
+            timeout_counter += 1
             time.sleep(0.1)
+
+        return False  # Watchdog condition met
