@@ -154,6 +154,9 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
         }
     }
 
+    uint8_t UpdateMixerScale = RFdcInstPtr_->UpdateMixerScale;
+    uint16_t ReadReg;
+
     // Loop through type indexes
     for(i=0; i<2; i++) {
 
@@ -197,6 +200,17 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                         if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
                             // Check for ADC tile or DAC DUC not bypassed
                             if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
+
+                                // Check for out of range UpdateMixerScale
+                                if (UpdateMixerScale>0x1U) {
+                                    // Force XRFDC_MIXER_SCALE_1P0
+                                    ReadReg = XRFdc_ReadReg16(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_MXR_MODE_OFFSET);
+                                    ReadReg |= XRFDC_FINE_MIX_SCALE_MASK;
+                                    RFdcInstPtr_->UpdateMixerScale = 0x1U;
+                                    XRFdc_WriteReg16(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_MXR_MODE_OFFSET, ReadReg);
+                                }
+
+                                // Get the mixer setting
                                 if ( XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
                                     mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
                                 }
