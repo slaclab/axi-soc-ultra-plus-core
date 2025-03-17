@@ -121,12 +121,12 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
             pllDefault_[i][j].Enabled = 0;
             pllDefault_[i][j].RefClkFreq = 0.0;
             pllDefault_[i][j].SampleRate = 0.0;
-            pllDefault_[i][j].RefClkDivider = 0;
-            pllDefault_[i][j].FeedbackDivider = 0;
-            pllDefault_[i][j].OutputDivider = 0;
-            pllDefault_[i][j].FractionalMode = 0;
-            pllDefault_[i][j].FractionalData = 0;
-            pllDefault_[i][j].FractWidth = 0;
+            pllDefault_[i][j].RefClkDivider = 1;
+            pllDefault_[i][j].FeedbackDivider = 1;
+            pllDefault_[i][j].OutputDivider = 1;
+            pllDefault_[i][j].FractionalMode = 1;
+            pllDefault_[i][j].FractionalData = 1;
+            pllDefault_[i][j].FractWidth = 1;
             pllConfig_[i][j] = pllDefault_[i][j];
 
             // Loop through block indexes
@@ -135,27 +135,24 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                 // Initialize QMC_Settings data structure
                 qmcDefault_[i][j][k].EnablePhase = 0;
                 qmcDefault_[i][j][k].EnableGain = 0;
-                qmcDefault_[i][j][k].GainCorrectionFactor = XRFDC_MIN_GAIN_CORR_FACTOR;
-                qmcDefault_[i][j][k].PhaseCorrectionFactor = XRFDC_MIN_PHASE_CORR_FACTOR;
+                qmcDefault_[i][j][k].GainCorrectionFactor = 0.0;
+                qmcDefault_[i][j][k].PhaseCorrectionFactor = 0.0;
                 qmcDefault_[i][j][k].OffsetCorrectionFactor = 0;
-                qmcDefault_[i][j][k].EventSource = XRFDC_EVNT_SRC_IMMEDIATE;
+                qmcDefault_[i][j][k].EventSource = XRFDC_EVNT_SRC_TILE;
                 qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
 
                 // Initialize Mixer_Settings data structure
                 mixerDefault_[i][j][k].Freq = 0.0;
-                mixerDefault_[i][j][k].PhaseOffset = XRFDC_MIXER_PHASE_OFFSET_LOW_LIMIT;
-                mixerDefault_[i][j][k].EventSource = XRFDC_EVNT_SRC_IMMEDIATE;
+                mixerDefault_[i][j][k].PhaseOffset = 0.0;
+                mixerDefault_[i][j][k].EventSource = XRFDC_EVNT_SRC_TILE;
                 mixerDefault_[i][j][k].CoarseMixFreq = XRFDC_COARSE_MIX_OFF;
                 mixerDefault_[i][j][k].MixerMode = XRFDC_MIXER_MODE_OFF;
-                mixerDefault_[i][j][k].FineMixerScale = XRFDC_MIXER_SCALE_1P0;
-                mixerDefault_[i][j][k].MixerType = XRFDC_MIXER_TYPE_COARSE;
+                mixerDefault_[i][j][k].FineMixerScale = XRFDC_MIXER_SCALE_0P7;
+                mixerDefault_[i][j][k].MixerType = XRFDC_MIXER_TYPE_OFF;
                 mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
             }
         }
     }
-
-    uint8_t UpdateMixerScale = RFdcInstPtr_->UpdateMixerScale;
-    uint16_t ReadReg;
 
     // Loop through type indexes
     for(i=0; i<2; i++) {
@@ -197,19 +194,9 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                         }
 
                         // Get the default Mixer configuration
-                        if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                        if ((XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) && (RFdcInstPtr_->UpdateMixerScale<=0x1U)) {
                             // Check for ADC tile or DAC DUC not bypassed
                             if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
-
-                                // Check for out of range UpdateMixerScale
-                                if (UpdateMixerScale>0x1U) {
-                                    // Force XRFDC_MIXER_SCALE_1P0
-                                    ReadReg = XRFdc_ReadReg16(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_MXR_MODE_OFFSET);
-                                    ReadReg |= XRFDC_FINE_MIX_SCALE_MASK;
-                                    RFdcInstPtr_->UpdateMixerScale = 0x1U;
-                                    XRFdc_WriteReg16(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_MXR_MODE_OFFSET, ReadReg);
-                                }
-
                                 // Get the mixer setting
                                 if ( XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
                                     mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
