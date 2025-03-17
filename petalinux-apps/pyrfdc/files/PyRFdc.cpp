@@ -215,6 +215,18 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 
 //! Destroy a block
 PyRFdc::~PyRFdc() {
+    // Log the destruction of the class
+    log_->debug("PyRFdc::~PyRFdc() called");
+
+#ifndef __BAREMETAL__
+    struct metal_device *deviceptr = nullptr;
+    if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) == XRFDC_SUCCESS && deviceptr) {
+        metal_device_close(deviceptr);  // Close metal device if applicable
+    }
+    metal_finish(); // Cleanup metal library
+#endif
+
+    log_->debug("PyRFdc::~PyRFdc() completed");
 }
 
 void PyRFdc::StartUp(int Tile_Id) {
