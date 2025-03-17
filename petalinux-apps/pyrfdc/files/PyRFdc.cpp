@@ -110,59 +110,101 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 
     // Loop through type indexes
     for(i=0; i<2; i++) {
+        // Loop through tile indexes
+        for(j=0; j<4; j++) {
+
+            // Initialize clock source
+            clkSrcDefault_[i][j] = XRFDC_EXTERNAL_CLK;
+            clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
+
+            // Initialize PLL_Settings data structure
+            pllDefault_[i][j].Enabled = 0;
+            pllDefault_[i][j].RefClkFreq = 0.0;
+            pllDefault_[i][j].SampleRate = 0.0;
+            pllDefault_[i][j].RefClkDivider = 0;
+            pllDefault_[i][j].FeedbackDivider = 0;
+            pllDefault_[i][j].OutputDivider = 0;
+            pllDefault_[i][j].FractionalMode = 0;
+            pllDefault_[i][j].FractionalData = 0;
+            pllDefault_[i][j].FractWidth = 0;
+            pllConfig_[i][j] = pllDefault_[i][j];
+
+            // Loop through block indexes
+            for(k=0; k<4; k++) {
+
+                // Initialize QMC_Settings data structure
+                qmcDefault_[i][j][k].EnablePhase = 0;
+                qmcDefault_[i][j][k].EnableGain = 0;
+                qmcDefault_[i][j][k].GainCorrectionFactor = XRFDC_MIN_GAIN_CORR_FACTOR;
+                qmcDefault_[i][j][k].PhaseCorrectionFactor = XRFDC_MIN_PHASE_CORR_FACTOR;
+                qmcDefault_[i][j][k].OffsetCorrectionFactor = 0;
+                qmcDefault_[i][j][k].EventSource = XRFDC_EVNT_SRC_IMMEDIATE;
+                qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
+
+                // Initialize Mixer_Settings data structure
+                mixerDefault_[i][j][k].Freq = 0.0;
+                mixerDefault_[i][j][k].PhaseOffset = XRFDC_MIXER_PHASE_OFFSET_LOW_LIMIT;
+                mixerDefault_[i][j][k].EventSource = XRFDC_EVNT_SRC_IMMEDIATE;
+                mixerDefault_[i][j][k].CoarseMixFreq = XRFDC_COARSE_MIX_OFF;
+                mixerDefault_[i][j][k].MixerMode = XRFDC_MIXER_MODE_OFF;
+                mixerDefault_[i][j][k].FineMixerScale = XRFDC_MIXER_SCALE_1P0;
+                mixerDefault_[i][j][k].MixerType = XRFDC_MIXER_TYPE_COARSE;
+                mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+            }
+        }
+    }
+
+    // Loop through type indexes
+    for(i=0; i<2; i++) {
+
         // Init the MTS configurations
         XRFdc_MultiConverter_Init(&mstConfig_[i], 0, 0, XRFDC_TILE_ID0);
         mstConfig_[i].Tiles = 0;
 
         // Loop through tile indexes
         for(j=0; j<4; j++) {
+
             // Init the MTS factor status
             mtsfactor_[i][j] = 0;
 
-            // Get the default Clock source
-            XRFdc_GetClockSource(RFdcInstPtr_, i, j, &clkSrcDefault_[i][j]);
-            clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
-
-            // Get the default PLL configuration
-            XRFdc_GetPLLConfig(RFdcInstPtr_, i, j, &pllDefault_[i][j]);
-            pllDefault_[i][j].SampleRate = 1000.0*pllDefault_[i][j].SampleRate; // Convert from GSPS to MSPS
-            pllConfig_[i][j] = pllDefault_[i][j];
-
-            // Set the default PLL configuration
+            // Check if tile is enabled
             if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
-                XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
-            }
 
-            // Loop through block indexes
-            for(k=0; k<4; k++) {
-
-                // Get the default QMC configuration
-                qmcDefault_[i][j][k].EnablePhase = 0;
-                qmcDefault_[i][j][k].EnableGain = 0;
-                qmcDefault_[i][j][k].GainCorrectionFactor = -1.0;
-                qmcDefault_[i][j][k].PhaseCorrectionFactor = -1.0;
-                qmcDefault_[i][j][k].OffsetCorrectionFactor = 0;
-                qmcDefault_[i][j][k].EventSource = 0;
-                if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                    XRFdc_GetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]);
+                // Get the default Clock source
+                if (XRFdc_GetClockSource(RFdcInstPtr_, i, j, &clkSrcDefault_[i][j]) != XRFDC_FAILURE) {
+                    clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
                 }
-                qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
 
-                // Get the default QMC configuration
-                mixerDefault_[i][j][k].Freq = -1.0;
-                mixerDefault_[i][j][k].PhaseOffset = -1.0;
-                mixerDefault_[i][j][k].EventSource = 0xFFFFFFFF;
-                mixerDefault_[i][j][k].CoarseMixFreq = 0xFFFFFFFF;
-                mixerDefault_[i][j][k].MixerMode = 0xFFFFFFFF;
-                mixerDefault_[i][j][k].FineMixerScale = 0xFF;
-                mixerDefault_[i][j][k].MixerType = 0xFF;
-                if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                    if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
-                        XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                // Get the default PLL configuration
+                if (XRFdc_GetPLLConfig(RFdcInstPtr_, i, j, &pllDefault_[i][j]) != XRFDC_FAILURE) {
+                    pllDefault_[i][j].SampleRate = 1000.0*pllDefault_[i][j].SampleRate; // Convert from GSPS to MSPS
+                    pllConfig_[i][j] = pllDefault_[i][j];
+                    // Set the default PLL configuration
+                    XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
+                }
+
+                // Loop through block indexes
+                for(k=0; k<4; k++) {
+
+                    // Check if block enabled
+                    if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+
+                        if (XRFdc_GetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
+                            qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
+                        }
+
+                        // Get the default Mixer configuration
+                        if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                            // Check for ADC tile or DAC DUC not bypassed
+                            if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
+                                if ( XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
+                                    mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+                                }
+                            }
+                        }
+
                     }
                 }
-                mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
-
             }
         }
     }
@@ -230,55 +272,67 @@ void PyRFdc::Reset(int Tile_Id) {
             // Init the i variable
             i = tileType_;
 
-            // Reset all the Tiles that have their PLL's enabled
-            for(j=0; j<4; j++) {
-                if ((pllDefault_[i][j].Enabled > 0) && (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE)) {
-                    XRFdc_Reset(RFdcInstPtr_, i, j);
-                }
-            }
-
-            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_MultiConverter_Init
+            // Init the MTS configurations
             XRFdc_MultiConverter_Init(&mstConfig_[i], 0, 0, XRFDC_TILE_ID0);
             mstConfig_[i].Tiles = 0;
 
             // Loop through tile indexes
             for(j=0; j<4; j++) {
+
                 // Init the MTS factor status
                 mtsfactor_[i][j] = 0;
 
-                // Set the default PLL configuration
+                // Check if tile is enabled
                 if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+
+                    // Reset all the Tiles that have their PLL's enabled
+                    if (pllDefault_[i][j].Enabled > 0) {
+                        XRFdc_Reset(RFdcInstPtr_, i, j);
+                    }
+
+                    // Restore default configuration
                     XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
-                }
-                clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
-                pllConfig_[i][j] = pllDefault_[i][j];
+                    clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
+                    pllConfig_[i][j] = pllDefault_[i][j];
 
-                // Loop through block indexes
-                for(k=0; k<4; k++) {
+                    // Loop through block indexes
+                    for(k=0; k<4; k++) {
 
-                    // Set the default QMC configuration
-                    if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                        if (XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
-                            XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
-                        }
-                    }
-                    qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
+                        // Check if block enabled
+                        if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
 
-                    // Get the default Mixer configuration
-                    if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                        if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
-                            if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
-                                XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                            if (XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
+                                XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
                             }
+                            qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
+
+                            // Get the default Mixer configuration
+                            if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                                // Check for ADC tile or DAC DUC not bypassed
+                                if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
+                                    if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
+                                        XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                                    }
+                                }
+                            }
+                            mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+
                         }
                     }
-                    mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
-
                 }
             }
 
-            // Execute reset again after restoring the settings
-            status = XRFdc_Reset(RFdcInstPtr_, i, -1);
+            // Loop through tile indexes
+            for(j=0; j<4; j++) {
+
+                // Check if tile is enabled
+                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+
+                    // Execute reset again after restoring the settings
+                    status = XRFdc_Reset(RFdcInstPtr_, i, j);
+                }
+
+            }
         }
     }
 
