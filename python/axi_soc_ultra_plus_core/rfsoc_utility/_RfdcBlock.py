@@ -207,6 +207,9 @@ class RfdcBlock(pr.Device):
                         0x2 : "XRFDC_MIXER_MODE_C2R",
                         0x3 : "XRFDC_MIXER_MODE_R2C",
                         0x4 : "XRFDC_MIXER_MODE_R2R",
+                        0x5 : "ERROR_5",
+                        0x6 : "ERROR_6",
+                        0x7 : "ERROR_7",
                     },
                 ))
 
@@ -221,6 +224,7 @@ class RfdcBlock(pr.Device):
                         0x0 : "XRFDC_MIXER_SCALE_AUTO",
                         0x1 : "XRFDC_MIXER_SCALE_1P0",
                         0x2 : "XRFDC_MIXER_SCALE_0P7",
+                        0x3 : "ERROR",
                     },
                 ))
 

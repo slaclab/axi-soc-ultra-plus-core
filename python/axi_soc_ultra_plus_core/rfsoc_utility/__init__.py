@@ -43,6 +43,8 @@ enumEventSource = {
     0x3 : "XRFDC_EVNT_SRC_SYSREF",
     0x4 : "XRFDC_EVNT_SRC_MARKER",
     0x5 : "XRFDC_EVNT_SRC_PL",
+    0x6 : "ERROR_6",
+    0x7 : "ERROR_7",
 }
 
 enumInterpDecim         = {
@@ -68,6 +70,9 @@ enumUpdateThreshold = {
     0x2 : "XRFDC_UPDATE_THRESHOLD_1",
     0x3 : "UNDEFINED_0x3",
     0x4 : "XRFDC_UPDATE_THRESHOLD_BOTH",
+    0x5 : "ERROR_5",
+    0x6 : "ERROR_6",
+    0x7 : "ERROR_7",
 }
 
 enumMixedMode = {
@@ -76,6 +81,9 @@ enumMixedMode = {
     0x2 : "XRFDC_MIXER_MODE_C2R", #define XRFDC_MIXER_MODE_C2R 0x2U
     0x3 : "XRFDC_MIXER_MODE_R2C", #define XRFDC_MIXER_MODE_R2C 0x3U
     0x4 : "XRFDC_MIXER_MODE_R2R", #define XRFDC_MIXER_MODE_R2R 0x4U
+    0x5 : "ERROR_5",
+    0x6 : "ERROR_6",
+    0x7 : "ERROR_7",
 }
 
 enumRefClkSource = {
