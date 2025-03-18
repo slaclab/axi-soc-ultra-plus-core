@@ -194,8 +194,6 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                 if (XRFdc_GetPLLConfig(RFdcInstPtr_, i, j, &pllDefault_[i][j]) != XRFDC_FAILURE) {
                     pllDefault_[i][j].SampleRate = 1000.0*pllDefault_[i][j].SampleRate; // Convert from GSPS to MSPS
                     pllConfig_[i][j] = pllDefault_[i][j];
-                    // Set the default PLL configuration
-                    XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
                 }
 
                 // Loop through block indexes
