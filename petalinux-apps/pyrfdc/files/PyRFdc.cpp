@@ -63,29 +63,44 @@ PyRFdcPtr PyRFdc::create() {
 PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     int i, j, k;
     log_ = rogue::Logging::create("PyRFdc");
-    metal_set_log_level(METAL_LOG_ERROR);
+
+#ifdef __BAREMETAL__
+    // Ensure baremetal driver is ready
+    if (XRFdc_LookupConfig(RFDC_DEVICE_ID) == NULL) {
+        log_->error("PyRFdc: Baremetal RFdc Configuration Lookup Failed!");
+        return;
+    }
+#endif
+
+    // Initialize libmetal (should be after ensuring baremetal is ready)
+    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
+    if (metal_init(&init_param)) {
+        log_->error("PyRFdc: Failed to initialize libmetal");
+        metal_finish();
+        return;
+    }
+
+    // Initialize RFdc Configuration
+    XRFdc_Config *ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
+    if (ConfigPtr == NULL) {
+        log_->error("PyRFdc: RFdc Config Failure");
+        metal_finish();
+        return;
+    }
 
 #ifndef __BAREMETAL__
     struct metal_device *deviceptr;
-#endif
-    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
-
-    if (metal_init(&init_param)) {
-        log_->error("PyRFdc: Failed to run metal initialization\n");
-    }
-
-    XRFdc_Config *ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
-    if (ConfigPtr == NULL) {
-        log_->error("PyRFdc: RFdc Config Failure\n");
-    }
-
-#ifndef __BAREMETAL__
     if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) != XRFDC_SUCCESS) {
-        log_->error("PyRFdc: XRFdc_RegisterMetal() Failure\n");
+        log_->error("PyRFdc: XRFdc_RegisterMetal() Failure");
+        metal_device_close(deviceptr);
+        metal_finish();
+        return;
     }
 #endif
 
     XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
+
+    log_->debug("PyRFdc::PyRFdc() Initialization Complete");
 
     // Work around for MaxSampleRate until I figure out how to properly
     //get the ConfigPtr (and/or devicetree) to set this configuration properly
