@@ -1,5 +1,5 @@
 # Load RUCKUS environment and library
-source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
+source $::env(RUCKUS_PROC_TCL)
 
 # Check for version 2022.1 of Vivado (or later)
 if { [VersionCheck 2022.1] < 0 } {exit -1}
