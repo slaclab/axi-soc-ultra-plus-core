@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 ##############################################################################
 ## This file is part of 'axi-soc-ultra-plus-core'.
 ## It is subject to the license terms in the LICENSE.txt file found in the
