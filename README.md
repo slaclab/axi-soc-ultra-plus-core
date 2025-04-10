@@ -1,5 +1,7 @@
 # axi-soc-ultra-plus-core
 
+[DOE Code](https://www.osti.gov/doecode/biblio/75773)
+
 <!--- ######################################################## -->
 
 ### Zynq UltraScale+ Devices Register Reference

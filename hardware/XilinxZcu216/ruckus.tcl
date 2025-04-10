@@ -1,5 +1,5 @@
 # Load RUCKUS environment and library
-source -quiet $::env(RUCKUS_DIR)/vivado_proc.tcl
+source $::env(RUCKUS_PROC_TCL)
 
 # Check for valid FPGA
 if { $::env(PRJ_PART) != "XCZU49DR-FFVF1760-2-E" } {
