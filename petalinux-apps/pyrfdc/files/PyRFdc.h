@@ -69,7 +69,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     uint8_t blockId_;
     uint32_t data_;
 
-    XRFdc_MultiConverter_Sync_Config mstConfig_[2];
+    XRFdc_MultiConverter_Sync_Config mtsConfig_[2];
     uint32_t mtsfactor_[2][4];
 
     uint32_t clkSrcDefault_[2][4];
@@ -165,16 +165,16 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MinSampleRate(bool upper);
     void DynamicPLLConfig(uint8_t index);
 
-    void MstEnabled();
-    void MstRefTile();
-    void MstSysrefConfig();
-    void MstSysRefEnable();
-    void MstTargetLatency();
-    void MstTiles();
-    void MstSync();
-    void MstLatency(uint8_t index);
-    void MstOffset(uint8_t index);
-    void MstFactor(uint8_t index);
+    void MtsEnabled();
+    void MtsRefTile();
+    void MtsSysrefConfig();
+    void MtsSysRefEnable();
+    void MtsTargetLatency();
+    void MtsTiles();
+    void MtsSync();
+    void MtsLatency(uint8_t index);
+    void MtsOffset(uint8_t index);
+    void MtsFactor(uint8_t index);
 
     void IpVersion();
     void RestartSM();
