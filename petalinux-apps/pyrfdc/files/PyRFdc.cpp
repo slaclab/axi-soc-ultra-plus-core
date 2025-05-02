@@ -2885,7 +2885,7 @@ void PyRFdc::MtsSync() {
             }
 
         } else {
-            errMsg_ = "MtsSync(" + std::to_string(tileType_) + "): DAC Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
+            errMsg_ = "MtsSync(" + std::to_string(tileType_) + "): Multi-Tile-Sync did not complete successfully. Error code (" + std::to_string(status) + ")\n";
         }
 
     // Else Read
