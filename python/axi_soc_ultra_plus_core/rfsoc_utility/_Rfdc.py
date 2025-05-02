@@ -332,7 +332,7 @@ class Rfdc(pr.Device):
                 hidden       = True,
             ))
 
-        class Mst(pr.Device):
+        class Mts(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
                 #######################################################################################
@@ -481,7 +481,7 @@ class Rfdc(pr.Device):
                     base         = pr.Int, # s32
                 ))
 
-                class MstStatus(pr.Device):
+                class MtsStatus(pr.Device):
                     def __init__(self,**kwargs):
                         super().__init__(**kwargs)
                         #######################################################################################
@@ -563,10 +563,10 @@ class Rfdc(pr.Device):
                         )
 
                 # Adding the MTS device
-                self.add(MstStatus())
+                self.add(MtsStatus())
 
         # Adding the MTS device
-        self.add(Mst())
+        self.add(Mts())
 
         #######################################################################################
         #######################################################################################
