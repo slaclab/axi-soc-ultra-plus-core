@@ -292,8 +292,6 @@ void PyRFdc::Reset(int Tile_Id) {
 
     // Else write
     } else {
-        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
-        status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
 
         // Check for global TYPE reset
         if (Tile_Id<0) {
@@ -361,6 +359,11 @@ void PyRFdc::Reset(int Tile_Id) {
                 }
 
             }
+
+        // Else not a global reset
+        } else {
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
+            status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
         }
     }
 
