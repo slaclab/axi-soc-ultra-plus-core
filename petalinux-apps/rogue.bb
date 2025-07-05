@@ -2,8 +2,8 @@
 # This file is the rogue recipe and tested on Petalinux 2024.2
 #
 
-ROGUE_VERSION = "6.6.0"
-ROGUE_MD5SUM  = "21072310214792970e2b4c83edb4207d"
+ROGUE_VERSION = "6.6.1"
+ROGUE_MD5SUM  = "0c0a5d4c32ab2cf5bca46edb92d9e13e"
 
 SUMMARY = "Recipe to build Rogue"
 HOMEPAGE ="https://github.com/slaclab/rogue"
