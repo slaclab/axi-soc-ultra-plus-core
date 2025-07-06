@@ -1,5 +1,5 @@
 #
-# This file is the rogue recipe and tested on Petalinux 2024.2
+# rogue recipe for Yocto
 #
 
 ROGUE_VERSION = "6.6.1"
