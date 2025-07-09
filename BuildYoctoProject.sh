@@ -24,10 +24,11 @@ do
         t) dmaTxBuffCount=${OPTARG};;
         r) dmaRxBuffCount=${OPTARG};;
         s) dmaBuffSize=${OPTARG};;
-        f) rfdc=${OPTARG};;
     esac
 done
 
+##############################################################################
+# Generate commonly used local variables
 ##############################################################################
 
 Name=$name # unmodified copy
@@ -35,12 +36,14 @@ name="${name,,}" # lower case to prevent [uppercase-pn] warning
 axi_soc_ultra_plus_core=$(dirname $(readlink -f $0))
 aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
-imageDump=${xsa%.*}.yocto.tar.gz
+imageDump=${xsa%.*}.linux.tar.gz
 proj_dir=$(realpath "$path/$Name")
+image_dir=$(realpath "$proj_dir/build/tmp/deploy/images/zynqmp-user")
 
 ##############################################################################
-
 # Check total buffer size
+##############################################################################
+
 TOTAL_BUFFER_SIZE=$(( (dmaTxBuffCount + dmaRxBuffCount) * dmaBuffSize ))
 MAX_BUFFER_SIZE=$((0x60000000)) # 1.5 GB (1610612736 bytes)
 if (( TOTAL_BUFFER_SIZE > MAX_BUFFER_SIZE )); then
@@ -52,13 +55,17 @@ if (( TOTAL_BUFFER_SIZE > MAX_BUFFER_SIZE )); then
 fi
 
 ##############################################################################
+# Check for missing system packages before we start
+##############################################################################
 
 missing=0
-for tool in git bash curl chrpath diffstat lz4c; do
+for tool in bash curl chrpath diffstat git gzip lz4c mkimage; do
     command -v "$tool" >/dev/null 2>&1 || { echo "Missing package: $tool"; missing=1; }
 done
 [ $missing -ne 0 ] && exit 1
 
+##############################################################################
+# Misc. file and dir checking
 ##############################################################################
 
 # Check if the directory exists
@@ -68,15 +75,29 @@ then
    exit 1
 fi
 
-# Check if the Yocto zynqmp.conf file exists
-if [ ! -f "$hwDir/Yocto/zynqmp.conf" ]; then
-   echo "File $hwDir/Yocto/zynqmp.conf does NOT exist"
+# Check if the Yocto zynqmp-user.conf file exists
+if [ ! -f "$hwDir/Yocto/zynqmp-user.conf" ]; then
+   echo "File $hwDir/Yocto/zynqmp-user.conf does NOT exist"
+   exit 1
+fi
+
+# Check if the directory exists
+if [ ! -d "$hwDir/Yocto/recipes-bsp" ]
+then
+   echo "$hwDir/Yocto/recipes-bsp does NOT exist"
+   exit 1
+fi
+
+# Check if the XSA file exists and has .xsa extension
+if [ ! -f "$xsa" ] || [[ "$xsa" != *.xsa ]]; then
+   echo "File $xsa does NOT exist or is not a .xsa file"
    exit 1
 fi
 
 ##############################################################################
-
 # Print these variables to help with debugging
+##############################################################################
+
 echo "Build Output Path: $path";
 echo "Project Name: $Name";
 echo "Hardware Type: $hwType";
@@ -87,10 +108,11 @@ echo "Number of DEST per lane: $numDest";
 echo "Number of DMA TX Buffers: $dmaTxBuffCount";
 echo "Number of DMA RX Buffers: $dmaRxBuffCount";
 echo "DMA Buffer Size: $dmaBuffSize Bytes";
-echo "Include RFDC utility: $rfdc";
 echo "$axi_soc_ultra_plus_core"
 echo "$aes_stream_drivers"
 
+##############################################################################
+# Setup the 'repo' executable
 ##############################################################################
 
 # Download the Repo script & Make it executable
@@ -108,6 +130,8 @@ if [[ ":$PATH:" != *":$repo_dir:"* ]]; then
    export PATH="$repo_dir:$PATH"
 fi
 
+##############################################################################
+# Create the Yocto project
 ##############################################################################
 
 # Remove older build and start from clean state
@@ -133,76 +157,29 @@ BDIR=build source setupsdk > /dev/null
 bitbake-layers create-layer $proj_dir/sources/meta-user
 bitbake-layers add-layer    $proj_dir/sources/meta-user
 
-# Base this machine configuration off of
+# Create the conf/machine/zynqmp-user.conf
 mkdir $proj_dir/sources/meta-user/conf/machine
-cp -rf $hwDir/Yocto/zynqmp.conf $proj_dir/sources/meta-user/conf/machine/$name-zynqmp.conf
-echo "HDF_PATH = \"$xsa\""   >> $proj_dir/sources/meta-user/conf/machine/$name-zynqmp.conf
+cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/zynqmp-user.conf $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
+cat $hwDir/Yocto/zynqmp-user.conf                           >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
+echo "HDF_PATH = \"$xsa\""                                  >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
 
-# Set the machine in conf/local.conf
-sed -i "/MACHINE ??=/c\MACHINE ??= \"$name-zynqmp\"" $proj_dir/build/conf/local.conf
-
-##############################################################################
-
-# # Increase QSPI image.ub size to 128MB
-# echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_OFFSET=0x4000000 >> project-spec/configs/config
-# echo CONFIG_SUBSYSTEM_UBOOT_QSPI_FIT_IMAGE_SIZE=0x8000000  >> project-spec/configs/config
-
-# # Check if the hardware has custom u-boot config
-# if [ -f "$hwDir/petalinux/u-boot/bsp.cfg" ]
-# then
-   # cp -rf $hwDir/petalinux/u-boot/bsp.cfg project-spec/meta-user/recipes-bsp/u-boot/files/bsp.cfg
-# fi
-
-# # Check if the hardware has custom u-boot header
-# if [ -f "$hwDir/petalinux/u-boot/platform-top.h" ]
-# then
-   # cp -rf $hwDir/petalinux/u-boot/platform-top.h project-spec/meta-user/recipes-bsp/u-boot/files/platform-top.h
-# fi
-
-# # Customize your user device tree
-# cp -f $hwDir/petalinux/device-tree/system-user.dtsi project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
-# if [ -f "$hwDir/petalinux/device-tree/device-tree.bbappend" ]
-# then
-   # # Add new configuration
-   # cat $hwDir/petalinux/device-tree/device-tree.bbappend >> project-spec/meta-user/recipes-bsp/device-tree/device-tree.bbappend
-# fi
-
-# # Check if the hardware has custom petalinuxbsp configuration
-# if [ -f "$hwDir/petalinux/petalinuxbsp.conf" ]
-# then
-   # # Add new configuration
-   # cat $hwDir/petalinux/petalinuxbsp.conf >> project-spec/meta-user/conf/petalinuxbsp.conf
-# fi
-
-# # Check if the dts directory exists
-# if [ -d "$hwDir/petalinux/dts_dir" ]
-# then
-   # cp -rf $hwDir/petalinux/dts_dir project-spec/.
-# fi
-
-# # Check if the hardware has custom configuration
-# if [ -f "$hwDir/petalinux/config" ]
-# then
-   # # Add new configuration
-   # cat $hwDir/petalinux/config >> project-spec/configs/config
-# fi
-
-# # Check if the patch directory exists
-# if [ -d "$hwDir/petalinux/patch" ]
-# then
-   # # Add the patches to the petalinux project
-   # for filename in $(ls -p $hwDir/petalinux/patch); do
-      # echo SRC_URI:append = \" file://$filename\" >> project-spec/meta-user/recipes-kernel/linux/linux-xlnx_%.bbappend
-      # cp -f $hwDir/petalinux/patch/$filename project-spec/meta-user/recipes-kernel/linux/linux-xlnx/.
-   # done
-# fi
+# Set the machine & hostname in conf/local.conf
+sed -i "/MACHINE ??=/c\MACHINE ??= \"zynqmp-user\"" $proj_dir/build/conf/local.conf
+echo "hostname:pn-base-files = \"$Name\""        >> $proj_dir/build/conf/local.conf
 
 ##############################################################################
+# Add the hardware specific BSP
+##############################################################################
 
+cp -rfL $hwDir/Yocto/recipes-bsp $proj_dir/sources/meta-user/.
+
+##############################################################################
 # Add the axi-stream-dma & axi_memory_map kernel modules
+##############################################################################
+
 cp -rfL $aes_stream_drivers/Yocto/recipes-kernel $proj_dir/sources/meta-user/.
-echo "MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS += \" axistreamdma aximemorymap\"" >> $proj_dir/sources/meta-user/conf/machine/$name-zynqmp.conf
-echo "MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS += \" axistreamdma aximemorymap\"" >> $proj_dir/sources/meta-user/conf/machine/$name-zynqmp.conf
+echo "MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS:append = \" axistreamdma aximemorymap\"" >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
+echo "MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS:append = \" axistreamdma aximemorymap\"" >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
 
 # Update DMA engine with user configuration
 sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
@@ -210,57 +187,79 @@ sed -i "s/int cfgRxCount0 = 128;/int cfgRxCount0 = $dmaRxBuffCount;/"  $proj_dir
 sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
 
 ##############################################################################
-
 # Add axi-soc-ultra-plus-core's recipes-apps
+##############################################################################
+
 cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-apps $proj_dir/sources/meta-user/.
 echo "IMAGE_INSTALL:append = \" rogue rogue-dev\""  >> $proj_dir/sources/meta-user/conf/layer.conf
 echo "IMAGE_INSTALL:append = \" roguetcpbridge\""   >> $proj_dir/sources/meta-user/conf/layer.conf
 echo "IMAGE_INSTALL:append = \" axiversiondump\""   >> $proj_dir/sources/meta-user/conf/layer.conf
 echo "IMAGE_INSTALL:append = \" startup-app-init\"" >> $proj_dir/sources/meta-user/conf/layer.conf
 
-# Check if including RFDC utility
-if [ "$rfdc" -eq 1 ]
-then
-   echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
-fi
-
 # Update Application with user configuration
 sed -i "s/default  = 2,/default  = $numLane,/"  $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 sed -i "s/default  = 32,/default  = $numDest,/" $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 
-##############################################################################
+# Check if including RFDC utility
+if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp.conf"; then
+   echo "MACHINE_FEATURES=rfsoc detected: Including RFDC utility"
+   echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
+fi
 
+##############################################################################
 # Add commonly used packages
-echo "IMAGE_INSTALL:append = \" peekpoke\""     >> $proj_dir/build/conf/local.conf
-echo "IMAGE_INSTALL:append = \" nano\""         >> $proj_dir/build/conf/local.conf
-# echo "IMAGE_INSTALL:append = \" debug-tweaks\"" >> $proj_dir/build/conf/local.conf
-
 ##############################################################################
 
+echo "IMAGE_INSTALL:append = \" peekpoke\"" >> $proj_dir/build/conf/local.conf
+echo "IMAGE_INSTALL:append = \" nano\""     >> $proj_dir/build/conf/local.conf
+
+# Enable debug-tweaks for development convenience; do not use in production images!!!
+echo "IMAGE_FEATURES:append = \" debug-tweaks\"" >> $proj_dir/build/conf/local.conf
+
+##############################################################################
 # Build Everything!
+##############################################################################
+
+# Build the modules and kernel
 bitbake petalinux-image-minimal
 
-# Create boot files
-bitbake xilinx-bootbin
-
+##############################################################################
+# Package all the images into a .tar.gz
 ##############################################################################
 
-# # Default file list
-# fileList="linux/system.bit linux/BOOT.BIN linux/image.ub linux/boot.scr"
+# mkdir custom image dump dir
+mkdir $proj_dir/linux
 
-# if [[ -v SOC_IP_STATIC ]]; then
-   # # File list with static IP
-   # echo $SOC_IP_STATIC>>$path/$name/images/linux/ip
-   # fileList="$fileList linux/ip"
-# fi
+# Go to deploy image dir
+cd $proj_dir/build/tmp/deploy/images/zynqmp-user
 
-# # Dump a compressed tarball of all the required build output files
-# cd $path/$name/images/ && tar -czf $imageDump $fileList
+# Copy over the FSBL, U-boot and .bit files
+cp -rfL download-zynqmp-user.bit $proj_dir/linux/system.bit
+cp -rfL boot.bin                 $proj_dir/linux/BOOT.BIN
+cp -rfL boot.scr                 $proj_dir/linux/boot.scr
+
+# Create the image.ub
+cp -rfL fitImage linux.bin
+gzip -k linux.bin
+cp $axi_soc_ultra_plus_core/shared/Yocto/image.its .
+mkimage -f image.its $proj_dir/linux/image.ub  > /dev/null
+
+# Default file list
+fileList="linux/system.bit linux/BOOT.BIN linux/boot.scr linux/image.ub"
+
+if [[ -v SOC_IP_STATIC ]]; then
+   # File list with static IP
+   echo $SOC_IP_STATIC>>$proj_dir/linux/ip
+   fileList="$fileList linux/ip"
+fi
+
+# Dump a compressed tarball of all the required build output files
+cd $proj_dir && tar -czf $imageDump $fileList
 
 echo "########################################################################"
 echo "Release File List: $fileList"
 echo "########################################################################"
-echo "petalinux.tar.gz image path: $imageDump"
+echo "linux.tar.gz image path: $imageDump"
 echo "########################################################################"
 
 ##############################################################################
