@@ -9,55 +9,32 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-# Standard SD-memory[0] card interface
-if [ -d "/run/media/boot-mmcblk0p1" ]
-then
-   # Change /run/media/boot-mmcblk0p1 to /boot
-   umount /run/media/boot-mmcblk0p1 > /dev/null 2>&1
-   rm -r  /run/media/boot-mmcblk0p1
-   mkdir -p /boot
-   mount /dev/mmcblk0p1 /boot > /dev/null 2>&1
+# Make the boot and app
+mkdir -p /boot
+mkdir -p /app
 
-   # Change /run/media/root-mmcblk0p2 to /app
-   umount /run/media/root-mmcblk0p2 > /dev/null 2>&1
-   rm -r  /run/media/root-mmcblk0p2
-   mkdir -p /app
+# Standard SD-memory[0] card interface
+if [ -e /dev/mmcblk0 ]
+then
+   mount /dev/mmcblk0p1 /boot > /dev/null 2>&1
    mount /dev/mmcblk0p2 /app
 fi
 
 ##############################################################################
 
 # Standard SD-memory[1] card interface
-if [ -d "/run/media/boot-mmcblk1p1" ]
+if [ -e /dev/mmcblk1 ]
 then
-   # Change /run/media/boot-mmcblk1p1 to /boot
-   umount /run/media/boot-mmcblk1p1 > /dev/null 2>&1
-   rm -r  /run/media/boot-mmcblk1p1
-   mkdir -p /boot
    mount /dev/mmcblk1p1 /boot > /dev/null 2>&1
-
-   # Change /run/media/root-mmcblk1p2 to /app
-   umount /run/media/root-mmcblk1p2 > /dev/null 2>&1
-   rm -r  /run/media/root-mmcblk1p2
-   mkdir -p /app
    mount /dev/mmcblk1p2 /app
 fi
 
 ##############################################################################
 
 # KR260 using USB mounted SD-memory card
-if [ -d "/run/media/sda1" ]
+if [ -e /dev/sda ]
 then
-   # Change /run/media/sda1 to /boot
-   umount /run/media/sda1 > /dev/null 2>&1
-   rm -r  /run/media/sda1
-   mkdir -p /boot
    mount /dev/sda1 /boot > /dev/null 2>&1
-
-   # Change /run/media/sda2 to /app
-   umount /run/media/sda2 > /dev/null 2>&1
-   rm -r  /run/media/sda2
-   mkdir -p /app
    mount /dev/sda2 /app
 fi
 
