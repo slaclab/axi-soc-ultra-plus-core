@@ -47,11 +47,11 @@ image_dir="$proj_dir/build/tmp/deploy/images/zynqmp-user"
 TOTAL_BUFFER_SIZE=$(( (dmaTxBuffCount + dmaRxBuffCount) * dmaBuffSize ))
 MAX_BUFFER_SIZE=$((0x60000000)) # 1.5 GB (1610612736 bytes)
 if (( TOTAL_BUFFER_SIZE > MAX_BUFFER_SIZE )); then
-    HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B --format="%.2f" "$TOTAL_BUFFER_SIZE")
-    HEX_SIZE=$(printf "0x%X" "$TOTAL_BUFFER_SIZE")
-    echo "Error: Total buffer size exceeds 1.5 GB (0x60000000)."
-    echo "Current size: $HUMAN_SIZE ($HEX_SIZE)"
-    exit 1
+   HUMAN_SIZE=$(numfmt --to=iec-i --suffix=B --format="%.2f" "$TOTAL_BUFFER_SIZE")
+   HEX_SIZE=$(printf "0x%X" "$TOTAL_BUFFER_SIZE")
+   echo "Error: Total buffer size exceeds 1.5 GB (0x60000000)."
+   echo "Current size: $HUMAN_SIZE ($HEX_SIZE)"
+   exit 1
 fi
 
 ##############################################################################
@@ -60,9 +60,15 @@ fi
 
 missing=0
 for tool in bash curl chrpath diffstat git gzip lz4c mkimage; do
-    command -v "$tool" >/dev/null 2>&1 || { echo "Missing package: $tool"; missing=1; }
+   command -v "$tool" >/dev/null 2>&1 || { echo "Missing package: $tool"; missing=1; }
 done
-[ $missing -ne 0 ] && exit 1
+if [ $missing -ne 0 ]; then
+   echo ""
+   echo "You can install the missing packages with:"
+   echo "sudo apt update"
+   echo "sudo apt install -y bash curl chrpath diffstat git gzip liblz4-tool u-boot-tools"
+   exit 1
+fi
 
 ##############################################################################
 # Misc. file and dir checking
