@@ -38,7 +38,7 @@ aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
 imageDump=${xsa%.*}.linux.tar.gz
 proj_dir=$(realpath "$path/$Name")
-image_dir=$(realpath "$proj_dir/build/tmp/deploy/images/zynqmp-user")
+image_dir="$proj_dir/build/tmp/deploy/images/zynqmp-user"
 
 ##############################################################################
 # Check total buffer size
