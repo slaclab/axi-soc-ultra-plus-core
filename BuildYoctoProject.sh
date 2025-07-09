@@ -207,7 +207,7 @@ sed -i "s/default  = 2,/default  = $numLane,/"  $proj_dir/sources/meta-user/reci
 sed -i "s/default  = 32,/default  = $numDest,/" $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
 
 # Check if including RFDC utility
-if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp.conf"; then
+if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp-user.conf"; then
    echo "MACHINE_FEATURES=rfsoc detected: Including RFDC utility"
    echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
 fi
