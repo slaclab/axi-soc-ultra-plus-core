@@ -42,9 +42,6 @@
 	nvmem-cells = <&mac_address>;
 	nvmem-cell-names = "mac-address";
 };
-&amba_pl {
-	status = "disabled";
-};
 / {
 	axi_stream_dma_0@b0000000 {
 		compatible = "axi_stream_dma";
