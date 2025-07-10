@@ -248,7 +248,7 @@ cp -rfL boot.bin                 $proj_dir/linux/BOOT.BIN
 cp -rfL boot.scr                 $proj_dir/linux/boot.scr
 
 # Create the image.ub
-cp -rfL fitImage linux.bin
+cp -rfL Image linux.bin
 gzip -k linux.bin
 cp $axi_soc_ultra_plus_core/shared/Yocto/image.its .
 mkimage -f image.its $proj_dir/linux/image.ub  > /dev/null
