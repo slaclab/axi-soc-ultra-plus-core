@@ -12,6 +12,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 SRC_URI = "https://github.com/slaclab/rogue/archive/v${ROGUE_VERSION}.tar.gz"
 SRC_URI[md5sum] = "${ROGUE_MD5SUM}"
+INSANE_SKIP += "src-uri-bad"
 
 S = "${WORKDIR}/rogue-${ROGUE_VERSION}"
 PROVIDES = "rogue"
