@@ -230,6 +230,12 @@ echo "IMAGE_FEATURES:append = \" debug-tweaks\"" >> $proj_dir/build/conf/local.c
 
 bitbake petalinux-image-minimal
 
+# Check if we need to manual run xilinx-bootbin
+if [ ! -f "$proj_dir/build/tmp/deploy/images/zynqmp-user/boot.bin" ]; then
+  echo "boot.bin not found. Running bitbake xilinx-bootbin..."
+  bitbake xilinx-bootbin
+fi
+
 ##############################################################################
 # Package all the images into a .tar.gz
 ##############################################################################
