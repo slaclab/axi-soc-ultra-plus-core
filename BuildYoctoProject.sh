@@ -226,11 +226,7 @@ echo "IMAGE_FEATURES:append = \" debug-tweaks\"" >> $proj_dir/build/conf/local.c
 # Build Everything!
 ##############################################################################
 
-# Build the modules and kernel
 bitbake petalinux-image-minimal
-
-# Generate a boot.bin file for booting the target
-bitbake xilinx-bootbin
 
 ##############################################################################
 # Package all the images into a .tar.gz
