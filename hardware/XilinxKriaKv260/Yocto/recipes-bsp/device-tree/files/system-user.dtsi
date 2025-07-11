@@ -1,6 +1,6 @@
 / {
 	chosen {
-		bootargs = " earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0 cma=1536M";
+		bootargs = " earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0 cma=1024M";
 		stdout-path = "serial1:115200n8";
 	};
 
