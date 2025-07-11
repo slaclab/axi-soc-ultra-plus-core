@@ -1,10 +1,9 @@
-# https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842475/PetaLinux+Yocto+Tips#PetaLinuxYoctoTips-HowtoAutoRunApplicationatStartup
 #
 # This file is the startup-app-init recipe.
 #
 
 SUMMARY = "Simple startup-app-init application"
-SECTION = "PETALINUX/apps"
+SECTION = "Yocto/apps"
 LICENSE = "MIT"
 
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"

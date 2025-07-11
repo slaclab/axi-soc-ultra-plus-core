@@ -1,7 +1,7 @@
 /dts-v1/;
 
 / {
-        description = "Kernel fitImage for PetaLinux/axi-soc-ultra-plus-core";
+        description = "Kernel fitImage for axi-soc-ultra-plus-core";
         #address-cells = <1>;
 
         images {

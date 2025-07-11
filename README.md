@@ -20,10 +20,10 @@ This typically will include BOOT.BIN, image.ub, and boot.scr
 ```bash
 sudo mkdir -p boot
 sudo mount /dev/sdd1 boot
-sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/system.bit boot/.
-sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/BOOT.BIN   boot/.
-sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/image.ub   boot/.
-sudo cp <PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/boot.scr   boot/.
+sudo cp <PATH_TO_BUILD_DIR>/tmp/deploy/images/zynqmp-user/system.bit boot/.
+sudo cp <PATH_TO_BUILD_DIR>/tmp/deploy/images/zynqmp-user/BOOT.BIN   boot/.
+sudo cp <PATH_TO_BUILD_DIR>/tmp/deploy/images/zynqmp-user/image.ub   boot/.
+sudo cp <PATH_TO_BUILD_DIR>/tmp/deploy/images/zynqmp-user/boot.scr   boot/.
 sudo umount boot
 sudo rm -rf boot
 ```
@@ -33,7 +33,7 @@ sudo rm -rf boot
 `roofts.ext4 -  This is an uncompressed ext4 file system image. To copy the contents to the root partition, you can use the following command: `
 
 ```bash
-sudo dd if=<PATH_TO_BUILD_DIR>/petalinux/<TARGET_NAME>/images/linux/rootfs.ext4 of=/dev/<DEV_NAME>
+sudo dd if=<PATH_TO_BUILD_DIR>/tmp/deploy/images/zynqmp-user/rootfs.ext4 of=/dev/<DEV_NAME>
 ```
 
 
@@ -93,53 +93,23 @@ disconnect
 
 <!--- ######################################################## -->
 
-### Load the bitstream and kernel via JTAG
-
-```bash
-# Go to petalinux project directory
-cd <MY_PROJECT>
-
-# Execute the command
-petalinux-boot --jtag --kernel --fpga
-```
-
-Note: Make sure you power cycle the board before JTAG boot
-
-<!--- ######################################################## -->
-
-
-### How to create a .BSP file (Board Support File)
-
-```bash
-# Go to petalinux project directory
-cd <MY_PROJECT>
-
-# Execute the command
-petalinux-package --bsp -p SpaceRfSocXilinxZcu208DevBoard -o SpaceRfSocXilinxZcu208DevBoard.bsp
-```
-
-Note: Make sure you power cycle the board before JTAG boot
-
-
-<!--- ######################################################## -->
-
 
 ### How to Program the QSPI flash
 
 ```bash
-# Go to petalinux project directory
+# Go to Yocto project directory
 cd <MY_PROJECT>
 
 # Define default parameters
 default_parameter="\
 -flash_type qspi-x8-dual_parallel \
 -blank_check -verify \
--fsbl images/linux/zynqmp_fsbl.elf"
+-fsbl linux/zynqmp_fsbl.elf"
 
 # Execute the commands
-program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
-program_flash -f images/linux/boot.scr -offset 0x3E80000 $default_parameter
-program_flash -f images/linux/image.ub -offset 0x4000000 $default_parameter
+program_flash -f linux/BOOT.BIN -offset 0x0000000 $default_parameter
+program_flash -f linux/boot.scr -offset 0x3E80000 $default_parameter
+program_flash -f linux/image.ub -offset 0x4000000 $default_parameter
 ```
 
 Note: Assuming "qspi-x8-dual_parallel" for QSPI configuration
@@ -150,19 +120,19 @@ Note: Assuming "qspi-x8-dual_parallel" for QSPI configuration
 ### How to Program the NAND flash
 
 ```bash
-# Go to petalinux project directory
+# Go to Yocto project directory
 cd <MY_PROJECT>
 
 # Define default parameters
 default_parameter="\
 -flash_type nand-x8-single \
 -blank_check -verify \
--fsbl images/linux/zynqmp_fsbl.elf"
+-fsbl linux/zynqmp_fsbl.elf"
 
 # Execute the commands
-program_flash -f images/linux/BOOT.BIN -offset 0x0000000 $default_parameter
-program_flash -f images/linux/boot.scr -offset 0x3E80000 $default_parameter
-program_flash -f images/linux/image.ub -offset 0x4180000 $default_parameter
+program_flash -f linux/BOOT.BIN -offset 0x0000000 $default_parameter
+program_flash -f linux/boot.scr -offset 0x3E80000 $default_parameter
+program_flash -f linux/image.ub -offset 0x4180000 $default_parameter
 ```
 
 <!--- ######################################################## -->
