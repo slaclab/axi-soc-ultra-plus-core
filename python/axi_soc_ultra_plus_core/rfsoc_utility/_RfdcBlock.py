@@ -2,7 +2,6 @@
 # Title      : Xilinx RFSoC RF data converter block
 #-----------------------------------------------------------------------------
 # Description: Complementary mapping to class PyRFdc(rogue::interfaces::memory)
-# https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/petalinux-apps/pyrfdc/files/PyRFdc.cpp
 #-----------------------------------------------------------------------------
 # This file is part of the 'SLAC Firmware Standard Library'. It is subject to
 # the license terms in the LICENSE.txt file found in the top-level directory

@@ -13,7 +13,6 @@ source $::env(RUCKUS_PROC_TCL)
 #########################################################################################
 # hhttp://dev.realdigital.org/hardware/rfsoc-4x2
 # https://casper-toolflow.readthedocs.io/projects/tutorials/en/latest/tutorials/rfsoc/tut_getting_started.html
-# https://github.com/Xilinx/RFSoC-PYNQ/tree/master/boards/RFSoC4x2/petalinux_bsp/meta-user
 #########################################################################################
 
 # Check for version 2023.1 of Vivado (or later)

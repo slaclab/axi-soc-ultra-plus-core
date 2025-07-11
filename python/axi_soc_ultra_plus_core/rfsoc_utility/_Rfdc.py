@@ -2,7 +2,6 @@
 # Title      : Xilinx RFSoC RF data converter tile
 #-----------------------------------------------------------------------------
 # Description: Complementary mapping to class PyRFdc(rogue::interfaces::memory)
-# https://github.com/slaclab/axi-soc-ultra-plus-core/blob/main/petalinux-apps/pyrfdc/files/PyRFdc.cpp
 #-----------------------------------------------------------------------------
 # This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
 # the license terms in the LICENSE.txt file found in the top-level directory

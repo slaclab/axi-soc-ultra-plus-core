@@ -10,8 +10,8 @@
 ##############################################################################
 
 # First argument is output image file
-# Second argument points to file produced by CreatePetalinuxProject.sh
-# Use as ./CreateDiskImage.sh image.img <FileFromYourBuild>.petalinux.tar
+# Second argument points to file produced by BuildYoctoProject.sh
+# Use as ./CreateDiskImage.sh image.img <FileFromYourBuild>.linux.tar
 img=$(realpath $1)
 
 # Make sure to not accidentally overwrite an existing file
@@ -71,16 +71,16 @@ fi
 mkdir $img_boot_mount
 sudo mount "$loopdev"p1 $img_boot_mount
 
-# Option 1: Copy over files. $2 must point to directory where petalinux put the images
+# Option 1: Copy over files. $2 must point to directory where linux put the images
 # images_dir=$2
 # sudo cp $images_dir/linux/system.bit $img_boot_mount/.
 # sudo cp $images_dir/linux/BOOT.BIN   $img_boot_mount/.
 # sudo cp $images_dir/linux/image.ub   $img_boot_mount/.
 # sudo cp $images_dir/linux/boot.scr   $img_boot_mount/.
 
-# Option 2: Directly process the tar.gz produced by CreatePetalinuxProject.sh
+# Option 2: Directly process the tar.gz produced by BuildYoctoProject.sh
 archive_file=$2
-echo "Extracting petalinux files to image"
+echo "Extracting linux files to image"
 sudo tar xfo $archive_file --directory=$img_boot_mount/.
 # The files end up in a folder, we want them outside that folder
 sudo mv $img_boot_mount/linux/* $img_boot_mount/.
