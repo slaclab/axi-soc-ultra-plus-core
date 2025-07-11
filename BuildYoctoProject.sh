@@ -171,6 +171,8 @@ echo "HDF_PATH = \"$xsa\""                                  >> $proj_dir/sources
 
 # Set the machine & hostname in conf/local.conf
 sed -i "/MACHINE ??=/c\MACHINE ??= \"zynqmp-user\"" $proj_dir/build/conf/local.conf
+echo ""                                          >> $proj_dir/build/conf/local.conf
+echo "# Custom Configurations "                  >> $proj_dir/build/conf/local.conf
 echo "hostname:pn-base-files = \"$Name\""        >> $proj_dir/build/conf/local.conf
 
 ##############################################################################
@@ -256,6 +258,20 @@ if [[ -v SOC_IP_STATIC ]]; then
    # File list with static IP
    echo $SOC_IP_STATIC>>$proj_dir/linux/ip
    fileList="$fileList linux/ip"
+fi
+
+# Check all files and collect missing ones
+missingFiles=$(
+    for file in $fileList; do
+        [ ! -f "$proj_dir/$file" ] && echo "Missing: $proj_dir/$file"
+    done
+)
+
+# If any files were missing, print and exit
+if [ -n "$missingFiles" ]; then
+    echo "$missingFiles"
+    echo "Error: One or more required files are missing. Aborting."
+    exit 1
 fi
 
 # Dump a compressed tarball of all the required build output files
