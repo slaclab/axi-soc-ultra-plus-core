@@ -1,1 +1,0 @@
-YAML_DT_BOARD_FLAGS = "{BOARD zcu102-rev1.0}"

@@ -1,0 +1,62 @@
+/dts-v1/;
+
+/ {
+        description = "Kernel fitImage for axi-soc-ultra-plus-core";
+        #address-cells = <1>;
+
+        images {
+                kernel-1 {
+                        description = "Linux kernel";
+                        data = /incbin/("linux.bin.gz");
+                        type = "kernel";
+                        arch = "arm64";
+                        os = "linux";
+                        compression = "gzip";
+                        load = <0x200000>;
+                        entry = <0x200000>;
+                        hash-1 {
+                                algo = "sha256";
+                        };
+                };
+                fdt-system-top.dtb {
+                        description = "Flattened Device Tree blob";
+                        data = /incbin/("zynqmp-user-system.dtb");
+                        type = "flat_dt";
+                        arch = "arm64";
+                        compression = "none";
+                        
+                        hash-1 {
+                                algo = "sha256";
+                        };
+                };
+                ramdisk-1 {
+                        description = "petalinux-image-minimal";
+                        data = /incbin/("petalinux-image-minimal-zynqmp-user.cpio.gz");
+                        type = "ramdisk";
+                        arch = "arm64";
+                        os = "linux";
+                        compression = "none";
+                        
+                        
+                        hash-1 {
+                                algo = "sha256";
+                        };
+                };
+	};
+
+        configurations {
+                default = "conf-system-top.dtb";
+                conf-system-top.dtb {
+                        description = "1 Linux kernel, FDT blob, ramdisk";
+                        compatible = "xlnx,zynqmp";
+                        kernel = "kernel-1";
+                        fdt = "fdt-system-top.dtb";
+                        ramdisk = "ramdisk-1";
+                        
+                        
+                        hash-1 {
+                                algo = "sha256";
+                        };
+                };
+	};
+};
