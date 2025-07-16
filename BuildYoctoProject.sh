@@ -51,7 +51,7 @@ if (( TOTAL_BUFFER_SIZE > MAX_BUFFER_SIZE )); then
    HEX_SIZE=$(printf "0x%X" "$TOTAL_BUFFER_SIZE")
    echo "Error: Total buffer size exceeds 1.5 GB (0x60000000)."
    echo "Current size: $HUMAN_SIZE ($HEX_SIZE)"
-   exit 1
+   return 1
 fi
 
 ##############################################################################
@@ -67,7 +67,7 @@ if [ $missing -ne 0 ]; then
    echo "You can install the missing packages with:"
    echo "sudo apt update"
    echo "sudo apt install -y bash curl chrpath diffstat git gzip liblz4-tool u-boot-tools"
-   exit 1
+   return 1
 fi
 
 ##############################################################################
@@ -78,26 +78,26 @@ fi
 if [ ! -d "$hwDir" ]
 then
    echo "hwDir=$hwDir does NOT exist"
-   exit 1
+   return 1
 fi
 
 # Check if the Yocto zynqmp-user.conf file exists
 if [ ! -f "$hwDir/Yocto/zynqmp-user.conf" ]; then
    echo "File $hwDir/Yocto/zynqmp-user.conf does NOT exist"
-   exit 1
+   return 1
 fi
 
 # Check if the directory exists
 if [ ! -d "$hwDir/Yocto/recipes-bsp" ]
 then
    echo "$hwDir/Yocto/recipes-bsp does NOT exist"
-   exit 1
+   return 1
 fi
 
 # Check if the XSA file exists and has .xsa extension
 if [ ! -f "$xsa" ] || [[ "$xsa" != *.xsa ]]; then
    echo "File $xsa does NOT exist or is not a .xsa file"
-   exit 1
+   return 1
 fi
 
 ##############################################################################
@@ -277,7 +277,7 @@ missingFiles=$(
 if [ -n "$missingFiles" ]; then
     echo "$missingFiles"
     echo "Error: One or more required files are missing. Aborting."
-    exit 1
+    return 1
 fi
 
 # Dump a compressed tarball of all the required build output files
