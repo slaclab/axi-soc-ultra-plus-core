@@ -125,13 +125,13 @@ begin
 
    auxClk <= auxClock;
 
-   U_auxRst : entity surf.RstPipeline
+   U_auxRst : entity surf.RstSync
       generic map (
          TPD_G => TPD_G)
       port map (
-         clk    => auxClock,
-         rstIn  => systemReset(1),
-         rstOut => auxRst);
+         clk      => auxClock,
+         asyncRst => systemReset(1),
+         syncRst  => auxRst);
 
    systemReset(1) <= auxReset or cardReset;
 
