@@ -146,16 +146,16 @@ class RingBufferProcessor(pr.DataReceiver):
     # Method which is called when a frame is received
     def process(self,frame):
         with self.root.updateGroup():
-            pr.DataReceiver.process(self,frame)
+            # Get the frame data directly as 16 bit adc samples
+            waveformData = frame.getNumpy(dtype=np.int16) # Extract frame as 16-bit ADC samples with alternating I and Q
 
             # Check frame size
-            if (frame.getPayload()//4) != self._maxSize: # why divide by 4 again?
+            if (frame.getPayload()//4) != self._maxSize: # each IQ sample is 4 bytes
                 print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//4}, expected {self._maxSize}' )
             else:
                 # Get data from frame
-                waveformIData = self.Data.value()[::2].view(np.int16) # is the the same as np.frombuffer?
-                waveformQData = self.Data.value()[1::2].view(np.int16) # can't tell if I'm doing this right because idk what self.Data.value() is
-                waveformData = waveformIData + 1j*waveformQData
+                self.WaveformData.set(waveformData,write=True)
+                complexData = waveformData[::2] + 1j*waveformData[1::2] # Convert ADC sample pairs to complex128
                 with self.waveformData.lock:
                    self.waveformData.value()[:] = waveformData
                 # Write the data into the LocalVariable
