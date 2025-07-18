@@ -16,7 +16,7 @@ import rogue
 rogue.Version.minVersion('6.2.0')
 
 # Class for streaming RX
-class RingBufferProcessor(pr.DataReceiver):
+class IQRingBufferProcessor(pr.DataReceiver):
     # Init method must call the parent class init
     def __init__( self,
             maxSize     = 2**14,
