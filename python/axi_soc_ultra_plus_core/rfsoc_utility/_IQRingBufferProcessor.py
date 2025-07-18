@@ -39,26 +39,32 @@ class RingBufferProcessor(pr.DataReceiver):
         self.Data.addToGroup('NoStream')
         self.Data.addToGroup('NoStatus')
 
-        # Configurable variables
-        self._maxSize  = maxSize
-        self._timeBin  = (1.0E+9/sampleRate) # Units of ns
-        self._maxAve   = maxAve
+        @property
+        def n_samples(self):
+            return self._maxSize // 4 # Each I/Q sample is 4 bytes
 
-        # Init variables
-        self._freqBin  = ((0.5E+3/self._timeBin)/float(self._maxSize>>1)) # Units of MHz
-        self._adcLsb   = 500.0/float(2**15) # units of mV
+        @property
+        def times(self):
+            """1D np array of sample times in nanoseconds.
+            """
+            return np.arange(self.n_samples) / self.sampleRate * 1E9 # Convert to nanoseconds
+
+        @property
+        def fft_freqs(self):
+            """1D np array of complex fft freqs.
+            """
+            return np.fft.fftshift(np.fft.fftfreq(self.n_samples),1/self.sampleRate)
+
+        # Averaging config managment -- udpate this later
         self._idx      = 0
         self._aveSize  = 1
-
-        # Calculate the time/frequency x-axis arrays
-        timeSteps = np.linspace(0, self._timeBin*(self._maxSize-1), num=self._maxSize)
-        freqSteps = np.linspace(0, self._freqBin*((self._maxSize>>1)-1), num=(self._maxSize>>1))
+        self._maxAve   = maxAve
 
         self.add(pr.LocalVariable(
             name        = 'Time',
             description = 'Time steps (ns)',
             typeStr     = 'Float[np]',
-            value       = timeSteps,
+            value       = times,
             hidden      = True,
             groups      = guiGroups,
         ))
@@ -66,8 +72,8 @@ class RingBufferProcessor(pr.DataReceiver):
         self.add(pr.LocalVariable(
             name        = 'WaveformData',
             description = 'Data Frame Container',
-            typeStr     = 'Compl128[np]', # ????
-            value       = np.zeros(shape=self._maxSize, dtype=np.complex128, order='C'),
+            typeStr     = 'Complex128[np]',
+            value       = np.zeros(shape=self.n_samples, dtype=np.complex128, order='C'),
             hidden      = True,
             groups      = guiGroups,
         ))
@@ -78,19 +84,20 @@ class RingBufferProcessor(pr.DataReceiver):
                 name        = 'Freq',
                 description = 'Freq steps (MHz)',
                 typeStr     = 'Float[np]',
-                value       = freqSteps,
+                value       = self.fft_freqs,
                 hidden      = True,
                 groups      = guiGroups,
             ))
 
-            self.add(pr.LocalVariable(
-                name        = 'Magnitude',
-                description = 'Magnitude Frame Container',
-                typeStr     = 'Float[np]',
-                value       = np.zeros(shape=(self._maxSize>>1), dtype=np.float32, order='C'),
+            self.add(pr.LocalVariable( # Do I need to repeat this variable for the live display?
+                name        = 'FFTMag',
+                description = 'Waveform FFT Magnitude (dB)',
+                typeStr     = 'Complex128[np]',
+                value       = np.zeros(shape=self.n_samples, dtype=np.complex128, order='C'),
                 hidden      = True,
                 groups      = guiGroups,
             ))
+
 
             self.add(pr.LocalVariable(
                 name        = 'FftAveraging',
@@ -104,7 +111,6 @@ class RingBufferProcessor(pr.DataReceiver):
                 groups      = guiGroups,
             ))
 
-            self._mag = np.zeros(shape=[self._maxAve,(self._maxSize>>1)], dtype=np.float32, order='C')
 
         self.add(pr.LocalVariable(
             name   = 'NewDataReady',
@@ -119,6 +125,7 @@ class RingBufferProcessor(pr.DataReceiver):
         else:
             self.RxEnable.set(value=True)
 
+    # Lots of averaging control -- will update this later
     def _fftAveraging(self,value,changed):
         if changed:
             self.FftAveraging.set(int(value))
@@ -146,36 +153,27 @@ class RingBufferProcessor(pr.DataReceiver):
     # Method which is called when a frame is received
     def process(self,frame):
         with self.root.updateGroup():
-            # Get the frame data directly as 16 bit adc samples
-            waveformData = frame.getNumpy(dtype=np.int16) # Extract frame as 16-bit ADC samples with alternating I and Q
+            wvfm_iq_ints = frame.getNumpy(dtype=np.int16) # Extract frame as 16-bit ADC samples with alternating I and Q
 
             # Check frame size
             if (frame.getPayload()//4) != self._maxSize: # each IQ sample is 4 bytes
                 print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//4}, expected {self._maxSize}' )
             else:
-                # Get data from frame
-                self.WaveformData.set(waveformData,write=True)
-                complexData = waveformData[::2] + 1j*waveformData[1::2] # Convert ADC sample pairs to complex128
-                with self.waveformData.lock:
-                   self.waveformData.value()[:] = waveformData
-                # Write the data into the LocalVariable
-                self.WaveformData.set(waveformData,write=True)
+                wvfm_complex = wvfm_iq_ints[::2] + 1j*wvfm_iq_ints[1::2] # Convert ADC sample pairs to complex128
+                self.WaveformData.set(wvfm_complex,write=True)
 
                 # Check if live display
                 if (self._liveDisplay):
 
-                    # Calculate the FFT
-                    freq = np.fft.fft(waveformData)/float(len(waveformData))
-                    freq = freq[range(len(waveformData)//2)]
-
                     # Prevent warning message when for divide by zero encountered in log10
                     # Checking for inf later to fix this in the display
                     np.seterr(divide = 'ignore')
+                    
+                    # Calculate the FFT
+                    fft_dB = 20*np.log10(np.abs(np.fft.fftshift(np.fft.fft(wvfm_complex))))
+                    fft_norm = fft_dB - np.max(fft_dB) # Normalize FFT to max value
 
-                    # Calculate the average magnitude
-                    mag = 20.0*np.log10(np.abs(freq)/32767.0) # Units of dBFS
-                    self._mag[self._idx] = mag
-                    magnitude = self.running_mean(self._mag)
-                    self.Magnitude.set(magnitude,write=True)
+                    # Update live display variable
+                    self.FFTMag.set(fft_norm, write=True)
 
                 self.NewDataReady.set(True)
