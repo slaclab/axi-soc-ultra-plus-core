@@ -43,28 +43,25 @@ class IQRingBufferProcessor(pr.DataReceiver):
         def n_samples(self):
             return self._maxSize // 4 # Each I/Q sample is 4 bytes
 
-        @property
-        def times(self):
-            """1D np array of sample times in nanoseconds.
-            """
-            return np.arange(self.n_samples) / self.sampleRate * 1E9 # Convert to nanoseconds
-
-        @property
-        def fft_freqs(self):
-            """1D np array of complex fft freqs.
-            """
-            return np.fft.fftshift(np.fft.fftfreq(self.n_samples),1/self.sampleRate)
-
         # Averaging config managment -- udpate this later
         self._idx      = 0
         self._aveSize  = 1
         self._maxAve   = maxAve
 
         self.add(pr.LocalVariable(
-            name        = 'Time',
+            name        = 'times',
             description = 'Time steps (ns)',
             typeStr     = 'Float[np]',
-            value       = times,
+            value       = np.arange(self.n_samples) / sampleRate * 1E9, # Convert to nanoseconds
+            hidden      = True,
+            groups      = guiGroups,
+        ))
+
+        self.add(pr.LocalVariable(
+            name        = 'fft_freqs',
+            description = '1D np array of complex fft freqs',
+            typeStr     = 'Float[np]',
+            value       = np.fft.fftshift(np.fft.fftfreq(self.n_samples),1/self.sampleRate),
             hidden      = True,
             groups      = guiGroups,
         ))
@@ -81,15 +78,6 @@ class IQRingBufferProcessor(pr.DataReceiver):
         if (self._liveDisplay):
 
             self.add(pr.LocalVariable(
-                name        = 'Freq',
-                description = 'Freq steps (MHz)',
-                typeStr     = 'Float[np]',
-                value       = self.fft_freqs,
-                hidden      = True,
-                groups      = guiGroups,
-            ))
-
-            self.add(pr.LocalVariable( # Do I need to repeat this variable for the live display?
                 name        = 'FFTMag',
                 description = 'Waveform FFT Magnitude (dB)',
                 typeStr     = 'Complex128[np]',
