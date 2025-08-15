@@ -9,6 +9,9 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
+## Clear terminal output
+#echo -ne "\033c"
+
 while getopts p:n:h:x:l:d:t:r:s:f: flag
 do
     case "${flag}" in
