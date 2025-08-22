@@ -52,14 +52,14 @@ class LiveDisplay(PyDMFrame):
 
         # Add new curve item with respect to channel select
         self.timePlot.addChannel(
-            x_channel  = f'{self.path[self.idx]}.Time',
+            x_channel  = f'{self.path[self.idx]}.times',
             y_channel  = f'{self.path[self.idx]}.WaveformData',
             color      = self.color[self.idx],
             symbol     = 'o',
             symbolSize = 3,
         )
         self.freqPlot.addChannel(
-            x_channel  = f'{self.path[self.idx]}.Freq',
+            x_channel  = f'{self.path[self.idx]}.fft_freqs',
             y_channel  = f'{self.path[self.idx]}.Magnitude',
             color      = self.color[self.idx],
             symbol     = 'o',
@@ -99,7 +99,7 @@ class LiveDisplay(PyDMFrame):
         self.timePlot.setLabel("bottom", text='Time (ns)')
         self.timePlot.addChannel(
             name       = 'Counts',
-            x_channel  = f'{self.path[self.idx]}.Time',
+            x_channel  = f'{self.path[self.idx]}.time',
             y_channel  = f'{self.path[self.idx]}.WaveformData',
             color      = self.color[self.idx],
             symbol     = 'o',
@@ -122,7 +122,7 @@ class LiveDisplay(PyDMFrame):
         self.freqPlot.setLabel("bottom", text='Frequency (MHz)')
         self.freqPlot.addChannel(
             name       = 'Amplitude (dBFS)',
-            x_channel  = f'{self.path[self.idx]}.Freq',
+            x_channel  = f'{self.path[self.idx]}.fft_freqs',
             y_channel  = f'{self.path[self.idx]}.Magnitude',
             color      = self.color[self.idx],
             symbol     = 'o',
