@@ -162,7 +162,8 @@ class IQRingBufferProcessor(pr.DataReceiver):
     # Method which is called when a frame is received
     def process(self,frame):
         with self.root.updateGroup():
-            wvfm_ints = frame.getNumpy().view(np.uint16) # Extract frame as 16-bit ADC samples
+            pr.DataReceiver.process(self,frame)
+            wvfm_ints = self.Data.value()[:].view(np.int16) # Extract frame as 16-bit ADC samples
 
             # Check frame size
             if self._iq:
