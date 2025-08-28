@@ -9,8 +9,8 @@
 ## the terms contained in the LICENSE.txt file.
 ##############################################################################
 
-# Clear terminal output
-echo -ne "\033c"
+## Clear terminal output
+#echo -ne "\033c"
 
 while getopts p:n:h:x:l:d:t:r:s:f: flag
 do
@@ -95,7 +95,7 @@ then
 fi
 
 # Check if the XSA file exists and has .xsa extension
-if [ ! -f "$xsa" ] || [[ "$xsa" != *.xsa ]]; then
+if [ ! -f "$xsa" ] || [[ "${xsa##*.}" != "xsa" ]]; then
    echo "File $xsa does NOT exist or is not a .xsa file"
    exit 1
 fi
@@ -175,19 +175,26 @@ echo ""                                          >> $proj_dir/build/conf/local.c
 echo "# Custom Configurations "                  >> $proj_dir/build/conf/local.conf
 echo "hostname:pn-base-files = \"$Name\""        >> $proj_dir/build/conf/local.conf
 
+# Keep the sstate-cache in a location outside the proj_dir to make sure it is
+# not deleted when re-running the build. Use of sstate-cache allows for re-use
+# of already build components which should significantly speed up build time
+# (except for the first time).
+sstate_dir=$path
+sed -i "/^#SSTATE_DIR ?= /c\SSTATE_DIR ?= \"$sstate_dir/sstate-cache\"" $proj_dir/build/conf/local.conf
+
 ##############################################################################
 # Add the hardware specific BSP
 ##############################################################################
 
+# Copy the meta layers from local source
 cp -rfL $hwDir/Yocto/recipes-bsp $proj_dir/sources/meta-user/.
 
 ##############################################################################
 # Add the axi-stream-dma & axi_memory_map kernel modules
 ##############################################################################
 
+# Copy the meta layers from local source
 cp -rfL $aes_stream_drivers/Yocto/recipes-kernel $proj_dir/sources/meta-user/.
-echo "MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS:append = \" axistreamdma aximemorymap\"" >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
-echo "MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS:append = \" axistreamdma aximemorymap\"" >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
 
 # Update DMA engine with user configuration
 sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
@@ -198,11 +205,8 @@ sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" $proj_dir
 # Add axi-soc-ultra-plus-core's recipes-apps
 ##############################################################################
 
+# Copy the meta layers from local source
 cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-apps $proj_dir/sources/meta-user/.
-echo "IMAGE_INSTALL:append = \" rogue rogue-dev\""  >> $proj_dir/sources/meta-user/conf/layer.conf
-echo "IMAGE_INSTALL:append = \" roguetcpbridge\""   >> $proj_dir/sources/meta-user/conf/layer.conf
-echo "IMAGE_INSTALL:append = \" axiversiondump\""   >> $proj_dir/sources/meta-user/conf/layer.conf
-echo "IMAGE_INSTALL:append = \" startup-app-init\"" >> $proj_dir/sources/meta-user/conf/layer.conf
 
 # Update Application with user configuration
 sed -i "s/default  = 2,/default  = $numLane,/"  $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
@@ -213,16 +217,6 @@ if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp-user.conf";
    echo "MACHINE_FEATURES=rfsoc detected: Including RFDC utility"
    echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
 fi
-
-##############################################################################
-# Add commonly used packages
-##############################################################################
-
-echo "IMAGE_INSTALL:append = \" peekpoke\"" >> $proj_dir/build/conf/local.conf
-echo "IMAGE_INSTALL:append = \" nano\""     >> $proj_dir/build/conf/local.conf
-
-# Enable debug-tweaks for development convenience; do not use in production images!!!
-echo "IMAGE_FEATURES:append = \" debug-tweaks\"" >> $proj_dir/build/conf/local.conf
 
 ##############################################################################
 # Build Everything!
