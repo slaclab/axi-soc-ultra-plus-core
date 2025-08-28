@@ -32,6 +32,7 @@ class IQRingBufferProcessor(pr.DataReceiver):
 
         self._liveDisplay = liveDisplay
         self._iq = iq # Supports alternating IQ data from ADC
+        self._maxSize = maxSize
 
         # Not saving config/state to YAML
         guiGroups = ['NoStream','NoState','NoConfig']
@@ -51,9 +52,9 @@ class IQRingBufferProcessor(pr.DataReceiver):
 
         # Compute FFT Freqs
         if iq:
-            fft_freqs = np.fft.fftshift(np.fft.fftfreq(n_samples),d=1/self.sampleRate)
+            fft_freqs = np.fft.fftshift(np.fft.fftfreq(n_samples,d=1/sampleRate))
         else:
-            fft_freqs = fft.fftfreq(n_samples, d=1/self.sampleRate)
+            fft_freqs = np.fft.fftfreq(n_samples, d=1/sampleRate)
 
         self.add(pr.LocalVariable(
             name        = 'times',
@@ -168,10 +169,10 @@ class IQRingBufferProcessor(pr.DataReceiver):
                 if (frame.getPayload()//4) != self._maxSize: # each IQ sample is 4 bytes
                     print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//4}, expected {self._maxSize}' )
                 else:
-                    wvfm_complex = wvfm_iq_ints[::2] + 1j*wvfm_iq_ints[1::2] # Convert interleaved IQ ADC sample pairs to complex128
+                    wvfm_complex = wvfm_ints[::2] + 1j*wvfm_ints[1::2] # Convert interleaved IQ ADC sample pairs to complex128
                     self.WaveformData.set(wvfm_complex,write=True)
             else:
-                if frame.getPayload()//2) != self._maxSize: # each real sample is 2 bytes
+                if frame.getPayload()//2 != self._maxSize: # each real sample is 2 bytes
                     print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//2}, expected {self._maxSize}' )
                 else:
                     wvfm_real = self.Data.value()[:].view(np.int16)
