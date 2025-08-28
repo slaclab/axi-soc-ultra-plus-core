@@ -163,14 +163,14 @@ class IQRingBufferProcessor(pr.DataReceiver):
     def process(self,frame):
         with self.root.updateGroup():
             wvfm_ints = frame.getNumpy().view(np.int16) # Extract frame as 16-bit ADC samples
-            print(f'wvfm_ints: {wvfm_ints.size} int16s')
-
             # Check frame size
             if self._iq:
                 if (frame.getPayload()//4) != self._maxSize: # each IQ sample is 4 bytes
                     print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//4}, expected {self._maxSize}' )
                 else:
                     wvfm_complex = wvfm_ints[::2] + 1j*wvfm_ints[1::2] # Convert interleaved IQ ADC sample pairs to complex128
+                    #print(f'waveform real ints {wvfm_ints[::2]}')
+                    #print(f'waveform imag ints?? {wvfm_ints[1::2]}')
                     self.WaveformData.set(wvfm_complex,write=True)
             else:
                 if frame.getPayload()//2 != self._maxSize: # each real sample is 2 bytes
@@ -191,6 +191,6 @@ class IQRingBufferProcessor(pr.DataReceiver):
                     ffb_dB = 20*np.log10(np.abs(np.fft.rfft(wvfm_real, norm='ortho')))
                 fft_norm = fft_dB - np.max(fft_dB) # Normalize FFT to max value
                 # Update live display variable
-                self.FFTMag.set(fft_norm, write=True)
+                self.Magnitude.set(fft_norm, write=True)
 
                 self.NewDataReady.set(True)
