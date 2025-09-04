@@ -19,7 +19,7 @@ rogue.Version.minVersion('6.2.0')
 class IQRingBufferProcessor(pr.DataReceiver):
     # Init method must call the parent class init
     def __init__( self,
-            maxSize     = 2**14,
+            maxSize     = 2**16, # 8 [SSR (4 I, 4 Q)] * 2^12 [RAM Depth] * 2 [bytes / real sample] = 65,536 bytes
             sampleRate  = 5.0E+9, # Units of Hz
             maxAve      = 4,
             liveDisplay = True,
@@ -77,7 +77,7 @@ class IQRingBufferProcessor(pr.DataReceiver):
         # Store waveform data as either complex or real
         if iq:
             self.add(pr.LocalVariable(
-                name        = 'WaveformData',
+                name        = 'WaveformDataCmplx',
                 description = 'Data Frame Container',
                 typeStr     = 'Complex128[np]',
                 value       = np.zeros(shape=n_samples, dtype=np.complex128),
@@ -85,14 +85,13 @@ class IQRingBufferProcessor(pr.DataReceiver):
                 groups      = guiGroups,
             ))
         
-        else:
-            self.add(pr.LocalVariable(
-                name        = 'WaveformData',
-                description = 'Data Frame Container',
-                typeStr     = 'Int16[np]',
-                value       = np.zeros(n_samples, dtype=np.int16),
-                hidden      = True,
-                groups      = guiGroups,
+        self.add(pr.LocalVariable(
+            name        = 'WaveformData',
+            description = 'Data Frame Container',
+            typeStr     = 'Int16[np]',
+            value       = np.zeros(n_samples, dtype=np.int16),
+            hidden      = True,
+            groups      = guiGroups,
             ))
 
         if (self._liveDisplay):
@@ -165,13 +164,15 @@ class IQRingBufferProcessor(pr.DataReceiver):
             wvfm_ints = frame.getNumpy().view(np.int16) # Extract frame as 16-bit ADC samples
             # Check frame size
             if self._iq:
-                if (frame.getPayload()//4) != self._maxSize: # each IQ sample is 4 bytes
-                    print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//4}, expected {self._maxSize}' )
+                if frame.getPayload() != self._maxSize:
+                    print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()}, expected {self._maxSize}' )
                 else:
                     wvfm_complex = wvfm_ints[::2] + 1j*wvfm_ints[1::2] # Convert interleaved IQ ADC sample pairs to complex128
+                    print ( f'{self.path}.process' ) # Print the device path name
                     #print(f'waveform real ints {wvfm_ints[::2]}')
                     #print(f'waveform imag ints?? {wvfm_ints[1::2]}')
-                    self.WaveformData.set(wvfm_complex,write=True)
+                    self.WaveformData.set(np.real(wvfm_complex),write=True)
+                    self.WaveformDataCmplx.set(wvfm_complex,write=True)
             else:
                 if frame.getPayload()//2 != self._maxSize: # each real sample is 2 bytes
                     print( f'{self.path}: Invalid frame size.  Got {frame.getPayload()//2}, expected {self._maxSize}' )

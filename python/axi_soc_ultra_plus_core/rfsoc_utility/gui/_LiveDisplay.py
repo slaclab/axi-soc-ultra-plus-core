@@ -119,7 +119,7 @@ class LiveDisplay(PyDMFrame):
         gb.setLayout(fl)
 
         self.freqPlot = PyDMWaveformPlot()
-        self.freqPlot.setLabel("bottom", text='Frequency (MHz)')
+        self.freqPlot.setLabel("bottom", text='Frequency (GHz)')
         self.freqPlot.addChannel(
             name       = 'Amplitude (dBFS)',
             x_channel  = f'{self.path[self.idx]}.fft_freqs',
