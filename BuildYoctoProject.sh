@@ -149,7 +149,7 @@ fi
 
 # Create the project
 mkdir $proj_dir && cd $proj_dir
-yes y | repo init -u https://github.com/Xilinx/yocto-manifests.git -b rel-v2025.1
+yes y | repo init -u https://github.com/Xilinx/yocto-manifests.git -b rel-v2025.2
 repo sync
 
 # Xilinx environment specific Yocto setup and automation scripts
