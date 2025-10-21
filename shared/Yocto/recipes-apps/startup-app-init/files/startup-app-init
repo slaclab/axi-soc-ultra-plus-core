@@ -110,7 +110,7 @@ fi
 
 # Load custom kernel driver
 insmod /lib/modules/$(uname -r)/updates/axi_memory_map.ko
-insmod /lib/modules/$(uname -r)/updates/axi_stream_dma.ko
+insmod /lib/modules/$(uname -r)/updates/axi_stream_dma.ko cfgTxCount0=@DMA_TX_BUFF_COUNT@ cfgRxCount0=@DMA_RX_BUFF_COUNT@ cfgSize0=@DMA_BUFF_SIZE@
 
 ##############################################################################
 
@@ -124,7 +124,7 @@ then
    /app/runtimeApp
 else
    echo "Starting the generic rogue TCP bridge Application"
-   /usr/bin/roguetcpbridge
+   /usr/bin/roguetcpbridge --lane @DMA_NUM_LANES@ --tdest @DMA_NUM_DEST@
 fi
 
 ##############################################################################
