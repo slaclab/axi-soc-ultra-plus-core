@@ -216,23 +216,25 @@ then
    ##############################################################################
 
    # Copy the meta layers from local source
-   cp -rfL $hwDir/Yocto/recipes-bsp $proj_dir/sources/meta-user/.
+   ln -s $hwDir/Yocto/recipes-bsp $proj_dir/sources/meta-user/recipes-bsp
 
    ##############################################################################
    # Add the axi-stream-dma & axi_memory_map kernel modules
    ##############################################################################
 
    # Copy the meta layers from local source
-   cp -rfL $aes_stream_drivers/Yocto/recipes-kernel $proj_dir/sources/meta-user/.
+   ln -s $aes_stream_drivers/Yocto/recipes-kernel $proj_dir/sources/meta-user/recipes-kernel
 
-   # Update DMA engine with user configuration
-   sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
-   sed -i "s/int cfgRxCount0 = 128;/int cfgRxCount0 = $dmaRxBuffCount;/"  $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
-   sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
+   # Set DMA settings in the local.conf
+   echo "DMA_TX_BUFF_COUNT = \"${dmaTxBuffCount}\"" >> $proj_dir/build/conf/local.conf
+   echo "DMA_RX_BUFF_COUNT = \"${dmaRxBuffCount}\"" >> $proj_dir/build/conf/local.conf
+   echo "DMA_BUFF_SIZE = \"${dmaBuffSize}\""        >> $proj_dir/build/conf/local.conf
 
    ##############################################################################
    # Add axi-soc-ultra-plus-core's recipes-devtools
    ##############################################################################
+
+   # Copy the meta layers from local source (for now, only a temporary patch for Qemu)
    cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-devtools $proj_dir/sources/meta-user/.
 
    ##############################################################################
@@ -240,11 +242,11 @@ then
    ##############################################################################
 
    # Copy the meta layers from local source
-   cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-apps $proj_dir/sources/meta-user/.
+   ln -s $axi_soc_ultra_plus_core/shared/Yocto/recipes-apps $proj_dir/sources/meta-user/recipes-apps
 
    # Update Application with user configuration
-   sed -i "s/default  = 2,/default  = $numLane,/"  $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
-   sed -i "s/default  = 32,/default  = $numDest,/" $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
+   echo "DMA_NUM_LANES = \"${numLane}\"" >> $proj_dir/build/conf/local.conf
+   echo "DMA_NUM_DEST  = \"${numDest}\"" >> $proj_dir/build/conf/local.conf
 
    # Check if including RFDC utility
    if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp-user.conf"; then
