@@ -277,8 +277,8 @@ fi
 # Package all the images into a .tar.gz
 ##############################################################################
 
-# mkdir custom image dump dir
-mkdir $proj_dir/linux
+# mkdir custom image dump dir (if not existing)
+mkdir -p $proj_dir/linux
 
 # Go to deploy image dir
 cd $proj_dir/build/tmp/deploy/images/zynqmp-user
