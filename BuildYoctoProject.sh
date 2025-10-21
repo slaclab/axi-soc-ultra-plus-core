@@ -256,7 +256,7 @@ then
 else
    # cd to project dir in preparation for build
    cd $proj_dir
-   
+
    # Xilinx environment specific Yocto setup and automation scripts
    BDIR=build source setupsdk > /dev/null
 fi
