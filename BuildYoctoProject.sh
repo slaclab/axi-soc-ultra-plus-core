@@ -293,7 +293,7 @@ cp -rfL Image linux.bin
 # Remove compressed image if exists as gzip force would have some side effects
 # other than overwriting the output file
 if [ -f linux.bin.gz ]; then
-    rm linux.bin.gz
+    rm -f linux.bin.gz
 fi
 gzip -k linux.bin
 cp $axi_soc_ultra_plus_core/shared/Yocto/image.its .
