@@ -14,10 +14,11 @@
 
 function show_help {
    echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-c]"
-   echo " -p PATH      - Path to the build dir"
-   echo " -n NAME      - Target name"
-   echo " -h HWTYPE    - Hardware type, must match directory name in axi-soc-ultra-plus-core/hardware"
-   echo " -x XSA       - Path to the XSA file"
+   echo " -p PATH      - Path to the build dir (required)"
+   echo " -n NAME      - Target name (required)"
+   echo " -h HWTYPE    - Hardware type, must match directory name in axi-soc-ultra-plus-core/hardware (required)"
+   echo " -x XSA       - Path to the XSA file (required)"
+   echo " -T top       - Path to the firmware/ directory. This is usually just above the build/ directory (required)"
    echo " -l LANES     - Num DMA lanes"
    echo " -d DESTS     - Num dests"
    echo " -t TXCNT     - Num TX buffers"
@@ -29,7 +30,7 @@ function show_help {
 }
 
 doConfigure=0
-while getopts p:n:h:x:l:d:t:r:s:f:cH flag
+while getopts p:n:h:x:l:d:t:r:s:f:cHT: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
@@ -42,11 +43,12 @@ do
         r) dmaRxBuffCount=${OPTARG};;
         s) dmaBuffSize=${OPTARG};;
         c) doConfigure=1;;
+        T) projTop=${OPTARG};;
         H) show_help;;
     esac
 done
 
-if [ -z "$name" ] || [ -z "$path" ] || [ -z "$hwType" ] || [ -z "$xsa" ]
+if [ -z "$name" ] || [ -z "$path" ] || [ -z "$hwType" ] || [ -z "$xsa" ] || [ -z "$projTop" ]
 then
    echo "Missing required parameter"
    show_help
@@ -204,6 +206,9 @@ then
    echo "# Custom Configurations "                  >> $proj_dir/build/conf/local.conf
    echo "hostname:pn-base-files = \"$Name\""        >> $proj_dir/build/conf/local.conf
 
+   # Record useful variables
+   echo "PROJ_TOP=\"$projTop\"" >> $proj_dir/build/conf/local.conf
+
    # Keep the sstate-cache in a location outside the proj_dir to make sure it is
    # not deleted when re-running the build. Use of sstate-cache allows for re-use
    # of already build components which should significantly speed up build time
@@ -253,6 +258,39 @@ then
       echo "MACHINE_FEATURES=rfsoc detected: Including RFDC utility"
       echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
    fi
+
+   ##############################################################################
+   # Add shared user provided layers
+   ##############################################################################
+
+   if [ -d "$projTop/shared/Yocto" ]
+   then
+      for d in "$projTop/shared/Yocto/meta-"*
+      do
+         if [ -d "$d" ]
+         then
+            echo "Adding layer $d"
+            bitbake-layers add-layer "$d"
+         fi
+      done
+   fi
+
+   ##############################################################################
+   # Add user provided layers for this specific fw target
+   ##############################################################################
+
+   if [ -d "$projTop/targets/$Name" ];
+   then
+      for d in "$projTop/targets/$Name/meta-"*
+      do
+         if [ -d "$d" ]
+         then
+            echo "Adding layer $d"
+            bitbake-layers add-layer "$d"
+         fi
+      done
+   fi
+
 else
    # cd to project dir in preparation for build
    cd $proj_dir
