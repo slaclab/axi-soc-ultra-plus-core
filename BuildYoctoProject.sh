@@ -259,6 +259,9 @@ then
       echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
    fi
 
+   # Install common debugging tools
+   echo "IMAGE_INSTALL:append = \" tools-debug valgrind\"" >> $proj_dir/sources/meta-user/conf/layer.conf
+
    ##############################################################################
    # Add shared user provided layers
    ##############################################################################
