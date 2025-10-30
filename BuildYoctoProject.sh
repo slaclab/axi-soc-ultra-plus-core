@@ -12,7 +12,25 @@
 ## Clear terminal output
 #echo -ne "\033c"
 
-while getopts p:n:h:x:l:d:t:r:s:f: flag
+function show_help {
+   echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-c]"
+   echo " -p PATH      - Path to the build dir (required)"
+   echo " -n NAME      - Target name (required)"
+   echo " -h HWTYPE    - Hardware type, must match directory name in axi-soc-ultra-plus-core/hardware (required)"
+   echo " -x XSA       - Path to the XSA file (required)"
+   echo " -T top       - Path to the firmware/ directory. This is usually just above the build/ directory (required)"
+   echo " -l LANES     - Num DMA lanes"
+   echo " -d DESTS     - Num dests"
+   echo " -t TXCNT     - Num TX buffers"
+   echo " -r RXCNT     - Num RX buffers"
+   echo " -s BUFFSZ    - DMA buffer size"
+   echo " -c           - Force reconfigure if the project has already been configured"
+   echo " -H           - Show this help text"
+   exit 1
+}
+
+doConfigure=0
+while getopts p:n:h:x:l:d:t:r:s:f:cHT: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
@@ -24,8 +42,17 @@ do
         t) dmaTxBuffCount=${OPTARG};;
         r) dmaRxBuffCount=${OPTARG};;
         s) dmaBuffSize=${OPTARG};;
+        c) doConfigure=1;;
+        T) projTop=${OPTARG};;
+        H) show_help;;
     esac
 done
+
+if [ -z "$name" ] || [ -z "$path" ] || [ -z "$hwType" ] || [ -z "$xsa" ] || [ -z "$projTop" ]
+then
+   echo "Missing required parameter"
+   show_help
+fi
 
 ##############################################################################
 # Generate commonly used local variables
@@ -140,82 +167,136 @@ fi
 # Create the Yocto project
 ##############################################################################
 
-# Remove older build and start from clean state
-if [ -d $proj_dir ]
+# Configure if we haven't already, or start from scratch
+if [ ! -d $proj_dir ] || [ $doConfigure -eq 1 ]
 then
-   echo "Remove existing project if it already exists ..."
-   rm -rf $proj_dir
-fi
 
-# Create the project
-mkdir $proj_dir && cd $proj_dir
-yes y | repo init -u https://github.com/Xilinx/yocto-manifests.git -b rel-v2025.1
-repo sync
+   # Remove older build and start from clean state
+   if [ -d $proj_dir ]
+   then
+      echo "Remove existing project if it already exists ..."
+      rm -rf $proj_dir
+   fi
 
-# Xilinx environment specific Yocto setup and automation scripts
-BDIR=build source setupsdk > /dev/null
+   # Create the project
+   mkdir $proj_dir && cd $proj_dir
+   yes y | repo init -u https://github.com/Xilinx/yocto-manifests.git -b rel-v2025.1
+   repo sync
 
-##############################################################################
-# Importing Hardware Configuration
-##############################################################################
+   # Xilinx environment specific Yocto setup and automation scripts
+   BDIR=build source setupsdk > /dev/null
 
-# Create a new layer for your custom hardware configuration
-bitbake-layers create-layer $proj_dir/sources/meta-user
-bitbake-layers add-layer    $proj_dir/sources/meta-user
+   ##############################################################################
+   # Importing Hardware Configuration
+   ##############################################################################
 
-# Create the conf/machine/zynqmp-user.conf
-mkdir $proj_dir/sources/meta-user/conf/machine
-cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/zynqmp-user.conf $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
-cat $hwDir/Yocto/zynqmp-user.conf                           >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
-echo "HDF_PATH = \"$xsa\""                                  >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
+   # Create a new layer for your custom hardware configuration
+   bitbake-layers create-layer $proj_dir/sources/meta-user
+   bitbake-layers add-layer    $proj_dir/sources/meta-user
 
-# Set the machine & hostname in conf/local.conf
-sed -i "/MACHINE ??=/c\MACHINE ??= \"zynqmp-user\"" $proj_dir/build/conf/local.conf
-echo ""                                          >> $proj_dir/build/conf/local.conf
-echo "# Custom Configurations "                  >> $proj_dir/build/conf/local.conf
-echo "hostname:pn-base-files = \"$Name\""        >> $proj_dir/build/conf/local.conf
+   # Create the conf/machine/zynqmp-user.conf
+   mkdir $proj_dir/sources/meta-user/conf/machine
+   cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/zynqmp-user.conf $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
+   cat $hwDir/Yocto/zynqmp-user.conf                           >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
+   echo "HDF_PATH = \"$xsa\""                                  >> $proj_dir/sources/meta-user/conf/machine/zynqmp-user.conf
 
-# Keep the sstate-cache in a location outside the proj_dir to make sure it is
-# not deleted when re-running the build. Use of sstate-cache allows for re-use
-# of already build components which should significantly speed up build time
-# (except for the first time).
-sstate_dir=$path
-sed -i "/^#SSTATE_DIR ?= /c\SSTATE_DIR ?= \"$sstate_dir/sstate-cache\"" $proj_dir/build/conf/local.conf
+   # Set the machine & hostname in conf/local.conf
+   sed -i "/MACHINE ??=/c\MACHINE ??= \"zynqmp-user\"" $proj_dir/build/conf/local.conf
+   echo ""                                          >> $proj_dir/build/conf/local.conf
+   echo "# Custom Configurations "                  >> $proj_dir/build/conf/local.conf
+   echo "hostname:pn-base-files = \"$Name\""        >> $proj_dir/build/conf/local.conf
 
-##############################################################################
-# Add the hardware specific BSP
-##############################################################################
+   # Record useful variables
+   echo "PROJ_TOP=\"$projTop\"" >> $proj_dir/build/conf/local.conf
 
-# Copy the meta layers from local source
-cp -rfL $hwDir/Yocto/recipes-bsp $proj_dir/sources/meta-user/.
+   # Keep the sstate-cache in a location outside the proj_dir to make sure it is
+   # not deleted when re-running the build. Use of sstate-cache allows for re-use
+   # of already build components which should significantly speed up build time
+   # (except for the first time).
+   sstate_dir=$path
+   sed -i "/^#SSTATE_DIR ?= /c\SSTATE_DIR ?= \"$sstate_dir/sstate-cache\"" $proj_dir/build/conf/local.conf
 
-##############################################################################
-# Add the axi-stream-dma & axi_memory_map kernel modules
-##############################################################################
+   ##############################################################################
+   # Add the hardware specific BSP
+   ##############################################################################
 
-# Copy the meta layers from local source
-cp -rfL $aes_stream_drivers/Yocto/recipes-kernel $proj_dir/sources/meta-user/.
+   # Copy the meta layers from local source
+   ln -s $hwDir/Yocto/recipes-bsp $proj_dir/sources/meta-user/recipes-bsp
 
-# Update DMA engine with user configuration
-sed -i "s/int cfgTxCount0 = 128;/int cfgTxCount0 = $dmaTxBuffCount;/"  $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
-sed -i "s/int cfgRxCount0 = 128;/int cfgRxCount0 = $dmaRxBuffCount;/"  $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
-sed -i "s/int cfgSize0    = 2097152;/int cfgSize0    = $dmaBuffSize;/" $proj_dir/sources/meta-user/recipes-kernel/axistreamdma/files/axistreamdma.c
+   ##############################################################################
+   # Add the axi-stream-dma & axi_memory_map kernel modules
+   ##############################################################################
 
-##############################################################################
-# Add axi-soc-ultra-plus-core's recipes-apps
-##############################################################################
+   # Copy the meta layers from local source
+   ln -s $aes_stream_drivers/Yocto/recipes-kernel $proj_dir/sources/meta-user/recipes-kernel
 
-# Copy the meta layers from local source
-cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-apps $proj_dir/sources/meta-user/.
+   # Set DMA settings in the local.conf
+   echo "DMA_TX_BUFF_COUNT = \"${dmaTxBuffCount}\"" >> $proj_dir/build/conf/local.conf
+   echo "DMA_RX_BUFF_COUNT = \"${dmaRxBuffCount}\"" >> $proj_dir/build/conf/local.conf
+   echo "DMA_BUFF_SIZE = \"${dmaBuffSize}\""        >> $proj_dir/build/conf/local.conf
 
-# Update Application with user configuration
-sed -i "s/default  = 2,/default  = $numLane,/"  $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
-sed -i "s/default  = 32,/default  = $numDest,/" $proj_dir/sources/meta-user/recipes-apps/roguetcpbridge/files/roguetcpbridge
+   ##############################################################################
+   # Add axi-soc-ultra-plus-core's recipes-devtools
+   ##############################################################################
 
-# Check if including RFDC utility
-if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp-user.conf"; then
-   echo "MACHINE_FEATURES=rfsoc detected: Including RFDC utility"
-   echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
+   # Copy the meta layers from local source (for now, only a temporary patch for Qemu)
+   cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-devtools $proj_dir/sources/meta-user/.
+
+   ##############################################################################
+   # Add axi-soc-ultra-plus-core's recipes-apps
+   ##############################################################################
+
+   # Copy the meta layers from local source
+   ln -s $axi_soc_ultra_plus_core/shared/Yocto/recipes-apps $proj_dir/sources/meta-user/recipes-apps
+
+   # Update Application with user configuration
+   echo "DMA_NUM_LANES = \"${numLane}\"" >> $proj_dir/build/conf/local.conf
+   echo "DMA_NUM_DEST  = \"${numDest}\"" >> $proj_dir/build/conf/local.conf
+
+   # Check if including RFDC utility
+   if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp-user.conf"; then
+      echo "MACHINE_FEATURES=rfsoc detected: Including RFDC utility"
+      echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
+   fi
+
+   ##############################################################################
+   # Add shared user provided layers
+   ##############################################################################
+
+   if [ -d "$projTop/shared/Yocto" ]
+   then
+      for d in "$projTop/shared/Yocto/meta-"*
+      do
+         if [ -d "$d" ]
+         then
+            echo "Adding layer $d"
+            bitbake-layers add-layer "$d"
+         fi
+      done
+   fi
+
+   ##############################################################################
+   # Add user provided layers for this specific fw target
+   ##############################################################################
+
+   if [ -d "$projTop/targets/$Name" ];
+   then
+      for d in "$projTop/targets/$Name/meta-"*
+      do
+         if [ -d "$d" ]
+         then
+            echo "Adding layer $d"
+            bitbake-layers add-layer "$d"
+         fi
+      done
+   fi
+
+else
+   # cd to project dir in preparation for build
+   cd $proj_dir
+
+   # Xilinx environment specific Yocto setup and automation scripts
+   BDIR=build source setupsdk > /dev/null
 fi
 
 ##############################################################################
@@ -234,8 +315,8 @@ fi
 # Package all the images into a .tar.gz
 ##############################################################################
 
-# mkdir custom image dump dir
-mkdir $proj_dir/linux
+# mkdir custom image dump dir (if not existing)
+mkdir -p $proj_dir/linux
 
 # Go to deploy image dir
 cd $proj_dir/build/tmp/deploy/images/zynqmp-user
@@ -247,6 +328,11 @@ cp -rfL boot.scr                 $proj_dir/linux/boot.scr
 
 # Create the image.ub
 cp -rfL Image linux.bin
+# Remove compressed image if exists as gzip force would have some side effects
+# other than overwriting the output file
+if [ -f linux.bin.gz ]; then
+    rm -f linux.bin.gz
+fi
 gzip -k linux.bin
 cp $axi_soc_ultra_plus_core/shared/Yocto/image.its .
 mkimage -f image.its $proj_dir/linux/image.ub  > /dev/null

@@ -32,6 +32,15 @@ SYSTEMD_SERVICE:${PN} = "startup-app-init.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 do_install() {
+        # Override lane count and tdest count for roguetcpbridge
+        sed -i "s/@DMA_NUM_LANES@/${DMA_NUM_LANES}/g" ${WORKDIR}/startup-app-init
+        sed -i "s/@DMA_NUM_DEST@/${DMA_NUM_DEST}/g"   ${WORKDIR}/startup-app-init
+
+        # Override driver defaults
+        sed -i "s/@DMA_TX_BUFF_COUNT@/${DMA_TX_BUFF_COUNT}/g" ${WORKDIR}/startup-app-init
+        sed -i "s/@DMA_RX_BUFF_COUNT@/${DMA_RX_BUFF_COUNT}/g" ${WORKDIR}/startup-app-init
+        sed -i "s/@DMA_BUFF_SIZE@/${DMA_BUFF_SIZE}/g"         ${WORKDIR}/startup-app-init
+
         if ${@bb.utils.contains('DISTRO_FEATURES', 'sysvinit', 'true', 'false', d)}; then
                 install -d ${D}${sysconfdir}/init.d/
                 install -m 0755 ${WORKDIR}/startup-app-init ${D}${sysconfdir}/init.d/
