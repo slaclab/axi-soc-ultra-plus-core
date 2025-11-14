@@ -1200,3 +1200,29 @@ class RfdcBlock(pr.Device):
             base         = pr.Bool,
             hidden       = True,
         ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetIntrStatus
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Interrupt-Handling?tocId=oje7sI2HBnZDvjFdAqF5gg
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'GetIntrStatus',
+            description  = 'Get interrupt status',
+            offset       = 0x1DC,
+            bitSize      = 32,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        #######################################################################################
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IntrClr
+        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/Interrupt-Handling?tocId=oje7sI2HBnZDvjFdAqF5gg
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'IntrClr',
+            description  = 'Clear interrupts according to mask',
+            offset       = 0x1E0,
+            bitSize      = 32,
+            mode         = 'WO',
+            hidden       = True,
+        ))

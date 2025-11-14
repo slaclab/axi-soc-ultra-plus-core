@@ -2760,6 +2760,49 @@ void PyRFdc::DynamicPLLConfig(uint8_t index) {
     }
 }
 
+void PyRFdc::GetIntrStatus() {
+    int status = XRFDC_SUCCESS;
+    uint32_t interruptStatus = 0;
+
+    // Check if write
+    if (!rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else read
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetIntrStatus
+        status = XRFdc_GetIntrStatus(RFdcInstPtr_, tileType_, tileId_, blockId_, &interruptStatus);
+        data_ = interruptStatus;
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "GetIntrStatus(): failed\n";
+    }
+}
+
+void PyRFdc::IntrClr() {
+    int status = XRFDC_SUCCESS;
+    uint32_t clearMask = 0;
+
+    // Check if read
+    if (rdTxn_) {
+        status = XRFDC_FAILURE;
+
+    // Else write
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IntrClr
+        clearMask = data_;
+        metal_log(METAL_LOG_DEBUG, "Clear interrupts with mask: 0x%08X\n", clearMask);
+        status = XRFdc_IntrClr(RFdcInstPtr_, tileType_, tileId_, blockId_, clearMask);
+    }
+
+    // Check if not successful
+    if (status != XRFDC_SUCCESS) {
+        errMsg_ = "IntrClr(): failed\n";
+    }
+}
+
 void PyRFdc::MtsEnabled() {
     int status = XRFDC_SUCCESS;
     int i;
@@ -3606,6 +3649,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
                     } else if (blockAddr==0x1D8) {
                         CheckDigitalPathEnabled();
+
+                    } else if (blockAddr==0x1DC) {
+                        GetIntrStatus();
+
+                    } else if (blockAddr==0x1E0) {
+                        IntrClr();
 
                     } else {
                         errMsg_ = "Undefined memory";

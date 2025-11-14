@@ -164,6 +164,8 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MaxSampleRate(bool upper);
     void MinSampleRate(bool upper);
     void DynamicPLLConfig(uint8_t index);
+    void GetIntrStatus();
+    void IntrClr();
 
     void MtsEnabled();
     void MtsRefTile();
