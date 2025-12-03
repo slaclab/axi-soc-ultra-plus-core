@@ -2802,8 +2802,10 @@ void PyRFdc::IntrDisable() {
     }
 }
 
-// TODO: How to handle those?
+// Registering an interrupt handler probably makes no sense in this context, so
+// the following function is excluded.
 // void XRFdc_SetStatusHandler(XRFdc *InstancePtr, void *CallBackRefPtr,  XRFdc_StatusHandler FunctionPtr);
+// where the callback would be
 // u32 XRFdc_IntrHandler(u32 Vector, void *XRFdcPtr);
 
 void PyRFdc::IntrClr() {
@@ -2816,9 +2818,9 @@ void PyRFdc::IntrClr() {
 
     // Else write
     } else {
-        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IntrClr
         clearMask = data_;
         metal_log(METAL_LOG_DEBUG, "Clear interrupts with mask: 0x%08X\n", clearMask);
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_IntrClr
         status = XRFdc_IntrClr(RFdcInstPtr_, tileType_, tileId_, blockId_, clearMask);
     }
 
