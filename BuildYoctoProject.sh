@@ -167,6 +167,17 @@ fi
 # Create the Yocto project
 ##############################################################################
 
+# Check for XSA mismatch
+if [ -f $proj_dir/.build_stamp ]
+then
+   FILE=$(cat $proj_dir/.build_stamp)
+   if [ "$FILE" != "$(readlink -f "$xsa")" ]
+   then
+      echo "XSA file does not match .build_stamp; building from scratch..."
+      doConfigure=1
+   fi
+fi
+
 # Configure if we haven't already, or start from scratch
 if [ ! -d $proj_dir ] || [ $doConfigure -eq 1 ]
 then
@@ -182,6 +193,9 @@ then
    mkdir $proj_dir && cd $proj_dir
    yes y | repo init -u https://github.com/Xilinx/yocto-manifests.git -b rel-v2025.1
    repo sync
+
+   # Write out a build stamp with the XSA path
+   echo "$(readlink -f "$xsa")" > $proj_dir/.build_stamp
 
    # Xilinx environment specific Yocto setup and automation scripts
    BDIR=build source setupsdk > /dev/null
@@ -258,6 +272,10 @@ then
       echo "MACHINE_FEATURES=rfsoc detected: Including RFDC utility"
       echo "IMAGE_INSTALL:append = \" pyrfdc\"" >> $proj_dir/sources/meta-user/conf/layer.conf
    fi
+
+   # Install common debugging tools
+   echo "IMAGE_INSTALL:append = \" valgrind\"" >> $proj_dir/sources/meta-user/conf/layer.conf
+   echo "EXTRA_IMAGE_FEATURES += \"tools-debug\"" >> $proj_dir/sources/meta-user/conf/layer.conf
 
    ##############################################################################
    # Add shared user provided layers
