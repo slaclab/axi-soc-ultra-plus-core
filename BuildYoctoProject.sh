@@ -252,6 +252,9 @@ then
    echo "DMA_RX_BUFF_COUNT = \"${dmaRxBuffCount}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_BUFF_SIZE = \"${dmaBuffSize}\""        >> $proj_dir/build/conf/local.conf
 
+   # Install the samples/tests
+   echo "IMAGE_INSTALL:append = \" axidmasamples\"" >> $proj_dir/build/conf/local.conf
+
    ##############################################################################
    # Add axi-soc-ultra-plus-core's recipes-devtools
    ##############################################################################
