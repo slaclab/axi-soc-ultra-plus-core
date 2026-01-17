@@ -708,7 +708,6 @@ class RfdcBlock(pr.Device):
                             mode         = 'RW',
                             number       = 8,
                             stride       = 4,
-                            hidden       = True,
                         )
 
                     self.addRemoteVariables(
@@ -719,7 +718,6 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                         number       = 8,
                         stride       = 4,
-                        hidden       = True,
                     )
 
                     self.addRemoteVariables(
@@ -730,7 +728,6 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                         number       = 8,
                         stride       = 4,
-                        hidden       = True,
                     )
 
                     self.addRemoteVariables(
@@ -741,7 +738,6 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                         number       = 8,
                         stride       = 4,
-                        hidden       = True,
                     )
 
                     #######################################################################################
