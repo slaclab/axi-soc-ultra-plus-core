@@ -243,11 +243,17 @@ then
 
    # Copy the meta layers from local source
    ln -s $aes_stream_drivers/Yocto/recipes-kernel $proj_dir/sources/meta-user/recipes-kernel
+   if [ -d $aes_stream_drivers/Yocto/recipes-tests ]; then
+      ln -s $aes_stream_drivers/Yocto/recipes-tests $proj_dir/sources/meta-user/recipes-tests
+   fi
 
    # Set DMA settings in the local.conf
    echo "DMA_TX_BUFF_COUNT = \"${dmaTxBuffCount}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_RX_BUFF_COUNT = \"${dmaRxBuffCount}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_BUFF_SIZE = \"${dmaBuffSize}\""        >> $proj_dir/build/conf/local.conf
+
+   # Install the samples/tests
+   echo "IMAGE_INSTALL:append = \" axidmasamples\"" >> $proj_dir/build/conf/local.conf
 
    ##############################################################################
    # Add axi-soc-ultra-plus-core's recipes-devtools
@@ -388,3 +394,5 @@ echo "linux.tar.gz image path: $imageDump"
 echo "########################################################################"
 
 ##############################################################################
+
+# vim: et sw=3 ts=3
