@@ -19,7 +19,8 @@ rogue.Version.minVersion('6.2.0')
 class IQRingBufferProcessor(pr.DataReceiver):
     # Init method must call the parent class init
     def __init__( self,
-            maxSize     = 2**16, # 8 [SSR (4 I, 4 Q)] * 2^12 [RAM Depth] * 2 [bytes / real sample] = 65,536 bytes
+            maxSize     = 2**18, # 8 [SSR (4 I, 4 Q)] * 2^12 [DAC Table RAM Depth] *2 (increased ring buf size by 2x for debug, see line 248 appl.vhd) * 2 [bytes / real sample] = 262,144 bytes
+            dacSize     = 2**16, # 8 [SSR (4 I, 4 Q)] * 2^12 [DAC Table RAM Depth] * 2 [bytes / real sample] = 65,536 bytes
             sampleRate  = 5.0E+9, # Units of Hz
             maxAve      = 4,
             liveDisplay = True,
@@ -33,7 +34,7 @@ class IQRingBufferProcessor(pr.DataReceiver):
         self._liveDisplay = liveDisplay
         self._iq = iq # Supports alternating IQ data from ADC
         self._maxSize = maxSize
-
+        self._dacSize = dacSize
         # Not saving config/state to YAML
         guiGroups = ['NoStream','NoState','NoConfig']
 
@@ -49,12 +50,13 @@ class IQRingBufferProcessor(pr.DataReceiver):
 
         # Each real sample is 2 bytes, each IQ sample is 4 bytes
         n_samples = self._maxSize // 4 if iq else self._maxSize // 2
+        n_unique_samples = self._dacSize // 4 if iq else self._dacSize // 2
 
         # Compute FFT Freqs
         if iq:
-            fft_freqs = np.fft.fftshift(np.fft.fftfreq(n_samples,d=1/sampleRate))
+            fft_freqs = np.fft.fftshift(np.fft.fftfreq(n_unique_samples,d=1/sampleRate))
         else:
-            fft_freqs = np.fft.fftfreq(n_samples, d=1/sampleRate)
+            fft_freqs = np.fft.fftfreq(n_unique_samples, d=1/sampleRate)
 
         self.add(pr.LocalVariable(
             name        = 'times',
@@ -169,8 +171,8 @@ class IQRingBufferProcessor(pr.DataReceiver):
                 else:
                     wvfm_complex = wvfm_ints[::2] + 1j*wvfm_ints[1::2] # Convert interleaved IQ ADC sample pairs to complex128
                     print ( f'{self.path}.process' ) # Print the device path name
-                    #print(f'waveform real ints {wvfm_ints[::2]}')
-                    #print(f'waveform imag ints?? {wvfm_ints[1::2]}')
+                    print(f'waveform real ints {wvfm_ints[::2]}')
+                    print(f'waveform imag ints?? {wvfm_ints[1::2]}')
                     self.WaveformData.set(np.real(wvfm_complex),write=True)
                     self.WaveformDataCmplx.set(wvfm_complex,write=True)
             else:
