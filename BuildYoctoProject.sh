@@ -280,7 +280,7 @@ then
    fi
 
    # Install common debugging tools
-   echo "IMAGE_INSTALL:append = \" valgrind\"" >> $proj_dir/sources/meta-user/conf/layer.conf
+   echo "IMAGE_INSTALL:append = \" valgrind perf\"" >> $proj_dir/sources/meta-user/conf/layer.conf
    echo "EXTRA_IMAGE_FEATURES += \"tools-debug\"" >> $proj_dir/sources/meta-user/conf/layer.conf
 
    ##############################################################################
@@ -315,6 +315,14 @@ then
       done
    fi
 
+   ##############################################################################
+   # Append any user-provided configuration data
+   ##############################################################################
+   if [ -f "$projTop/shared/Yocto/local.conf" ]
+   then
+      echo -e "\n#====== > $projTop/shared/Yocto/local.conf < ======#" >> "$proj_dir/build/conf/local.conf"
+      cat "$projTop/shared/Yocto/local.conf" >> "$proj_dir/build/conf/local.conf"
+   fi
 else
    # cd to project dir in preparation for build
    cd $proj_dir
