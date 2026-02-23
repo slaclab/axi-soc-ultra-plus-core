@@ -315,6 +315,14 @@ then
       done
    fi
 
+   ##############################################################################
+   # Append any user-provided configuration data
+   ##############################################################################
+   if [ -f "$projTop/shared/Yocto/local.conf" ]
+   then
+      echo -e "\n#====== > $projTop/shared/Yocto/local.conf < ======#" >> "$proj_dir/build/conf/local.conf"
+      cat "$projTop/shared/Yocto/local.conf" >> "$proj_dir/build/conf/local.conf"
+   fi
 else
    # cd to project dir in preparation for build
    cd $proj_dir
