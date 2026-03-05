@@ -65,7 +65,6 @@ aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
 imageDump=${xsa%.*}.linux.tar.gz
 proj_dir=$(realpath "$path/$Name")
-image_dir="$proj_dir/build/tmp/deploy/images/zynqmp-user"
 
 ##############################################################################
 # Check total buffer size
@@ -337,8 +336,11 @@ fi
 
 bitbake petalinux-image-minimal
 
+# Resolve deploy directory: honour BitBake's TMPDIR override if set
+deploy_dir="${TMPDIR:-$proj_dir/build/tmp}/deploy/images/zynqmp-user"
+
 # Check if we need to manual run xilinx-bootbin
-if [ ! -f "$proj_dir/build/tmp/deploy/images/zynqmp-user/boot.bin" ]; then
+if [ ! -f "$deploy_dir/boot.bin" ]; then
   echo "boot.bin not found. Running bitbake xilinx-bootbin..."
   bitbake xilinx-bootbin
 fi
@@ -351,7 +353,7 @@ fi
 mkdir -p $proj_dir/linux
 
 # Go to deploy image dir
-cd $proj_dir/build/tmp/deploy/images/zynqmp-user
+cd $deploy_dir
 
 # Copy over the FSBL, U-boot and .bit files
 cp -rfL download-zynqmp-user.bit $proj_dir/linux/system.bit
