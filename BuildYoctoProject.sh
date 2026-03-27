@@ -97,6 +97,15 @@ if [ $missing -ne 0 ]; then
 fi
 
 ##############################################################################
+# Utils
+##############################################################################
+
+function die {
+    echo "$@"
+    exit 1
+}
+
+##############################################################################
 # Misc. file and dir checking
 ##############################################################################
 
@@ -334,15 +343,15 @@ fi
 # Build Everything!
 ##############################################################################
 
-bitbake petalinux-image-minimal
+bitbake petalinux-image-minimal || die "bitbake petalinux-image-minimal returned non-zero. Aborting."
 
 # Resolve deploy directory: honour BitBake's TMPDIR override if set
 deploy_dir="${TMPDIR:-$proj_dir/build/tmp}/deploy/images/zynqmp-user"
 
 # Check if we need to manual run xilinx-bootbin
 if [ ! -f "$deploy_dir/boot.bin" ]; then
-  echo "boot.bin not found. Running bitbake xilinx-bootbin..."
-  bitbake xilinx-bootbin
+    echo "boot.bin not found. Running bitbake xilinx-bootbin..."
+    bitbake xilinx-bootbin || die "bitbake xilinx-bootbin returned non-zero. Aborting."
 fi
 
 ##############################################################################
