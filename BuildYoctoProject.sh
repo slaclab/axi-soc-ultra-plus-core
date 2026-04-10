@@ -65,7 +65,6 @@ aes_stream_drivers=$(realpath $axi_soc_ultra_plus_core/../aes-stream-drivers)
 hwDir=$axi_soc_ultra_plus_core/hardware/$hwType
 imageDump=${xsa%.*}.linux.tar.gz
 proj_dir=$(realpath "$path/$Name")
-image_dir="$proj_dir/build/tmp/deploy/images/zynqmp-user"
 
 ##############################################################################
 # Check total buffer size
@@ -96,6 +95,15 @@ if [ $missing -ne 0 ]; then
    echo "sudo apt install -y bash curl chrpath diffstat git gzip liblz4-tool u-boot-tools"
    exit 1
 fi
+
+##############################################################################
+# Utils
+##############################################################################
+
+function die {
+    echo "$@"
+    exit 1
+}
 
 ##############################################################################
 # Misc. file and dir checking
@@ -280,7 +288,7 @@ then
    fi
 
    # Install common debugging tools
-   echo "IMAGE_INSTALL:append = \" valgrind\"" >> $proj_dir/sources/meta-user/conf/layer.conf
+   echo "IMAGE_INSTALL:append = \" valgrind perf\"" >> $proj_dir/sources/meta-user/conf/layer.conf
    echo "EXTRA_IMAGE_FEATURES += \"tools-debug\"" >> $proj_dir/sources/meta-user/conf/layer.conf
 
    ##############################################################################
@@ -315,6 +323,14 @@ then
       done
    fi
 
+   ##############################################################################
+   # Append any user-provided configuration data
+   ##############################################################################
+   if [ -f "$projTop/shared/Yocto/local.conf" ]
+   then
+      echo -e "\n#====== > $projTop/shared/Yocto/local.conf < ======#" >> "$proj_dir/build/conf/local.conf"
+      cat "$projTop/shared/Yocto/local.conf" >> "$proj_dir/build/conf/local.conf"
+   fi
 else
    # cd to project dir in preparation for build
    cd $proj_dir
@@ -327,12 +343,15 @@ fi
 # Build Everything!
 ##############################################################################
 
-bitbake petalinux-image-minimal
+bitbake petalinux-image-minimal || die "bitbake petalinux-image-minimal returned non-zero. Aborting."
+
+# Resolve deploy directory: honour BitBake's TMPDIR override if set
+deploy_dir="${TMPDIR:-$proj_dir/build/tmp}/deploy/images/zynqmp-user"
 
 # Check if we need to manual run xilinx-bootbin
-if [ ! -f "$proj_dir/build/tmp/deploy/images/zynqmp-user/boot.bin" ]; then
-  echo "boot.bin not found. Running bitbake xilinx-bootbin..."
-  bitbake xilinx-bootbin
+if [ ! -f "$deploy_dir/boot.bin" ]; then
+    echo "boot.bin not found. Running bitbake xilinx-bootbin..."
+    bitbake xilinx-bootbin || die "bitbake xilinx-bootbin returned non-zero. Aborting."
 fi
 
 ##############################################################################
@@ -343,7 +362,7 @@ fi
 mkdir -p $proj_dir/linux
 
 # Go to deploy image dir
-cd $proj_dir/build/tmp/deploy/images/zynqmp-user
+cd $deploy_dir
 
 # Copy over the FSBL, U-boot and .bit files
 cp -rfL download-zynqmp-user.bit $proj_dir/linux/system.bit
