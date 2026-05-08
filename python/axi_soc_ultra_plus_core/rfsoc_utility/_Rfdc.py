@@ -646,20 +646,18 @@ class Rfdc(pr.Device):
             if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0):
                 for j in range(4):
                     self.AdcTile[i].IsADCBlockEnabled[j].get() # Update shadow variable
-                    for k in range(2):
-                        self.AdcTile[i].AdcBlock[j].BlockStatus.MixerMode.get() # Update shadow variable
-                        self.AdcTile[i].AdcBlock[j].BlockStatus.SampleRate.get() # Update shadow variable
-                        self.AdcTile[i].AdcBlock[j].IsMixerEnabled.get() # Update shadow variable
+                    self.AdcTile[i].AdcBlock[j].BlockStatus.MixerMode.get() # Update shadow variable
+                    self.AdcTile[i].AdcBlock[j].BlockStatus.SampleRate.get() # Update shadow variable
+                    self.AdcTile[i].AdcBlock[j].IsMixerEnabled.get() # Update shadow variable
 
         # Reset DAC Tiles
         for i in range(4):
             if self.enDacTile[i] and (self.CheckDacTileEnabled[i].get() != 0):
                 for j in range(4):
                     self.DacTile[i].IsDACBlockEnabled[j].get() # Update shadow variable
-                    for k in range(2):
-                        self.DacTile[i].DacBlock[j].BlockStatus.MixerMode.get() # Update shadow variable
-                        self.DacTile[i].DacBlock[j].BlockStatus.SampleRate.get() # Update shadow variable
-                        self.DacTile[i].DacBlock[j].IsMixerEnabled.get() # Update shadow variable
+                    self.DacTile[i].DacBlock[j].BlockStatus.MixerMode.get() # Update shadow variable
+                    self.DacTile[i].DacBlock[j].BlockStatus.SampleRate.get() # Update shadow variable
+                    self.DacTile[i].DacBlock[j].IsMixerEnabled.get() # Update shadow variable
 
         # Update all the remote variables after the reset
         self.readBlocks(recurse=True)
