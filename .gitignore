@@ -46,3 +46,12 @@ bin*
 *.bif
 *.elf
 *.dcp
+
+# AI Agents
+.vscode/
+.cursor/
+.claude/
+.planning/
+planning/
+CLAUDE.md
+
