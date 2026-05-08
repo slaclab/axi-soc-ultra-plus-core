@@ -250,6 +250,31 @@ class RfdcBlock(pr.Device):
                     function     = lambda cmd: cmd.set(1),
                 ))
 
+                #######################################################################################
+                # Heavy-update path: UpdateEvent + tile RestartSM. Triggers the IP power-on state
+                # machine which re-runs Converter_Calibration[0..2] when the parent tile's
+                # RestartStateStart is set to a step <= Clock_Configuration[0]. Matches the surf
+                # v1.7.0 legacy RfBlock NCO-update pattern. Use only when the converter trim is
+                # operating-point-sensitive (e.g. cryo-detectors, qubit readout). Plain
+                # UpdateEvent() is ~100x faster and sufficient for most consumers.
+                # Pre-condition: set parent tile's RestartStateStart (e.g. to 'Clock_Configuration[0]')
+                # before invoking. Post-condition: caller may want to poll the parent tile's
+                # CurrentState until 'Done' (15) before issuing dependent commands.
+                #######################################################################################
+                self.add(pr.LocalCommand(
+                    name        = 'UpdateEventWithRestart',
+                    description = 'Commit pending Mixer settings (UpdateEvent) AND trigger the parent tile RestartSM. See class comment for pre/post conditions.',
+                    function    = self._UpdateEventWithRestart,
+                ))
+
+            def _UpdateEventWithRestart(self):
+                # Step 1: flush the cached mixer config to HW via the standard event mechanism.
+                self.UpdateEvent()
+                # Step 2: trigger the parent tile's RestartSM. With RestartStateStart at
+                # Clock_Configuration[0], the IPSM window 6..15 includes Converter_Calibration.
+                # parent chain: Mixer -> RfdcBlock -> RfdcTile.
+                self.parent.parent.RestartSM()
+
         self.add(pr.LinkVariable(
             name         = 'IsMixerEnabled',
             mode         = 'RO',
