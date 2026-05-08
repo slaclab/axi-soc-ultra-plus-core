@@ -381,7 +381,7 @@ class RfdcBlock(pr.Device):
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
             #######################################################################################
             self.add(pr.RemoteVariable(
-                name         = 'DecimationFactor',
+                name         = 'InterpolationFactor',
                 description  = 'This API function sets the interpolation factor for the requested RF-DAC and also updates the FIFO read width based on the interpolation factor',
                 offset       = 0x068,
                 bitSize      = 6,
@@ -802,7 +802,6 @@ class RfdcBlock(pr.Device):
             ))
 
         #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling (XRFdc_GetLinkCoupling API Scheduled for deprication in 2024.1)
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoupling
         #######################################################################################
         if isAdc or gen3:
