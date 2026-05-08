@@ -369,7 +369,7 @@ class Rfdc(pr.Device):
 
                 self.add(pr.RemoteVariable(
                     name         = 'IsDacEnabled',
-                    description  = 'MMethod to get all the enabled MTS ADC tiles',
+                    description  = 'Method to get all the enabled MTS DAC tiles',
                     offset       = 0x11004,
                     bitSize      = 4,
                     mode         = 'RO',

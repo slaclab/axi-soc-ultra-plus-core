@@ -802,7 +802,6 @@ class RfdcBlock(pr.Device):
             ))
 
         #######################################################################################
-        # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetLinkCoupling (XRFdc_GetLinkCoupling API Scheduled for deprication in 2024.1)
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoupling
         #######################################################################################
         if isAdc or gen3:
