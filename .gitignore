@@ -49,3 +49,4 @@ bin*
 
 # Sphinx build output
 docs/_build/
+.venv-docs/
