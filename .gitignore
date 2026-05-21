@@ -46,3 +46,6 @@ bin*
 *.bif
 *.elf
 *.dcp
+
+# Sphinx build output
+docs/_build/
