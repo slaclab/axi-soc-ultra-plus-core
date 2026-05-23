@@ -1,4 +1,7 @@
 Tutorial
 ========
 
-Content for this section is added in a later phase.
+.. toctree::
+   :maxdepth: 2
+
+   first_soc_bringup
