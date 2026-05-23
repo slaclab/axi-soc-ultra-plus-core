@@ -51,9 +51,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
 
+      # NOTE: the `enablement` input is intentionally omitted (defaults to
+      # false). Setting it true triggers a GET /pages -> POST /pages bootstrap
+      # path that intermittently fails: the GET hits "Bad credentials" and the
+      # fallback POST fails because GITHUB_TOKEN lacks `administration:write`.
+      # Pages is enabled out-of-band as a one-time manual setup step (see
+      # project docs); this action only needs to READ the existing Pages
+      # config, which works reliably with the `pages: write` scope declared
+      # above.
       - uses: actions/configure-pages@v6
-        with:
-          enablement: true
 
       - id: deployment
         uses: actions/deploy-pages@v5
