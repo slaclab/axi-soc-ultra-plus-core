@@ -25,11 +25,6 @@ The following application repos target different Xilinx Zynq UltraScale+ SoC boa
      - xck26-sfvc784-2lv-c
      - SimpleKriaKv260Example
      - Pending verification
-   * - `Simple-TE0835-Example <https://github.com/slaclab/Simple-TE0835-Example>`_
-     - Trenz TE0835 ZynqMP
-     - tbd [#partnum]_
-     - SimpleTe0835Example
-     - Pending verification
    * - `Simple-ZCU102-Example <https://github.com/slaclab/Simple-ZCU102-Example>`_
      - Xilinx ZCU102
      - xczu9eg-ffvb1156-2-e
@@ -55,9 +50,6 @@ The following application repos target different Xilinx Zynq UltraScale+ SoC boa
      - xczu67dr-fsve1156-2-e
      - SimpleZcu670Example
      - Pending verification
-
-.. [#partnum] Part numbers are best-effort from board model lookups. The authoritative source is
-   each repo's ``firmware/targets/<TargetName>/Makefile`` ``PRJ_PART`` value.
 
 Finding the target directory name
 ----------------------------------

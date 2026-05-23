@@ -26,8 +26,8 @@ Steps
 
    Replace ``<your-target-dir>`` and ``<full-name>`` with your actual
    target directory name and the timestamped filename produced by the
-   build (e.g.
-   ``SimpleRfSoc4x2Example-0x03020000-20260522143933-ruckman-94afaab``).
+   build (schema:
+   ``<TargetName>-<PRJ_VERSION>-<YYYYMMDDHHMMSS>-<user>-<git-short-SHA>``).
 
 2. Flush writes and reboot the board:
 
