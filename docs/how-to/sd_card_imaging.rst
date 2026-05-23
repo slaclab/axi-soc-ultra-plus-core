@@ -55,8 +55,8 @@ the packaged Yocto tarball as arguments.
        firmware/targets/<your-target-dir>/images/<full-name>.linux.tar.gz
 
 Replace ``<full-name>`` with the timestamped artifact name produced by
-the Yocto build (e.g.
-``SimpleRfSoc4x2Example-0x03020000-20260522143933-ruckman-94afaab``).
+the Yocto build (schema:
+``<TargetName>-<PRJ_VERSION>-<YYYYMMDDHHMMSS>-<user>-<git-short-SHA>``).
 
 After imaging
 -------------

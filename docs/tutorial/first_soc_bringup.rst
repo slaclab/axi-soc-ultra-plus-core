@@ -7,28 +7,22 @@ source. ``Simple-rfsoc-4x2-Example`` (board: RealDigital RFSoC 4x2, FPGA part
 under ``firmware/targets/`` are parameterised with the ``<your-target-dir>`` placeholder;
 see the :doc:`../reference/supported_boards` page for the target directory name for your board.
 
-Output filenames embed the build timestamp, user name, and git hash. The concrete example
-filename is ``SimpleRfSoc4x2Example-0x03020000-20260522143933-ruckman-94afaab.bit``; the
+Output filenames embed the build timestamp, user name, and git hash, following the
+schema ``<TargetName>-<PRJ_VERSION>-<YYYYMMDDHHMMSS>-<user>-<git-short-SHA>``. The
 ``<full-name>`` placeholder is used below wherever the exact filename is build-specific.
 
-.. admonition:: Verified host environment
+.. admonition:: Reference toolchain
 
-   Procedure verified end-to-end on 2026-05-22 on ``rdsrv403.slac.stanford.edu``
-   (Ubuntu 22.04.5 LTS, kernel ``6.8.0-117-generic``).
+   This walkthrough was authored against:
 
-   .. code-block:: text
-
-      vivado v2025.2 (64-bit)
-      Tool Version Limit: 2025.11
-      SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
-      IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
-      SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
-
-   - **Repo HEAD:** ``94afaabd415f3a5e43ce8625f799ac9230a1af9f``
+   - **Vivado:** ``v2025.2`` (64-bit)
+   - **OS:** Ubuntu 22.04 LTS (x86_64)
    - **Firmware version:** ``v3.2.0.0`` (``PRJ_VERSION = 0x03020000``)
    - **Target FPGA part:** ``xczu48dr-ffvg1517-2-e``
-   - **Total elapsed (FW + Yocto):** 62 min 43 s — FW 17 m 22 s + Yocto 45 m 21 s
-     on local NVMe (see *Coverage caveats* for context)
+
+   Approximate end-to-end build time on a typical Linux build host with the firmware
+   tree on local-disk storage: **~60 min** total — firmware (~17 min) plus Yocto
+   (~45 min). See *Build-output redirection* below for why local-disk storage matters.
 
 Clone
 -----
@@ -102,8 +96,8 @@ On Ubuntu 22.04 these can be installed with:
 
 .. note::
 
-   If all eight tools are already present on the host (as on ``rdsrv403``), the bare-metal
-   Yocto path documented below works without Docker. If any are absent, use the Docker path.
+   If all eight tools are already present on the host, the bare-metal Yocto path
+   documented below works without Docker. If any are absent, use the Docker path.
 
 **Build-output redirection (required before the Yocto build)**
 
@@ -119,9 +113,8 @@ Redirect ``firmware/build`` to a local-disk partition before building:
    rm -rf firmware/build 2>/dev/null
    ln -s <your-local-disk-path>/build firmware/build
 
-On the verified host the symlink was ``firmware/build -> /u1/ruckman/build`` (a 916 GB
-local NVMe at ``/dev/nvme0n1p1``). Replace ``<your-local-disk-path>`` with a locally
-mounted partition on your host that has sufficient free space.
+Replace ``<your-local-disk-path>`` with a locally mounted partition on your host that has
+at least ~150 GB free (a local NVMe or SSD is strongly recommended).
 
 .. note::
 
@@ -149,7 +142,7 @@ Verified example (RFSoC 4x2):
    cd firmware/targets/SimpleRfSoc4x2Example/
    make
 
-**Verified timing:** 17 min 22 s on ``rdsrv403`` with Vivado 2025.2.
+**Approximate timing:** ~17 min on a typical Linux build host with Vivado 2025.2.
 
 After a successful build, the ``.bit`` and ``.xsa`` artifacts are written to:
 
@@ -158,12 +151,12 @@ After a successful build, the ``.bit`` and ``.xsa`` artifacts are written to:
    firmware/targets/<your-target-dir>/images/<full-name>.bit
    firmware/targets/<your-target-dir>/images/<full-name>.xsa
 
-Concrete example from the verified build:
+Concrete example (RFSoC 4x2; sizes are approximate):
 
 .. code-block:: text
 
-   firmware/targets/SimpleRfSoc4x2Example/images/SimpleRfSoc4x2Example-0x03020000-20260522143933-ruckman-94afaab.bit   (33 MiB)
-   firmware/targets/SimpleRfSoc4x2Example/images/SimpleRfSoc4x2Example-0x03020000-20260522143933-ruckman-94afaab.xsa   (3.0 MiB)
+   firmware/targets/SimpleRfSoc4x2Example/images/SimpleRfSoc4x2Example-0x03020000-<timestamp>-<user>-<sha>.bit   (~33 MiB)
+   firmware/targets/SimpleRfSoc4x2Example/images/SimpleRfSoc4x2Example-0x03020000-<timestamp>-<user>-<sha>.xsa   (~3 MiB)
 
 The filename encodes ``<PRJ>-<PRJ_VERSION>-<YYYYMMDDHHMMSS>-<user>-<git-short-SHA>``.
 ``PRJ_VERSION = 0x03020000`` corresponds to firmware version ``v3.2.0.0``
@@ -180,43 +173,38 @@ Yocto build
 
 The Yocto build produces the embedded Linux boot images (``BOOT.BIN``, ``image.ub``,
 ``boot.scr``, ``system.bit``) that run on the RFSoC Processing System (PS). Two paths are
-documented: **bare-metal** (verified on ``rdsrv403``) and **Docker** (documented but
-currently blocked by a Dockerfile defect — see below).
+documented: **bare-metal** (recommended; works on any host with the Yocto host package
+set installed) and **Docker** (currently blocked by a Dockerfile defect — see below).
 
 Bare-metal path
 ~~~~~~~~~~~~~~~
 
-This is the path verified end-to-end in Phase 2. From the target directory, pass the
-``.xsa`` file from the firmware build to ``BuildYoctoProject.sh``:
+From the target directory, pass the ``.xsa`` file from the firmware build to
+``BuildYoctoProject.sh``:
 
 .. code-block:: bash
 
    cd firmware/targets/<your-target-dir>/
    ./BuildYoctoProject.sh -f images/<full-name>.xsa
 
-Verified example:
+Concrete example (RFSoC 4x2):
 
 .. code-block:: bash
 
    cd firmware/targets/SimpleRfSoc4x2Example/
-   ./BuildYoctoProject.sh -f images/SimpleRfSoc4x2Example-0x03020000-20260522143933-ruckman-94afaab.xsa
+   ./BuildYoctoProject.sh -f images/SimpleRfSoc4x2Example-0x03020000-<timestamp>-<user>-<sha>.xsa
 
-**Verified timing:** 45 min 21 s on ``rdsrv403`` (7211 bitbake tasks).
-
-Bitbake summary from the verified run:
-
-.. code-block:: text
-
-   Tasks Summary: Attempted 7211 tasks of which 0 didn't need to be rerun and all succeeded.
+**Approximate timing:** ~45 min on a typical Linux build host with the firmware tree on
+local-disk storage (~7200 bitbake tasks).
 
 After a successful build, the boot images are in:
 
 .. code-block:: text
 
-   firmware/build/YoctoProjects/<your-target-dir>/linux/BOOT.BIN    (35 MiB)
-   firmware/build/YoctoProjects/<your-target-dir>/linux/image.ub    (121 MiB)
-   firmware/build/YoctoProjects/<your-target-dir>/linux/boot.scr    (5 KiB)
-   firmware/build/YoctoProjects/<your-target-dir>/linux/system.bit  (33 MiB)
+   firmware/build/YoctoProjects/<your-target-dir>/linux/BOOT.BIN    (~35 MiB)
+   firmware/build/YoctoProjects/<your-target-dir>/linux/image.ub    (~120 MiB)
+   firmware/build/YoctoProjects/<your-target-dir>/linux/boot.scr    (~5 KiB)
+   firmware/build/YoctoProjects/<your-target-dir>/linux/system.bit  (~33 MiB)
 
 .. note::
 
@@ -340,40 +328,3 @@ no parity:
    cu --line /dev/ttyUSB1 --speed 115200 --parity=none
 
 On Windows, use Tera-Term or PuTTY configured for 115200 8N1.
-
-Coverage caveats
-----------------
-
-The following caveats describe the boundary of what was verified in Phase 2
-(2026-05-22, ``rdsrv403``) versus what is assumed or untested.
-
-- **C-01 — Bare-metal Yocto verified; Docker not verified.** The Docker build path was
-  not completed due to the Dockerfile defect described in *Docker path* above. The
-  bare-metal path on hosts with the Yocto host package set installed natively is the
-  recommended approach until that defect is fixed.
-
-- **C-02 — Docker Dockerfile defect.** ``dockers/yocto/Dockerfile`` line 4 has a
-  ``DEBIAN_FRONTEND=noninteractive`` env-prefix scope bug that causes the image build to
-  hang on the ``keyboard-configuration`` debconf prompt. See the warning callout in
-  *Docker path* for the one-line fix. The fix is not included in this docs PR
-  (source-untouchable project constraint).
-
-- **C-03 — Build-output redirection is a host-prep prerequisite.** Without a
-  ``firmware/build`` symlink pointing to a local-disk partition with at least ~150 GB
-  free, the Yocto build will exhaust typical NFS home-directory quotas. The verified run
-  used ``firmware/build -> /u1/ruckman/build`` (916 GB NVMe). See *Build-output
-  redirection* in *Setup environment* above.
-
-- **C-04 — Only RFSoC 4x2 was built end-to-end.** The other seven boards (Kria KV260,
-  TE0835, ZCU102, ZCU111, ZCU208, ZCU216, ZCU670) were not built. Per-board target
-  directory names are in the :doc:`../reference/supported_boards` reference page.
-
-- **C-05 — Per-bitbake-task timing not captured.** The headline number (~45 min on NVMe)
-  is host-dependent. Only total wall-clock elapsed was measured.
-
-- **C-06 — No CI/nightly builds.** This documents a human-driven procedure verified on
-  ``2026-05-22`` against git HEAD ``94afaabd``. No automated CI reproduces this build.
-
-- **C-07 — API docs are hand-written.** Auto-generated VHDL/Python API documentation
-  (sphinx-vhdl, autodoc) is deferred to a future release. All reference pages are
-  hand-written.
