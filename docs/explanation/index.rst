@@ -1,4 +1,7 @@
 Explanation
 ===========
 
-Content for this section is added in a later phase.
+.. toctree::
+   :maxdepth: 1
+
+   architecture
