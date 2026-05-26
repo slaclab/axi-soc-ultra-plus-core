@@ -256,6 +256,9 @@ then
    fi
 
    # Set DMA settings in the local.conf
+   # Note: the RX/TX buffer counts are a single pool shared across all dests.
+   # High numDest builds should raise -r (dmaRxBuffCount) accordingly, subject
+   # to the 1.5 GB total-buffer cap checked above.
    echo "DMA_TX_BUFF_COUNT = \"${dmaTxBuffCount}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_RX_BUFF_COUNT = \"${dmaRxBuffCount}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_BUFF_SIZE = \"${dmaBuffSize}\""        >> $proj_dir/build/conf/local.conf
@@ -280,6 +283,19 @@ then
    # Update Application with user configuration
    echo "DMA_NUM_LANES = \"${numLane}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_NUM_DEST  = \"${numDest}\"" >> $proj_dir/build/conf/local.conf
+
+   # Derive rogue TCP bridge resource limits from the stream count.
+   # The bridge opens numLane*numDest streams, each costing ~10 file descriptors
+   # and ~4 threads. Scale the systemd LimitNOFILE/LimitNPROC and the kernel
+   # thread cap with headroom (floored at the stock values) so a high-channel
+   # image boots without fd/thread exhaustion. See ESROGUE-549.
+   numStreams=$(( numLane * numDest ))
+   limitNoFile=$(( numStreams * 16 + 1024 ))
+   limitNProc=$(( numStreams * 8 + 4096 ));   (( limitNProc < 9106 ))  && limitNProc=9106
+   threadsMax=$(( numStreams * 8 + 16384 ));  (( threadsMax < 18213 )) && threadsMax=18213
+   echo "DMA_LIMIT_NOFILE = \"${limitNoFile}\"" >> $proj_dir/build/conf/local.conf
+   echo "DMA_LIMIT_NPROC  = \"${limitNProc}\""  >> $proj_dir/build/conf/local.conf
+   echo "DMA_THREADS_MAX  = \"${threadsMax}\""  >> $proj_dir/build/conf/local.conf
 
    # Check if including RFDC utility
    if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp-user.conf"; then
