@@ -117,6 +117,15 @@ insmod /lib/modules/$(uname -r)/updates/axi_stream_dma.ko cfgTxCount0=@DMA_TX_BU
 # Dump AxiVersion Status
 /usr/bin/axiversiondump
 
+##############################################################################
+
+# Scale the kernel thread cap for the rogue TCP bridge: numLane*numDest streams
+# at ~4 threads/stream can exceed the default kernel.threads-max. Best-effort;
+# harmless if the running kernel already allows more.
+sysctl -w kernel.threads-max=@DMA_THREADS_MAX@ > /dev/null 2>&1
+
+##############################################################################
+
 # Check if user's runtime application exists
 if [ -f "/app/runtimeApp" ]
 then
