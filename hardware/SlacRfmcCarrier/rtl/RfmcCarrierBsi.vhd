@@ -45,6 +45,8 @@ end RfmcCarrierBsi;
 
 architecture rtl of RfmcCarrierBsi is
 
+   constant BSI_MAC_SIZE_C : natural := 4;
+
    constant BUILD_INFO_C : BuildInfoRetType := toBuildInfo(BUILD_INFO_G);
 
    constant BSI_MAJOR_VERSION_C : slv(7 downto 0) := x"01";

@@ -19,11 +19,12 @@ use ieee.std_logic_unsigned.all;
 
 library surf;
 use surf.StdRtlPkg.all;
-use surf.AxiStreamPkg.all;
-use surf.SsiPkg.all;
 use surf.AxiLitePkg.all;
 use surf.I2cPkg.all;
 use surf.I2cMuxPkg.all;
+
+library ruckus;
+use ruckus.BuildInfoPkg.all;
 
 library axi_soc_ultra_plus_core;
 use axi_soc_ultra_plus_core.HardwareTypePkg.all;
@@ -35,9 +36,8 @@ library axi_soc_ultra_plus_core;
 
 entity Hardware is
    generic (
-      TPD_G            : time := 1 ns;
-      AXIL_CLK_FREQ_G  : real;
-      AXIL_BASE_ADDR_G : slv(31 downto 0));
+      TPD_G           : time := 1 ns;
+      AXIL_CLK_FREQ_G : real);
    port (
       --------------------------
       --       Ports
@@ -197,7 +197,7 @@ begin
    U_Sy56040 : entity surf.AxiSy56040Reg
       generic map (
          TPD_G          => TPD_G,
-         XBAR_DEFAULT_G => xbarDefault(APP_TYPE_G, MPS_SLOT_G),
+         XBAR_DEFAULT_G => XBAR_APP_NODE_C,
          AXI_CLK_FREQ_G => AXIL_CLK_FREQ_G)
       port map (
          -- XBAR Ports
@@ -367,7 +367,7 @@ begin
    U_Bsi : entity axi_soc_ultra_plus_core.RfmcCarrierBsi
       generic map (
          TPD_G        => TPD_G,
-         BUILD_INFO_G => BUILD_INFO_G)
+         BUILD_INFO_G => BUILD_INFO_C)
       port map (
          -- I2C Ports
          scl             => ipmcScl,
