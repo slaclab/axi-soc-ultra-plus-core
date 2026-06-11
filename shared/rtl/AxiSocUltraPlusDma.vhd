@@ -34,6 +34,7 @@ entity AxiSocUltraPlusDma is
       SIMULATION_G         : boolean                      := false;
       DMA_BURST_BYTES_G    : positive range 256 to 4096   := 256;
       DMA_SIZE_G           : positive range 1 to 8        := 1;
+      DMA_ENABLED_G        : boolean                      := true;
       INT_PIPE_STAGES_G    : natural range 0 to 1         := 1;
       PIPE_STAGES_G        : natural range 0 to 1         := 1;
       DESC_SYNTH_MODE_G    : string                       := "xpm";
@@ -41,30 +42,34 @@ entity AxiSocUltraPlusDma is
       DESC_ARB_G           : boolean                      := false);  -- false = Round robin to help with timing
    port (
       -- Clock and Reset
-      axiClk           : in  sl;
-      axiRst           : in  sl;
+      axiClk : in sl;
+      axiRst : in sl;
+
       -- SOC AXI4 Interfaces (axiClk domain)
-      axiReadMaster    : out AxiReadMasterType;
-      axiReadSlave     : in  AxiReadSlaveType;
-      axiWriteMaster   : out AxiWriteMasterType;
-      axiWriteSlave    : in  AxiWriteSlaveType;
+      axiReadMaster  : out AxiReadMasterType  := AXI_READ_MASTER_INIT_C;
+      axiReadSlave   : in  AxiReadSlaveType   := AXI_READ_SLAVE_FORCE_C;
+      axiWriteMaster : out AxiWriteMasterType := AXI_WRITE_MASTER_INIT_C;
+      axiWriteSlave  : in  AxiWriteSlaveType  := AXI_WRITE_SLAVE_FORCE_C;
+
       -- User General Purpose AXI4 Interfaces (axiClk domain)
-      usrReadMaster    : in  AxiReadMasterType                  := AXI_READ_MASTER_INIT_C;
-      usrReadSlave     : out AxiReadSlaveType                   := AXI_READ_SLAVE_FORCE_C;
-      usrWriteMaster   : in  AxiWriteMasterType                 := AXI_WRITE_MASTER_INIT_C;
-      usrWriteSlave    : out AxiWriteSlaveType                  := AXI_WRITE_SLAVE_FORCE_C;
+      usrReadMaster  : in  AxiReadMasterType  := AXI_READ_MASTER_INIT_C;
+      usrReadSlave   : out AxiReadSlaveType   := AXI_READ_SLAVE_FORCE_C;
+      usrWriteMaster : in  AxiWriteMasterType := AXI_WRITE_MASTER_INIT_C;
+      usrWriteSlave  : out AxiWriteSlaveType  := AXI_WRITE_SLAVE_FORCE_C;
+
       -- AXI4-Lite Interfaces (axiClk domain)
-      axilReadMasters  : in  AxiLiteReadMasterArray(2 downto 0);
-      axilReadSlaves   : out AxiLiteReadSlaveArray(2 downto 0)  := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
-      axilWriteMasters : in  AxiLiteWriteMasterArray(2 downto 0);
-      axilWriteSlaves  : out AxiLiteWriteSlaveArray(2 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
+      axilReadMasters  : in  AxiLiteReadMasterArray(2 downto 0)  := (others => AXI_LITE_READ_MASTER_INIT_C);
+      axilReadSlaves   : out AxiLiteReadSlaveArray(2 downto 0)   := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
+      axilWriteMasters : in  AxiLiteWriteMasterArray(2 downto 0) := (others => AXI_LITE_WRITE_MASTER_INIT_C);
+      axilWriteSlaves  : out AxiLiteWriteSlaveArray(2 downto 0)  := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
+
       -- DMA Interfaces (axiClk domain)
-      dmaIrq           : out sl                                 := '0';
-      dmaBuffGrpPause  : out slv(7 downto 0)                    := (others => '0');
-      dmaObMasters     : out AxiStreamMasterArray(DMA_SIZE_G-1 downto 0);
-      dmaObSlaves      : in  AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0);
-      dmaIbMasters     : in  AxiStreamMasterArray(DMA_SIZE_G-1 downto 0);
-      dmaIbSlaves      : out AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0));
+      dmaIrq          : out sl                                          := '0';
+      dmaBuffGrpPause : out slv(7 downto 0)                             := (others => '0');
+      dmaObMasters    : out AxiStreamMasterArray(DMA_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
+      dmaObSlaves     : in  AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C);
+      dmaIbMasters    : in  AxiStreamMasterArray(DMA_SIZE_G-1 downto 0) := (others => AXI_STREAM_MASTER_INIT_C);
+      dmaIbSlaves     : out AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0)  := (others => AXI_STREAM_SLAVE_FORCE_C));
 end AxiSocUltraPlusDma;
 
 architecture mapping of AxiSocUltraPlusDma is
@@ -93,7 +98,6 @@ architecture mapping of AxiSocUltraPlusDma is
 
    signal mAxisMasters : AxiStreamMasterArray(DMA_SIZE_G-1 downto 0);
    signal mAxisSlaves  : AxiStreamSlaveArray(DMA_SIZE_G-1 downto 0);
-   signal mAxisCtrl    : AxiStreamCtrlArray(DMA_SIZE_G-1 downto 0);
 
    signal axisReset : slv(DMA_SIZE_G-1 downto 0);
 
@@ -102,7 +106,7 @@ architecture mapping of AxiSocUltraPlusDma is
 
 begin
 
-   REAL_SOC : if (not ROGUE_SIM_EN_G) generate
+   REAL_SOC : if (not ROGUE_SIM_EN_G) and DMA_ENABLED_G generate
 
       ---------------
       -- AXI SoC XBAR
@@ -137,7 +141,7 @@ begin
             DESC_MEMORY_TYPE_G => DESC_MEMORY_TYPE_G,
             AXIL_BASE_ADDR_G   => x"00000000",
             AXI_READY_EN_G     => true,  -- Using "Packet FIFO" option in AXI Interconnect IP core
-            AXIS_READY_EN_G    => false,
+            AXIS_READY_EN_G    => true,
             AXIS_CONFIG_G      => INT_DMA_AXIS_CONFIG_C,
             AXI_DMA_CONFIG_G   => AXI_SOC_CONFIG_C,
             CHAN_COUNT_G       => DMA_SIZE_G,
@@ -160,7 +164,7 @@ begin
             sAxisSlaves     => sAxisSlaves,
             mAxisMasters    => mAxisMasters,
             mAxisSlaves     => mAxisSlaves,
-            mAxisCtrl       => mAxisCtrl,
+            mAxisCtrl       => (others => AXI_STREAM_CTRL_UNUSED_C),
             -- AXI Interfaces, 0 = Desc, 1-CHAN_COUNT_G = DMA
             axiReadMasters  => dmaReadMasters,
             axiReadSlaves   => dmaReadSlaves,
@@ -245,14 +249,12 @@ begin
                TPD_G               => TPD_G,
                INT_PIPE_STAGES_G   => INT_PIPE_STAGES_G,
                PIPE_STAGES_G       => PIPE_STAGES_G,
-               SLAVE_READY_EN_G    => false,
+               SLAVE_READY_EN_G    => true,
                VALID_THOLD_G       => 1,
                -- FIFO configurations
                MEMORY_TYPE_G       => "block",
                GEN_SYNC_FIFO_G     => true,
                FIFO_ADDR_WIDTH_G   => 9,
-               FIFO_FIXED_THRESH_G => true,
-               FIFO_PAUSE_THRESH_G => 300,  -- 1800 byte buffer before pause and 1696 byte of buffer before FIFO FULL
                -- AXI Stream Port Configurations
                SLAVE_AXI_CONFIG_G  => INT_DMA_AXIS_CONFIG_C,
                MASTER_AXI_CONFIG_G => DMA_AXIS_CONFIG_C)
@@ -262,7 +264,6 @@ begin
                sAxisRst    => axisReset(i),
                sAxisMaster => mAxisMasters(i),
                sAxisSlave  => mAxisSlaves(i),
-               sAxisCtrl   => mAxisCtrl(i),
                -- Master Port
                mAxisClk    => axiClk,
                mAxisRst    => axisReset(i),
@@ -310,7 +311,7 @@ begin
             axisClk          => axiClk,
             axisRst          => axiRst,
             axisMasters      => mAxisMasters,
-            axisSlaves       => (others => AXI_STREAM_SLAVE_FORCE_C),  -- U_ObFifo.SLAVE_READY_EN_G=false
+            axisSlaves       => mAxisSlaves,
             -- AXI lite slave port for register access
             axilClk          => axiClk,
             axilRst          => axiRst,
@@ -321,7 +322,7 @@ begin
 
    end generate;
 
-   SIM_SOC : if (ROGUE_SIM_EN_G) generate
+   SIM_SOC : if (ROGUE_SIM_EN_G) and DMA_ENABLED_G generate
 
       GEN_VEC : for i in DMA_SIZE_G-1 downto 0 generate
          -------------------------------------------------------
