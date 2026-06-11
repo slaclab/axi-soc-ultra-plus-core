@@ -36,8 +36,9 @@ library axi_soc_ultra_plus_core;
 
 entity Hardware is
    generic (
-      TPD_G           : time := 1 ns;
-      AXIL_CLK_FREQ_G : real);
+      TPD_G            : time := 1 ns;
+      AXIL_CLK_FREQ_G  : real;
+      AXIL_BASE_ADDR_G : slv(31 downto 0));
    port (
       --------------------------
       --       Ports
@@ -92,27 +93,27 @@ architecture mapping of Hardware is
 
    constant AXI_CROSSBAR_MASTERS_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_AXI_MASTERS_C-1 downto 0) := (
       LMK_INDEX_C     => (
-         baseAddr     => LMK_ADDR_C,
+         baseAddr     => (LMK_ADDR_C+AXIL_BASE_ADDR_G),
          addrBits     => 24,
          connectivity => x"FFFF"),
       XBAR_INDEX_C    => (
-         baseAddr     => XBAR_ADDR_C,
+         baseAddr     => (XBAR_ADDR_C+AXIL_BASE_ADDR_G),
          addrBits     => 24,
          connectivity => x"FFFF"),
       LMX0_INDEX_C    => (
-         baseAddr     => LMX0_ADDR_C,
+         baseAddr     => (LMX0_ADDR_C+AXIL_BASE_ADDR_G),
          addrBits     => 24,
          connectivity => x"FFFF"),
       LMX1_INDEX_C    => (
-         baseAddr     => LMX1_ADDR_C,
+         baseAddr     => (LMX1_ADDR_C+AXIL_BASE_ADDR_G),
          addrBits     => 24,
          connectivity => x"FFFF"),
       MUX_I2C_INDEX_C => (
-         baseAddr     => MUX_I2C_ADDR_C,
+         baseAddr     => (MUX_I2C_ADDR_C+AXIL_BASE_ADDR_G),
          addrBits     => 24,
          connectivity => x"FFFF"),
       IPMC_INDEX_C    => (
-         baseAddr     => IPMC_ADDR_C,
+         baseAddr     => (IPMC_ADDR_C+AXIL_BASE_ADDR_G),
          addrBits     => 24,
          connectivity => x"FFFF"));
 
