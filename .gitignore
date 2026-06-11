@@ -47,11 +47,6 @@ bin*
 *.elf
 *.dcp
 
-# AI Agents
-.vscode/
-.cursor/
-.claude/
-.planning/
-planning/
-CLAUDE.md
-
+# Sphinx build output
+docs/_build/
+.venv-docs/
