@@ -16,7 +16,7 @@ INSANE_SKIP += "src-uri-bad"
 
 S = "${WORKDIR}/rogue-${ROGUE_VERSION}"
 PROVIDES = "rogue"
-EXTRA_OECMAKE += "-DROGUE_INSTALL=system -DROGUE_VERSION=v${ROGUE_VERSION}"
+EXTRA_OECMAKE += "-DROGUE_INSTALL=system -DROGUE_VERSION=v${ROGUE_VERSION} -DNO_ROCEV2=1"
 
 inherit cmake python3native setuptools3
 
