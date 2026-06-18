@@ -62,13 +62,3 @@ jobs:
       GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
 # ----------------------------------------------------------------------------
-
-  conda_build_lib:
-    needs: [test_and_document]
-    uses: slaclab/ruckus/.github/workflows/conda_build_lib.yml@main
-    with:
-      version: '1.0.0'
-    secrets:
-      CONDA_UPLOAD_TOKEN_TAG: ${{ secrets.CONDA_UPLOAD_TOKEN_TAG }}
-
-# ----------------------------------------------------------------------------
