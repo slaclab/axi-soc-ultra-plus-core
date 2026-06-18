@@ -32,8 +32,9 @@ class Hardware(pr.Device):
         super()._start()
 
         # Configure the LMK for 4-wire SPI
-        self.Lmk.LmkReg_0x0000.set(value=0x10) # 4-wire SPI
-        self.Lmk.LmkReg_0x014A.set(value=0x33) # RESET/GPO = SPI readback
+        self.Lmk.LmkReg_0x0000.set(value=0x90,verify=False) # 4-wire SPI + RESET
+        self.Lmk.LmkReg_0x0000.set(value=0x10,verify=False) # 4-wire SPI
+        self.Lmk.LmkReg_0x014A.set(value=0x33,verify=False) # RESET/GPO = SPI readback
 
     def InitClock(self, lmkConfig=None, lmxConfig=[None]):
 
