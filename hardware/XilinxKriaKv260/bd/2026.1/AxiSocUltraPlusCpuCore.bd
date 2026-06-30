@@ -3,11 +3,11 @@
     "design_info": {
       "boundary_crc": "0xE7D16F7899647A38",
       "device": "xck26-sfvc784-2LV-c",
-      "gen_directory": "../../../../FiberConverterKriaKv260_project.gen/sources_1/bd/bd",
+      "gen_directory": "../../../../SimpleKriaKv260Example_project.gen/sources_1/bd/2026",
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
-      "tool_version": "2022.2",
+      "tool_version": "2023.1",
       "validated": "true"
     },
     "design_tree": {
@@ -971,7 +971,7 @@
         }
       },
       "zynq_ultra_ps_e_0": {
-        "vlnv": "xilinx.com:ip:zynq_ultra_ps_e:3.4",
+        "vlnv": "xilinx.com:ip:zynq_ultra_ps_e:3.5",
         "xci_name": "AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0.xci",
         "inst_hier_path": "zynq_ultra_ps_e_0",
@@ -2089,22 +2089,10 @@
             "value": "MIO 33"
           },
           "PSU__PMU__GPO2__ENABLE": {
-            "value": "1"
-          },
-          "PSU__PMU__GPO2__IO": {
-            "value": "MIO 34"
-          },
-          "PSU__PMU__GPO2__POLARITY": {
-            "value": "high"
+            "value": "0"
           },
           "PSU__PMU__GPO3__ENABLE": {
-            "value": "1"
-          },
-          "PSU__PMU__GPO3__IO": {
-            "value": "MIO 35"
-          },
-          "PSU__PMU__GPO3__POLARITY": {
-            "value": "low"
+            "value": "0"
           },
           "PSU__PMU__GPO4__ENABLE": {
             "value": "0"
