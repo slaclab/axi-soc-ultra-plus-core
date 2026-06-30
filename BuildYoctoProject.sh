@@ -264,13 +264,6 @@ then
    echo "IMAGE_INSTALL:append = \" axidmasamples\"" >> $proj_dir/build/conf/local.conf
 
    ##############################################################################
-   # Add axi-soc-ultra-plus-core's recipes-devtools
-   ##############################################################################
-
-   # Copy the meta layers from local source (for now, only a temporary patch for Qemu)
-   cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-devtools $proj_dir/sources/meta-user/.
-
-   ##############################################################################
    # Add axi-soc-ultra-plus-core's recipes-apps
    ##############################################################################
 
