@@ -199,7 +199,7 @@ then
 
    # Create the project
    mkdir $proj_dir && cd $proj_dir
-   yes y | repo init -u https://github.com/Xilinx/yocto-manifests.git -b rel-v2025.1
+   yes y | repo init -u https://github.com/Xilinx/yocto-manifests.git -b rel-v2026.1
    repo sync
 
    # Write out a build stamp with the XSA path
@@ -262,13 +262,6 @@ then
 
    # Install the samples/tests
    echo "IMAGE_INSTALL:append = \" axidmasamples\"" >> $proj_dir/build/conf/local.conf
-
-   ##############################################################################
-   # Add axi-soc-ultra-plus-core's recipes-devtools
-   ##############################################################################
-
-   # Copy the meta layers from local source (for now, only a temporary patch for Qemu)
-   cp -rfL $axi_soc_ultra_plus_core/shared/Yocto/recipes-devtools $proj_dir/sources/meta-user/.
 
    ##############################################################################
    # Add axi-soc-ultra-plus-core's recipes-apps
