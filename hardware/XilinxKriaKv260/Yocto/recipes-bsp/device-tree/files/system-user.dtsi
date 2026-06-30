@@ -3,6 +3,10 @@
 		bootargs = " earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0 cma=1024M";
 		stdout-path = "serial1:115200n8";
 	};
+	aliases {
+		serial0 = &uart0;
+		serial1 = &uart1;
+	};
 
 	reserved-memory {
 		#address-cells = <2>;
