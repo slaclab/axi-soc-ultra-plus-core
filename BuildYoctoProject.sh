@@ -26,10 +26,12 @@ function show_help {
    echo " -s BUFFSZ    - DMA buffer size"
    echo " -c           - Force reconfigure if the project has already been configured"
    echo " -H           - Show this help text"
+   echo " -i NAME      - Name of the target image (Default: petalinux-image-minimal)"
    exit 1
 }
 
 doConfigure=0
+image=petalinux-image-minimal
 while getopts p:n:h:x:l:d:t:r:s:f:cHT: flag
 do
     case "${flag}" in
@@ -44,6 +46,7 @@ do
         s) dmaBuffSize=${OPTARG};;
         c) doConfigure=1;;
         T) projTop=${OPTARG};;
+        i) image=${OPTARG};;
         H) show_help;;
     esac
 done
@@ -336,7 +339,7 @@ fi
 # Build Everything!
 ##############################################################################
 
-bitbake petalinux-image-minimal || die "bitbake petalinux-image-minimal returned non-zero. Aborting."
+bitbake "${image}" || die "bitbake ${image} returned non-zero. Aborting."
 
 # Resolve the deploy directory from BitBake itself (local.conf may override
 # TMPDIR / DEPLOY_DIR_IMAGE). Do NOT use the shell environment's TMPDIR —
