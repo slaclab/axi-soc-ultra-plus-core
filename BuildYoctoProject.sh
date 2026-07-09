@@ -13,26 +13,31 @@
 #echo -ne "\033c"
 
 function show_help {
-   echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-c]"
-   echo " -p PATH      - Path to the build dir (required)"
-   echo " -n NAME      - Target name (required)"
-   echo " -h HWTYPE    - Hardware type, must match directory name in axi-soc-ultra-plus-core/hardware (required)"
-   echo " -x XSA       - Path to the XSA file (required)"
-   echo " -T top       - Path to the firmware/ directory. This is usually just above the build/ directory (required)"
-   echo " -l LANES     - Num DMA lanes"
-   echo " -d DESTS     - Num dests"
-   echo " -t TXCNT     - Num TX buffers"
-   echo " -r RXCNT     - Num RX buffers"
-   echo " -s BUFFSZ    - DMA buffer size"
+   echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA -T PATH [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-i IMAGE] [-m MODE] [-c]"
+   echo ""
+   echo "Required:"
+   echo " -p PATH      - Path to the build dir"
+   echo " -n NAME      - Target name"
+   echo " -h HWTYPE    - Hardware type, must match a directory name in axi-soc-ultra-plus-core/hardware"
+   echo " -x XSA       - Path to the XSA file"
+   echo " -T PATH      - Path to the firmware/ directory (usually just above the build/ directory)"
+   echo ""
+   echo "Optional:"
+   echo " -l LANES     - Number of DMA lanes"
+   echo " -d DESTS     - Number of DEST per lane"
+   echo " -t TXCNT     - Number of DMA TX buffers"
+   echo " -r RXCNT     - Number of DMA RX buffers"
+   echo " -s BUFFSZ    - DMA buffer size in bytes"
+   echo " -i IMAGE     - Name of the target image (Default: petalinux-image-minimal)"
+   echo " -m MODE      - U-Boot netboot fallback mode: 'fallback' boots from SD if TFTP fails, 'tftp-only' does not (Default: fallback)"
    echo " -c           - Force reconfigure if the project has already been configured"
    echo " -H           - Show this help text"
-   echo " -i NAME      - Name of the target image (Default: petalinux-image-minimal)"
    exit 1
 }
 
 doConfigure=0
 image=petalinux-image-minimal
-while getopts p:n:h:x:l:d:t:r:s:f:cHT: flag
+while getopts p:n:h:x:l:d:t:r:s:f:cHT:m: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
@@ -47,6 +52,7 @@ do
         c) doConfigure=1;;
         T) projTop=${OPTARG};;
         i) image=${OPTARG};;
+        m) uboot_netboot_mode=${OPTARG};;
         H) show_help;;
     esac
 done
@@ -263,6 +269,9 @@ then
    echo "DMA_RX_BUFF_COUNT = \"${dmaRxBuffCount}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_BUFF_SIZE = \"${dmaBuffSize}\""        >> $proj_dir/build/conf/local.conf
 
+   # Set the shared U-Boot netboot hook's build-time mode in the local.conf
+   echo "UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode:-fallback}\"" >> $proj_dir/build/conf/local.conf
+
    # Install the samples/tests
    echo "IMAGE_INSTALL:append = \" axidmasamples\"" >> $proj_dir/build/conf/local.conf
 
@@ -272,6 +281,9 @@ then
 
    # Copy the meta layers from local source
    ln -s $axi_soc_ultra_plus_core/shared/Yocto/recipes-apps $proj_dir/sources/meta-user/recipes-apps
+
+   # Add the shared netboot-hooks BitBake layer (u-boot-xlnx netboot env override)
+   bitbake-layers add-layer "$axi_soc_ultra_plus_core/shared/Yocto"
 
    # Update Application with user configuration
    echo "DMA_NUM_LANES = \"${numLane}\"" >> $proj_dir/build/conf/local.conf
