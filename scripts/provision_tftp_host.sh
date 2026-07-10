@@ -11,7 +11,8 @@
 ##
 ## Idempotent host-side TFTP netboot provisioning: ensures the standalone
 ## dnsmasq TFTP server is configured and running, then stages the newest
-## image.ub build for the selected board into /tftpboot. Safe to re-run --
+## image.ub build for the selected board into /tftpboot along with a
+## pxelinux.cfg/default PXE config that names it. Safe to re-run --
 ## a no-op re-invocation does not re-prompt for sudo and does not re-copy.
 ##
 ## Reference (proven manual procedure this script formalizes):
@@ -164,4 +165,30 @@ else
    cp "$src" "$dest"
    cmp -s "$src" "$dest" || die "Post-copy verification failed: $dest does not match $src"
    echo "Staged $(stat -c%s "$dest") bytes"
+fi
+
+##############################################################################
+# Step 4: stage the PXE config the board's 'pxe get' fetches. U-Boot looks up
+# pxelinux.cfg/01-<MAC> (per-board override) or pxelinux.cfg/default, parses the
+# KERNEL line, and boots that FIT -- so boot behavior can change server-side
+# without reflashing U-Boot. KERNEL points at the same flat image.ub staged
+# above. Same check-then-act idempotency as the steps before it.
+##############################################################################
+
+PXE_DIR="$TFTP_ROOT/pxelinux.cfg"
+PXE_DEFAULT="$PXE_DIR/default" # /tftpboot/pxelinux.cfg/default
+
+function print_pxe_default {
+    cat <<'EOF'
+LABEL Linux
+KERNEL image.ub
+EOF
+}
+
+mkdir -p "$PXE_DIR"
+if cmp -s <(print_pxe_default) "$PXE_DEFAULT" 2>/dev/null; then
+   echo "$PXE_DEFAULT already up to date"
+else
+   echo "Staging $PXE_DEFAULT"
+   print_pxe_default > "$PXE_DEFAULT"
 fi

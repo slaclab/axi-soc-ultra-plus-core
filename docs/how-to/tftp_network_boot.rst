@@ -16,6 +16,19 @@ The SD card stays in the board and still holds a known-good
 that on-SD image automatically. Nothing about the first boot stage
 changes: only where the kernel FIT comes from.
 
+The kernel FIT is fetched **PXE-first**. U-Boot first tries to download
+a PXE ("pxelinux") config from the TFTP server —
+``pxelinux.cfg/01-<MAC>`` (the board's MAC, dash-separated and
+lowercased, with the ``01-`` ARP-hardware-type prefix) if a
+board-specific file exists, otherwise ``pxelinux.cfg/default`` — parses
+its ``KERNEL`` line, and boots the FIT that line names. Only if no PXE
+config is served does U-Boot fall back to fetching ``image.ub``
+directly by name. The PXE config lets you change a board's boot
+behavior server-side — pointing it at a different FIT, for example —
+**without reflashing U-Boot or editing the board's U-Boot
+environment**. Either path still relies on ``serverip`` (the TFTP
+server address) being set, explicitly or via DHCP.
+
 The active U-Boot network stack is lwIP (U-Boot 2026.01,
 ``CONFIG_NET_LWIP``); a bound DHCP lease prints a line starting with
 ``DHCP client bound to address``. The netboot hooks are added to
@@ -62,11 +75,28 @@ Steps
 
    The script is idempotent: it writes the TFTP server configuration
    (``/etc/dnsmasq.d/tftp-lab.conf``), stages the latest built
-   ``image.ub`` for that board into the TFTP root (``/tftpboot``), and
-   launches a standalone ``dnsmasq`` instance serving ``/tftpboot/image.ub``.
-   Re-running it against an already-provisioned host is a no-op — it does
-   not re-prompt for ``sudo`` and does not start a second daemon. Do not
-   hand-derive the TFTP server configuration yourself.
+   ``image.ub`` for that board into the TFTP root (``/tftpboot``), stages
+   a PXE config at ``/tftpboot/pxelinux.cfg/default``, and launches a
+   standalone ``dnsmasq`` instance serving ``/tftpboot``. Re-running it
+   against an already-provisioned host is a no-op — it does not re-prompt
+   for ``sudo`` and does not start a second daemon. Do not hand-derive
+   the TFTP server configuration yourself.
+
+   The staged ``/tftpboot/pxelinux.cfg/default`` is minimal — it simply
+   names the FIT to boot:
+
+   .. code-block:: text
+
+      LABEL Linux
+      KERNEL image.ub
+
+   To give one board different boot behavior than the rest, add a
+   MAC-specific override file beside it, named for that board's MAC
+   address as ``pxelinux.cfg/01-aa-bb-cc-dd-ee-ff`` (the ``01-`` prefix
+   plus the MAC dash-separated and lowercased). U-Boot prefers the
+   MAC-specific file over ``default`` when both are present, so you can
+   repoint a single board — at a different FIT, say — without touching
+   the shared ``default`` config or reflashing that board's U-Boot.
 
    The server is **TFTP-only** (``dnsmasq`` runs with DNS and DHCP
    disabled), so it is safe to run alongside an existing site DHCP
@@ -144,14 +174,35 @@ Steps
    These commands mirror the built-in ``netboot`` environment command
    (installed via ``CFG_EXTRA_ENV_SETTINGS``, see **How It Works**),
    which runs ``dhcp`` — skipped if a static ``ipaddr`` is already
-   set — then ``tftpboot 0x10000000 image.ub`` then ``bootm
-   0x10000000`` in one step; ``run netboot`` performs the whole
+   set — then tries ``pxe get`` / ``pxe boot`` and, only if no PXE
+   config is served, falls back to ``tftpboot 0x10000000 image.ub`` then
+   ``bootm 0x10000000``; ``run netboot`` performs the whole
    fetch-and-boot. Doing it by hand lets you set ``serverip``
    explicitly (``netboot`` itself does not) and watch each stage. At
    boot time it is U-Boot's ``bootcmd`` — ``if run netboot; then true;
    else ...; fi`` — that runs ``netboot`` and, on failure, triggers the
    mode-specific action from Step 2 (SD boot for ``fallback``, halt for
    ``tftp-only``).
+
+   .. code-block:: text
+
+      dhcp
+      setenv serverip 10.0.0.1
+      pxe get
+      pxe boot
+
+   ``pxe get`` downloads the ``pxelinux.cfg`` file (MAC-specific first,
+   then ``default``) from ``serverip``, and ``pxe boot`` loads and boots
+   the FIT its ``KERNEL`` line names. This build also provides distro
+   boot, so ``run bootcmd_pxe`` is a one-line equivalent — but it runs
+   its own ``dhcp`` and takes ``serverip`` from the DHCP response, so
+   prefer setting ``serverip`` explicitly and running ``pxe get`` /
+   ``pxe boot`` when your DHCP server does not hand out a TFTP
+   ``next-server``.
+
+   To fetch the FIT directly instead — the fallback path ``netboot``
+   takes when no PXE config is served — skip the ``pxe`` commands and
+   fetch ``image.ub`` by name:
 
    .. code-block:: text
 
@@ -229,6 +280,13 @@ Troubleshooting
      - Confirm the host is serving the FIT with the host-side ``curl``
        check in Step 1, and that ``serverip`` on the board points at
        that host
+   * - ``pxe get`` fails or is skipped; ``netboot`` silently used the
+       direct ``image.ub`` fetch instead of a PXE config
+     - No ``pxelinux.cfg`` file is being served (missing, misnamed, or
+       not fetchable over TFTP)
+     - Confirm ``/tftpboot/pxelinux.cfg/default`` exists and fetch it
+       back from the host with the same TFTP check as Step 1
+       (``curl -sf tftp://10.0.0.1/pxelinux.cfg/default``)
    * - ``TFTP-only build: not falling back to SD`` followed by a halt
        at a bare ``ZynqMP>`` prompt, no kernel banner
      - Expected behavior: a ``tftp-only`` build halts by design when

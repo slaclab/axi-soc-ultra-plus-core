@@ -226,3 +226,43 @@ sudo dnsmasq --conf-file=/etc/dnsmasq.d/tftp-lab.conf --pid-file=/run/dnsmasq-tf
 then `reset` at the `ZynqMP>` prompt → the tftp-only build netboots normally again. If the
 board is unresponsive, the JTAG warm-inject path (`reflash_via_jtag.tcl`) is the ultimate
 recovery net. This board also has remote power control.
+
+---
+
+## 6. PXE-config-driven netboot (added post-bring-up — NOT yet hardware-validated)
+
+Added after the bring-up above, in response to the PR review. The netboot hook is now
+**PXE-first**: `pxe get` fetches a pxelinux config from `${serverip}` and `pxe boot` loads
+and boots the FIT that config names; the direct `tftpboot 0x10000000 image.ub && bootm
+0x10000000` stays as the in-`netboot` fallback for when no PXE config is served. The
+expanded `netboot` env value:
+```
+if test -n "${ipaddr}"; then true; else dhcp; fi && if pxe get; then pxe boot; else tftpboot 0x10000000 image.ub && bootm 0x10000000; fi
+```
+
+- **Config search order** (built into `pxe get`): the MAC-based name
+  `pxelinux.cfg/01-<mac, dash-separated, lowercase>` first, then IP-hex names, then
+  `pxelinux.cfg/default`.
+- **Staged file** `/tftpboot/pxelinux.cfg/default` (written idempotently by
+  `provision_tftp_host.sh`), exact content:
+  ```
+  LABEL Linux
+  KERNEL image.ub
+  ```
+  `KERNEL image.ub` points at the same flat `/tftpboot/image.ub` staged for the
+  direct-fetch fallback.
+- **`serverip` is still required** (explicit or via DHCP) — PXE does not remove that
+  dependency; it is the same requirement as the direct-tftp path in Section 3.
+- **Load addresses come from `ENV_MEM_LAYOUT_SETTINGS`** (`configs/xilinx_zynqmp.h`), not
+  hand-set: `pxefile_addr_r=0x10000000`, `kernel_addr_r=0x18000000` (verified in the
+  u-boot-xlnx 2026.01 source).
+- **No Kconfig added.** `CONFIG_CMD_PXE`, `CONFIG_PXE_UTILS`, and `CONFIG_MENU` are already
+  enabled by the ZynqMP defconfig (via `CONFIG_DISTRO_DEFAULTS`) — verified in the built
+  `.config` — and `bootcmd_pxe` (`run boot_net_usb_start; dhcp; if pxe get; then pxe boot;
+  fi`) is present in the built default environment. `bsp.cfg` only carries a comment noting
+  this so a future reader need not re-derive it.
+- **Not exercised on hardware yet.** The env-string macro expansion and the Kconfig /
+  default-env facts above were verified against the u-boot-xlnx 2026.01 build tree, but the
+  PXE fetch/boot path itself has not been run on the RFSoC 4x2. In particular, `pxe boot`'s
+  failure/return behavior (vs. the measured `tftpboot`+`bootm` path in Section 5) still
+  needs a board to confirm the `bootcmd` else-branch (SD fallback / halt) fires as before.
