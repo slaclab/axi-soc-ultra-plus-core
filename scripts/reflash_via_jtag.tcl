@@ -59,6 +59,17 @@
 ##    partition table, image.ub, or a stray uboot.env living in the same
 ##    FAT partition.
 ##
+##    CAUTION (RFSoC 4x2): `fatwrite mmc 0:1` is BROKEN on this board's
+##    1 GiB FAT32 boot partition under U-Boot 2026.01 -- a corrupt FSInfo
+##    free-count makes every write fail with a bogus "no space left"
+##    (see NETBOOT_BRINGUP_NOTES.md Section 4). The fatwrite sequence above
+##    is the generic Zynq pattern, retained for boards where it works; on
+##    the RFSoC 4x2 the proven SD-write path is to boot Linux and `cp` the
+##    new file onto the mounted VFAT boot partition instead. If JTAG
+##    recovery leaves you at a U-Boot prompt and you cannot boot Linux to
+##    run `cp`, reflash the SD card out-of-band rather than trusting
+##    fatwrite.
+##
 ## 2. cold_recovery_reflash (last-resort path): used only if
 ##    warm_inject_reflash cannot reach a live U-Boot prompt (DDR was never
 ##    initialized this power cycle -- FSBL never ran). Overrides the sampled

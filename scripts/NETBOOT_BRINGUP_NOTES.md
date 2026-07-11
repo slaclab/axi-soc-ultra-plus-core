@@ -128,8 +128,12 @@ The two build modes produce byte-distinct `BOOT.BIN` and `image.ub`:
 | fallback  | `87be1df7715527b53c9e7acdc696ca17` | `116833531`     |
 | tftp-only | `e5bb9930f864f9d7cc749261a95f6fc9` | `116833887`     |
 
-The build's hostname/login banner (`SimpleRfSoc4x2Example-fallback` vs
-`SimpleRfSoc4x2Example-tftponly`) is a reliable distinguisher for which build actually booted.
+On the committed build the login banner is `SimpleRfSoc4x2Example` for **both** modes: the
+hostname is set from the project name (`hostname:pn-base-files = "$Name"`), independent of
+`UBOOT_NETBOOT_MODE`, so it is **not** a mode distinguisher. Tell which build actually booted
+from the byte-distinct `BOOT.BIN` md5 (the two modes differ — see the table above), or from
+the TFTP-failure behavior itself (a `fallback` build SD-boots; a `tftp-only` build halts at
+`ZynqMP>`).
 
 ### Static-IP override (no-DHCP path)
 At `ZynqMP>`, set `ipaddr` (e.g. `10.0.0.50` — outside the dhcpd pool, not a fixed host,
@@ -229,7 +233,7 @@ recovery net. This board also has remote power control.
 
 ---
 
-## 6. PXE-config-driven netboot (added post-bring-up — NOT yet hardware-validated)
+## 6. PXE-config-driven netboot (validated on hardware)
 
 Added after the bring-up above, in response to the PR review. The netboot hook is now
 **PXE-first**: `pxe get` fetches a pxelinux config from `${serverip}` and `pxe boot` loads
@@ -261,8 +265,38 @@ if test -n "${ipaddr}"; then true; else dhcp; fi && if pxe get; then pxe boot; e
   `.config` — and `bootcmd_pxe` (`run boot_net_usb_start; dhcp; if pxe get; then pxe boot;
   fi`) is present in the built default environment. `bsp.cfg` only carries a comment noting
   this so a future reader need not re-derive it.
-- **Not exercised on hardware yet.** The env-string macro expansion and the Kconfig /
-  default-env facts above were verified against the u-boot-xlnx 2026.01 build tree, but the
-  PXE fetch/boot path itself has not been run on the RFSoC 4x2. In particular, `pxe boot`'s
-  failure/return behavior (vs. the measured `tftpboot`+`bootm` path in Section 5) still
-  needs a board to confirm the `bootcmd` else-branch (SD fallback / halt) fires as before.
+- **Validated on hardware (RFSoC 4x2, both build modes).** The full PXE fetch/boot path was
+  exercised on the board; every case below was observed on the serial console, and the
+  reflashed builds' baked-in env (`printenv netboot`/`bootcmd`) byte-matches the strings in
+  this section. The `bootcmd` wrappers built for each mode are exactly
+  `if run netboot; then true; else run sdboot; fi` (fallback) and
+  `if run netboot; then true; else echo TFTP-only build: not falling back to SD; fi`
+  (tftp-only).
+  - *PXE default happy path* — `run netboot` → `pxe get` fetches `pxelinux.cfg/default` →
+    `pxe boot` loads the `KERNEL` FIT at `kernel_addr_r` (`0x18000000`) → boots to `login:`.
+    The observed `pxe get` search order matches the documented one exactly: MAC
+    (`pxelinux.cfg/01-fc-c2-3d-5a-9a-08`) → descending IP-hex (`0A00009B`…`0A`) →
+    `default-<arch>`… → `default`.
+  - *MAC-specific override* — a `pxelinux.cfg/01-<mac>` file naming a different FIT is taken
+    in preference to `default`; the board boots the FIT the MAC file names.
+  - *No PXE config served* — `pxe get` fails and the in-`netboot` fallback
+    `tftpboot 0x10000000 image.ub && bootm 0x10000000` runs (FIT at `0x10000000`) → boots.
+  - *`bootcmd` else-branch on total netboot failure* (the previously-open question) — with
+    TFTP down, `pxe get` fails **and** the fallback `tftpboot` also fails, so `netboot`
+    returns nonzero and `bootcmd`'s else-branch runs: **fallback → `run sdboot` (SD boot);
+    tftp-only → prints `TFTP-only build: not falling back to SD` and halts at `ZynqMP>`.**
+    Same decisive fallback-vs-halt contrast as Section 5, now with the PXE-first hook in
+    front. Confirmed under both a port-closed host (dnsmasq stopped) and a MAC-scoped
+    silent black hole.
+  - Static-IP override (DHCP skipped, `ipaddr` set) and the distro `run bootcmd_pxe`
+    one-liner also PXE-boot as expected.
+- **Silent-black-hole failure is now slow (~110 s); the port-closed case stays fast
+  (~6 s).** This is a behavioral change the PXE-first hook introduces relative to Section
+  5's pre-PXE figures, and it is worth accounting for wherever a bounded fallback time
+  matters. When TFTP packets are silently dropped, each of `pxe get`'s ~12 config-name
+  probes (MAC + IP-hex prefixes + `default-*` variants) waits its full TFTP request timeout
+  with no ICMP to short-circuit it, so `netboot` takes ~110 s to fail before the `bootcmd`
+  else-branch (SD fallback or halt) runs. The port-closed case (dnsmasq down) stays ~6 s
+  because ICMP destination-unreachable aborts each probe immediately. Section 5's ~5 s
+  silent-black-hole figure was for the single pre-PXE `tftpboot`; the PXE-first worst case
+  under a silent drop is ~110 s.

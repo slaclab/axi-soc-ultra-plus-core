@@ -246,18 +246,20 @@ A successful TFTP fetch reports the size of the FIT image (roughly
 
    Bytes transferred = 116833531
 
-Reaching a login prompt confirms the board booted. The hostname in the
-login banner tells you which build actually booted:
+Reaching a login prompt confirms the board booted:
 
 .. code-block:: text
 
-   SimpleRfSoc4x2Example-fallback login:
+   SimpleRfSoc4x2Example login:
 
-(or ``SimpleRfSoc4x2Example-tftponly login:`` for a ``tftp-only``
-build; the banner hostname comes from the project name of the built
-image — ``SimpleRfSoc4x2Example`` here — with the boot mode appended,
+The banner hostname comes from the project name of the built image
+(``SimpleRfSoc4x2Example`` here, set via ``hostname:pn-base-files``),
 not from the ``hardware`` directory name ``RealDigitalRfSoC4x2`` used
-in Step 1). Finally, confirm the board is reachable over the network:
+in Step 1. It is the same for **both** boot modes, so it does not tell
+you which mode's ``BOOT.BIN`` is running -- distinguish the modes by the
+``BOOT.BIN`` md5, or by the TFTP-failure behavior (a ``fallback`` build
+SD-boots; a ``tftp-only`` build halts). Finally, confirm the board is
+reachable over the network:
 
 .. code-block:: bash
 
@@ -287,6 +289,17 @@ Troubleshooting
      - Confirm ``/tftpboot/pxelinux.cfg/default`` exists and fetch it
        back from the host with the same TFTP check as Step 1
        (``curl -sf tftp://10.0.0.1/pxelinux.cfg/default``)
+   * - ``netboot`` takes ~2 minutes to fail (repeated ``TFTP error: -1
+       (Request timeout)`` with no ``ICMP`` lines) before the SD
+       fallback or halt runs
+     - A silent TFTP black hole -- packets dropped rather than refused
+       (e.g. a ``DROP`` firewall rule). Each of ``pxe get``'s config-name
+       probes waits its full request timeout with no ICMP to
+       short-circuit it (~110 s total)
+     - Expected under a silent drop. A *port-closed* host (TFTP daemon
+       stopped) instead fails in ~6 s because ICMP destination-unreachable
+       aborts each probe; restore TFTP reachability to get the fast path
+       back
    * - ``TFTP-only build: not falling back to SD`` followed by a halt
        at a bare ``ZynqMP>`` prompt, no kernel banner
      - Expected behavior: a ``tftp-only`` build halts by design when
