@@ -15,6 +15,11 @@
 ## pxelinux.cfg/default PXE config that names it. Safe to re-run --
 ## a no-op re-invocation does not re-prompt for sudo and does not re-copy.
 ##
+## With -B, also stages the PL bitstream as a raw .bin (system.bit.bin, plus
+## per-MAC copies via -M) for the tftp-only (diskless) build, whose U-Boot env
+## fetches and 'fpga load's it before booting the kernel. Fallback-mode servers
+## do not need this -- omit -B and only image.ub/PXE are staged.
+##
 ## Reference (proven manual procedure this script formalizes):
 ##   axi-soc-ultra-plus-core/scripts/NETBOOT_BRINGUP_NOTES.md, sections 1 and 3.
 ##############################################################################
@@ -30,11 +35,15 @@ PIDFILE=/run/dnsmasq-tftp-lab.pid
 
 board=
 srcOverride=
+stageBitstream=0
+macs=()
 
 function show_help {
-   echo "USAGE: $0 -b BOARD [-f PATH] [-H]"
+   echo "USAGE: $0 -b BOARD [-f PATH] [-B] [-M MAC] [-H]"
    echo " -b BOARD     - Board name, must match a directory name in axi-soc-ultra-plus-core/hardware (required)"
    echo " -f PATH      - Explicit image.ub source path (bypasses build-dir auto-detect)"
+   echo " -B           - Also stage the PL bitstream (system.bit -> system.bit.bin) for tftp-only/diskless netboot"
+   echo " -M MAC       - Stage a per-MAC bitstream copy system.bit.bin.<mac-dashes> (repeatable; implies -B; MAC colons or dashes, stored dash-form)"
    echo " -H           - Show this help text"
    exit 1
 }
@@ -44,11 +53,17 @@ function die {
     exit 1
 }
 
-while getopts b:f:H flag
+while getopts b:f:BM:H flag
 do
     case "${flag}" in
         b) board=${OPTARG};;
         f) srcOverride=${OPTARG};;
+        B) stageBitstream=1;;
+        # Store the MAC lowercased with ':' -> '-'. U-Boot's tftpboot treats the
+        # first ':' in a filename as a hostIP separator, so the board's loadpl_net
+        # uses 'setexpr gsub' to request system.bit.bin.<mac-dashes>; the staged
+        # filename must match that dash form. Accepts -M with colons or dashes.
+        M) stageBitstream=1; m="${OPTARG,,}"; macs+=("${m//:/-}");;
         H) show_help;;
         *) show_help;;
     esac
@@ -191,4 +206,52 @@ if cmp -s <(print_pxe_default) "$PXE_DEFAULT" 2>/dev/null; then
 else
    echo "Staging $PXE_DEFAULT"
    print_pxe_default > "$PXE_DEFAULT"
+fi
+
+##############################################################################
+# Step 5 (optional, -B/-M): stage the PL bitstream as a raw .bin for the
+# tftp-only (diskless) build. The build produces linux/system.bit (a .bit with
+# a Vivado header) next to image.ub; U-Boot's 'fpga load' wants the raw PL
+# config .bin, so convert with bootgen. Stage the generic system.bit.bin plus
+# a per-MAC copy for each -M (U-Boot's loadpl_net tries system.bit.bin.<ethaddr>
+# first, then the generic name). Same check-then-act idempotency as above.
+##############################################################################
+
+if [ "$stageBitstream" -eq 1 ]; then
+   command -v bootgen >/dev/null 2>&1 || \
+      die "bootgen not found in PATH (source your Vitis/Vivado settings64.sh); required for -B/-M .bit->.bin conversion"
+
+   bitSrc="$(dirname "$src")/system.bit"  # sits next to the resolved image.ub
+   [ -f "$bitSrc" ] || die "No system.bit found next to image.ub at '$bitSrc'"
+
+   # Convert .bit -> raw .bin in an isolated temp dir so bootgen's output name
+   # (which is version-dependent) does not matter -- we glob the single *.bin.
+   tmpBit=$(mktemp -d)
+   trap 'rm -rf "$tmpBit"' EXIT
+   cp "$bitSrc" "$tmpBit/system.bit"
+   printf 'all:\n{\n    system.bit\n}\n' > "$tmpBit/bitstream.bif"
+   ( cd "$tmpBit" && bootgen -arch zynqmp -image bitstream.bif -process_bitstream bin >/dev/null ) \
+      || die "bootgen .bit->.bin conversion failed"
+   binOut=$(find "$tmpBit" -maxdepth 1 -name '*.bin' | head -1)
+   [ -n "$binOut" ] || die "bootgen produced no .bin in $tmpBit"
+
+   bitDest="$TFTP_ROOT/system.bit.bin"
+   if cmp -s "$binOut" "$bitDest" 2>/dev/null; then
+      echo "$bitDest already up to date"
+   else
+      echo "Staging $bitSrc -> $bitDest ($(stat -c%s "$binOut") bytes .bin)"
+      cp "$binOut" "$bitDest"
+      cmp -s "$binOut" "$bitDest" || die "Post-copy verification failed: $bitDest"
+   fi
+
+   for mac in ${macs[@]+"${macs[@]}"}; do
+      macDest="$TFTP_ROOT/system.bit.bin.$mac"
+      if cmp -s "$bitDest" "$macDest" 2>/dev/null; then
+         echo "$macDest already up to date"
+      else
+         echo "Staging per-MAC $macDest"
+         cp "$bitDest" "$macDest"
+         cmp -s "$bitDest" "$macDest" || die "Post-copy verification failed: $macDest"
+      fi
+   done
 fi

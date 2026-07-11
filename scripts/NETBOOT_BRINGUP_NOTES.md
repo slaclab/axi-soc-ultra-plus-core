@@ -300,3 +300,108 @@ if test -n "${ipaddr}"; then true; else dhcp; fi && if pxe get; then pxe boot; e
   because ICMP destination-unreachable aborts each probe immediately. Section 5's ~5 s
   silent-black-hole figure was for the single pre-PXE `tftpboot`; the PXE-first worst case
   under a silent drop is ~110 s.
+
+---
+
+## 7. PL bitstream over TFTP (tftp-only / diskless)
+
+Added for the diskless-QSPI use case: a `tftp-only` build has no SD card, so the runtime
+`fpgautil -b /boot/system.bit` load in `startup-app-init` (which needs the SD FAT mounted at
+`/boot`) never runs. To keep the PL updatable server-side without reflashing QSPI, U-Boot now
+fetches the bitstream over TFTP and `fpga load`s it before booting the kernel — but **only in
+`tftp-only` mode**. `fallback` builds are untouched (SD `fpgautil` still owns the PL).
+
+### Where the PL bitstream comes from today (the gap this closes)
+- **`BOOT.BIN` embeds the bitstream** — FSBL programs the PL from SD/QSPI at boot. Confirmed
+  by size: RFSoC 4x2 `BOOT.BIN` is **36 382 960 B** vs `system.bit` **34 437 578 B**
+  (`BOOT.BIN` = FSBL+PMU+ATF+U-Boot + the ~34 MB bitstream). So a diskless QSPI board is
+  frozen at the baked-in PL until QSPI is reflashed.
+- **Runtime reload** — on an SD boot, `startup-app-init` mounts the SD FAT at `/boot` and runs
+  `fpgautil -b /boot/system.bit` (the "2nd stage" load). No SD ⇒ no `/boot` ⇒ this is skipped.
+- The `tftp-only` `fpga load` **re-programs the PL over** the FSBL bitstream. Halt-on-failure
+  (below) means the net kernel never boots over the FSBL/stale PL — so there is intentionally
+  **no reliance on the BOOT.BIN bitstream as a fallback**.
+
+### Mechanism (mode-gated, in the shared U-Boot env)
+`platform-top.h` defines two helper env vars; the `u-boot-xlnx_%.bbappend` substitutes
+`@LOADPL_SEL@` in `netboot` at build time (a **bareword** swap, so no `&&` ever lands in a
+`sed` replacement):
+
+| `UBOOT_NETBOOT_MODE` | `@LOADPL_SEL@` → | effect |
+|----------------------|------------------|--------|
+| `tftp-only`          | `loadpl_net`     | fetch bitstream + `fpga load` before the kernel; **mandatory** |
+| `fallback` (default) | `loadpl_skip` (`true`) | no-op; SD `fpgautil` owns the PL (no double-program) |
+
+```
+loadpl_net = setexpr macfn gsub : - ${ethaddr} && if tftpboot 0x10000000 system.bit.bin.${macfn}; then true; else tftpboot 0x10000000 system.bit.bin; fi && fpga load 0 0x10000000 ${filesize}
+netboot    = if test -n "${ipaddr}"; then true; else dhcp; fi && run @LOADPL_SEL@ && if pxe get; then pxe boot; else tftpboot 0x10000000 image.ub && bootm 0x10000000; fi
+```
+
+- **Halt-on-failure by `&&` chaining.** In `tftp-only`, a failed bitstream fetch **or** a
+  failed `fpga load` makes `run loadpl_net` return nonzero, so `netboot` aborts *before* any
+  kernel fetch/boot and `bootcmd`'s else-branch (`echo TFTP-only build…` → halt) runs. A net
+  kernel never boots over an unprogrammed PL. PXE-first kernel boot is preserved in both modes.
+- **Address reuse.** `0x10000000` is reused sequentially: `fpga load` consumes the buffer
+  (PCAP program) before the kernel FIT is fetched to the same address. `${filesize}` is set by
+  whichever `tftpboot` (per-MAC or generic) succeeded, and is consumed by `fpga load` before
+  the next `tftpboot` overwrites it.
+- **Per-MAC naming is dash-form** (`system.bit.bin.fc-c2-3d-5a-9a-08`), then falls back to
+  generic `system.bit.bin`. U-Boot's `tftpboot` parses the first `:` in a filename as a
+  `hostIP:file` separator, so `system.bit.bin.${ethaddr}` (colon form) is silently mis-parsed
+  and never fetched (observed on HW — see below). `loadpl_net` therefore runs
+  `setexpr macfn gsub : - ${ethaddr}` to rewrite colons to dashes, then fetches
+  `system.bit.bin.${macfn}`. `setexpr gsub` needs `CONFIG_CMD_SETEXPR` + `CONFIG_REGEX` (both
+  on in the ZynqMP defconfig — verified in the built `.config`).
+- **Kconfig pinned** in `bsp.cfg`: `CONFIG_FPGA`, `CONFIG_FPGA_XILINX`, `CONFIG_FPGA_ZYNQMPPL`,
+  `CONFIG_CMD_FPGA` (normally already on via the ZynqMP defconfig; pinned since the feature
+  hard-depends on `fpga load`). Verify present in the built `.config`.
+
+### Host staging
+`provision_tftp_host.sh -B` converts `linux/system.bit` → raw `.bin`
+(`bootgen -arch zynqmp -image <bif> -process_bitstream bin`; needs Vitis/Vivado `bootgen` on
+`PATH`) and stages `/tftpboot/system.bit.bin`; `-M <mac>` (repeatable) adds per-MAC copies.
+Idempotent (`cmp`-guarded) like the `image.ub`/PXE steps. Fallback-mode servers omit `-B`/`-M`.
+
+### `startup-app-init` backstop
+Before the DMA `insmod`s, it checks `/sys/class/fpga_manager/fpga0/state`; if not `operating`
+it prints `ERROR: PL not programmed …` and skips the driver load (clear message instead of
+cryptic DMA failures). NOTE: the **primary** guard is the U-Boot `&&`-chain halt; this state
+check can read `operating` from the FSBL bitstream even if `fpga load` failed, so it is a
+secondary backstop, not the mode guard.
+
+### Hardware validation — Stage A (SD-simulated diskless), all PASS on the RFSoC 4x2
+Method: reflash the SD `BOOT.BIN` in place with the tftp-only build (Linux VFAT `cp`), rename
+`/boot/system.bit` → `system.old` so the runtime `fpgautil` step is skipped (isolating the PL
+to the U-Boot `fpga load`), stage `image.ub` + `system.bit.bin` (+ per-MAC) with
+`provision_tftp_host.sh -B -M`, boot, and capture serial. `${filesize}` is set by `tftpboot`
+under lwIP (confirmed — `fpga load` consumed it). Observed:
+
+- **Per-MAC bitstream fetch + fpga load + net kernel boot.** `DHCP client bound` →
+  `Filename 'system.bit.bin.fc-c2-3d-5a-9a-08'` → `Bytes transferred = 34437356` → `fpga load`
+  (silent, `FPGA_RC=0` confirmed at the prompt) → `pxe get` finds `pxelinux.cfg/default` → kernel
+  FIT at `0x18000000` → `SimpleRfSoc4x2Example-tftponly login:`. In Linux the DMA drivers bound
+  (`axi_stream_dma … Found Version 2 Device`) and `axiversiondump` read `Root.AxiVersion`
+  (`FwVersion 0x3030000`) — i.e. the PL is programmed and the app runs.
+- **Per-MAC → generic fallback.** With the per-MAC file removed:
+  `Filename 'system.bit.bin.fc-c2-3d-5a-9a-08'` → `TFTP error: 256 (… not found)` →
+  `Filename 'system.bit.bin'` → `Bytes transferred = 34437356` → boots. The `if…else…fi` falls
+  through exactly as intended.
+- **Halt-on-failure (tftp-only).** With **both** bitstream files removed:
+  per-MAC MISS → generic MISS → `TFTP-only build: not falling back to SD` → **halt at
+  `ZynqMP>`**, and the kernel FIT is **never fetched** (the `&&` chain aborts inside `loadpl_net`,
+  before the kernel) — never a net kernel over an unprogrammed PL. Restaging the bitstream and
+  `reset` recovers it.
+
+**LANDMINE (found on HW): a colon-form per-MAC name does not work.** The first cut used
+`system.bit.bin.${ethaddr}` (colon form). U-Boot's `tftpboot` parses the first `:` in a filename
+as a `hostIP:file` separator, so it silently skipped the per-MAC attempt and went straight to the
+generic name — no per-MAC line, no error. Fix: `setexpr macfn gsub : - ${ethaddr}` (validated
+live: `ethaddr=fc:c2:3d:5a:9a:08` → `macfn=fc-c2-3d-5a-9a-08`) and request
+`system.bit.bin.${macfn}`; `provision_tftp_host.sh -M` stores the dash form to match.
+
+Note: `fpga0/state` read `operating` here even in the disabled-SD case, because the tftp-only
+`BOOT.BIN` still carries an FSBL bitstream that programs the PL before U-Boot runs — so the
+state check cannot by itself prove the `fpga load` ran. The decisive proof is the `&&`-chain
+halt (a failed `fpga load` would have halted before Linux) plus `FPGA_RC=0` at the prompt.
+
+The literal no-SD QSPI diskless boot (Stage B) is deferred by decision — not run.

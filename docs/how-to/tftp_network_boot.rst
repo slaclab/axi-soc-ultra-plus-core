@@ -29,6 +29,25 @@ behavior server-side — pointing it at a different FIT, for example —
 environment**. Either path still relies on ``serverip`` (the TFTP
 server address) being set, explicitly or via DHCP.
 
+On boards built **tftp-only** for diskless (no-SD) operation, U-Boot
+also fetches the **PL bitstream** over TFTP and programs it with
+``fpga load`` before booting the kernel, so the PL can be updated
+server-side without reflashing. It tries a per-MAC file
+(``system.bit.bin.<mac>``, the MAC dash-separated and lowercased, e.g.
+``system.bit.bin.fc-c2-3d-5a-9a-08``) first, then a generic
+``system.bit.bin``. (U-Boot's ``tftpboot`` treats a ``:`` in a filename
+as a ``hostIP:file`` separator, so the env uses ``setexpr gsub`` to
+rewrite ``${ethaddr}``'s colons to dashes before the fetch.) This step
+is **mandatory** in ``tftp-only`` mode:
+if the bitstream fetch or ``fpga load`` fails, netboot aborts before the
+kernel boots, so a net kernel never runs over an unprogrammed or stale
+PL. A ``fallback`` build does **not** fetch a bitstream in U-Boot — its
+PL is programmed later, after Linux boots, by ``startup-app-init``
+running ``fpgautil`` on the SD card's ``system.bit`` (unchanged from a
+normal SD boot). ``BOOT.BIN`` itself embeds an FSBL-programmed bitstream
+in both modes; the ``tftp-only`` ``fpga load`` re-programs the PL over
+it.
+
 The active U-Boot network stack is lwIP (U-Boot 2026.01,
 ``CONFIG_NET_LWIP``); a bound DHCP lease prints a line starting with
 ``DHCP client bound to address``. The netboot hooks are added to
@@ -98,6 +117,28 @@ Steps
    repoint a single board — at a different FIT, say — without touching
    the shared ``default`` config or reflashing that board's U-Boot.
 
+   For a **tftp-only** (diskless) board, also stage the PL bitstream so
+   U-Boot can fetch and ``fpga load`` it (see **How It Works**). Add
+   ``-B`` to stage the generic ``system.bit.bin``, and ``-M <mac>``
+   (repeatable) to stage per-MAC copies ``system.bit.bin.<mac>``:
+
+   .. code-block:: bash
+
+      scripts/provision_tftp_host.sh -b RealDigitalRfSoC4x2 -B -M fc:c2:3d:5a:9a:08
+
+   The build produces ``linux/system.bit`` (a Vivado ``.bit`` with a
+   header) next to ``image.ub``; U-Boot's ``fpga load`` needs the raw PL
+   configuration ``.bin``, so ``-B`` converts it with ``bootgen``
+   (``bootgen -arch zynqmp -image <bif> -process_bitstream bin``). Source
+   your Vitis/Vivado ``settings64.sh`` first so ``bootgen`` is on
+   ``PATH`` — the script exits with a clear message if it is not. The MAC
+   in ``-M`` may be given with colons or dashes; it is stored
+   **dash-separated and lowercased** (e.g.
+   ``system.bit.bin.fc-c2-3d-5a-9a-08``) to match what the board's
+   ``loadpl_net`` requests (it rewrites ``${ethaddr}``'s colons to dashes
+   with ``setexpr``). ``fallback``-mode servers do not need any of this —
+   omit ``-B``/``-M`` and only ``image.ub`` and the PXE config are staged.
+
    The server is **TFTP-only** (``dnsmasq`` runs with DNS and DHCP
    disabled), so it is safe to run alongside an existing site DHCP
    server on the same segment — the board still gets its lease from
@@ -148,6 +189,13 @@ Steps
    omitted. The two modes produce byte-distinct ``BOOT.BIN`` images and
    embed distinct login-banner hostnames (see **Verification** below),
    so you can always tell which mode a board is actually running.
+
+   The mode also decides where the PL bitstream comes from. A
+   ``tftp-only`` build additionally requires the bitstream to be staged
+   on the TFTP server (Step 1, ``-B``/``-M``) and will **halt** rather
+   than boot if it is missing. A ``fallback`` build ignores any staged
+   bitstream and programs the PL from the SD card's ``system.bit`` after
+   Linux boots, exactly as a normal SD boot does.
 
    To get the resulting ``BOOT.BIN`` onto the board, see
    :doc:`sd_card_imaging` (for a fresh SD card) or
@@ -218,6 +266,21 @@ Steps
    as shown — this is the address this platform's boot flow is built
    around, not a generic default.
 
+   On a ``tftp-only`` build, ``netboot`` first runs its ``loadpl_net``
+   step to program the PL from the TFTP-served bitstream before fetching
+   the kernel. To reproduce that by hand, fetch and ``fpga load`` the
+   bitstream (``0x10000000`` is reused — ``fpga load`` consumes the
+   buffer before the kernel is fetched to the same address):
+
+   .. code-block:: text
+
+      dhcp
+      setenv serverip 10.0.0.1
+      tftpboot 0x10000000 system.bit.bin
+      fpga load 0 0x10000000 ${filesize}
+      tftpboot 0x10000000 image.ub
+      bootm 0x10000000
+
    If your network has no DHCP server, set a static IP instead (keep
    it volatile — do not ``saveenv`` — so a plain ``reset`` restores the
    DHCP path):
@@ -245,6 +308,20 @@ A successful TFTP fetch reports the size of the FIT image (roughly
 .. code-block:: text
 
    Bytes transferred = 116833531
+
+On a ``tftp-only`` build, the bitstream fetch and ``fpga load`` run
+first — a successful load prints its own ``Bytes transferred`` line for
+``system.bit.bin`` followed by no error from ``fpga load``. Once Linux
+is up, ``startup-app-init`` confirms the PL is programmed before it
+loads the DMA drivers:
+
+.. code-block:: text
+
+   /sys/class/fpga_manager/fpga0/state: operating
+
+If the PL is not ``operating``, ``startup-app-init`` prints an
+``ERROR: PL not programmed`` line and skips the driver load instead of
+failing later with cryptic DMA errors.
 
 Reaching a login prompt confirms the board booted:
 
@@ -306,6 +383,21 @@ Troubleshooting
        TFTP fails, instead of silently falling back to an SD image
      - Bring the TFTP host back up and run ``reset``, or reflash the
        board with a ``fallback`` build's ``BOOT.BIN``
+   * - ``tftp-only`` netboot halts after a failed ``system.bit.bin``
+       fetch, before any kernel fetch
+     - The PL bitstream is not staged on the server; the mandatory
+       ``loadpl_net`` step aborts netboot (never boots a net kernel over
+       an unprogrammed PL)
+     - Stage it with ``-B`` (and ``-M`` for a per-MAC copy) in Step 1,
+       and confirm ``curl -sf tftp://10.0.0.1/system.bit.bin`` fetches
+       it back from the host
+   * - ``ERROR: PL not programmed`` at the end of boot; no runtime
+       application starts
+     - ``startup-app-init`` found ``fpga_manager/fpga0/state`` not
+       ``operating`` and skipped the DMA driver load
+     - On a ``tftp-only`` board confirm the bitstream staged and
+       ``fpga load`` succeeded; on an SD board confirm ``/boot/system.bit``
+       is present and valid
    * - No ``DHCP client bound`` line appears at all
      - The board is not getting a DHCP lease on this network
      - Use the static-IP override shown in Step 3
@@ -330,3 +422,27 @@ Notes
 - The full JTAG-based recovery procedure for a board that becomes
   unresponsive is not covered here; it is an emergency recovery path
   documented alongside this platform's bring-up tooling.
+
+- The ``tftp-only`` bitstream step is deliberately mode-gated and
+  all-or-nothing: in ``tftp-only`` it is mandatory (halt on failure),
+  and in ``fallback`` it is skipped entirely so the SD ``fpgautil`` load
+  stays authoritative and there is no double-program. It does **not**
+  fetch a network bitstream to override an inserted SD in ``fallback``
+  mode.
+
+  .. note::
+
+     A "best-effort" variant — where U-Boot programs a network bitstream
+     if one is served but continues (rather than halting) if none is —
+     would let a net bitstream override an inserted SD. That is out of
+     scope here; the current design keeps each mode a coherent stack
+     (full-network in ``tftp-only``, SD-owned PL in ``fallback``).
+
+- The per-MAC bitstream filename is dash-separated
+  (``system.bit.bin.fc-c2-3d-5a-9a-08``), like the ``pxelinux.cfg``
+  MAC form but without the ``01-`` prefix. U-Boot's ``tftpboot`` parses
+  the first ``:`` in a filename as a ``hostIP:file`` separator, so a
+  colon-form name (``${ethaddr}`` verbatim) is silently mis-parsed and
+  never fetched; ``loadpl_net`` therefore rewrites the colons to dashes
+  with ``setexpr gsub`` (requires ``CONFIG_CMD_SETEXPR`` + ``CONFIG_REGEX``,
+  both on in the ZynqMP defconfig) before the fetch.
