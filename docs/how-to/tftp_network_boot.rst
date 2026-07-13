@@ -48,6 +48,35 @@ normal SD boot). ``BOOT.BIN`` itself embeds an FSBL-programmed bitstream
 in both modes; the ``tftp-only`` ``fpga load`` re-programs the PL over
 it.
 
+Why the PL must be programmed before the drivers load: the
+``axi_memory_map`` and ``axi_stream_dma`` kernel modules bind to AXI
+endpoints that only exist once the PL is configured, so loading them
+against an unprogrammed PL produces cryptic DMA/AXI errors (or an AXI
+bus hang). To prevent that, ``startup-app-init`` gates the ``insmod``
+step on the FPGA manager: it reads ``/sys/class/fpga_manager/fpga0/state``
+and loads the drivers only when the state is ``operating``. If the PL is
+not programmed, it logs an error, **skips the driver load, and lets Linux
+continue booting** rather than halting — so the board still comes up with
+networking and a shell (a minimal recovery environment) instead of
+stopping. The only path that deliberately halts before Linux is a failed
+bitstream fetch in ``tftp-only`` mode (the netboot ``&&`` chain aborts the
+boot); a ``fallback`` board always reaches Linux.
+
+.. warning::
+
+   Because ``BOOT.BIN`` embeds a bitstream that the FSBL programs at
+   power-on, the FPGA manager reports ``operating`` on every boot — even
+   when no ``system.bit`` is present on the SD card and none is fetched
+   over the network. This guarantees a programmed PL for the driver-load
+   guard above, but it also means a ``fallback`` board that is missing its
+   runtime ``system.bit`` will bind the DMA drivers against the bitstream
+   **frozen into BOOT.BIN at Yocto build time**, which may be stale
+   relative to the firmware you intend to run. An ``operating`` state
+   therefore confirms only that *a* bitstream is loaded, not that it is the
+   *correct* one; use ``axiversiondump`` (printed near the end of
+   ``startup-app-init``) to confirm the running firmware version and build
+   timestamp.
+
 The active U-Boot network stack is lwIP (U-Boot 2026.01,
 ``CONFIG_NET_LWIP``); a bound DHCP lease prints a line starting with
 ``DHCP client bound to address``. The netboot hooks are added to
@@ -437,6 +466,13 @@ Notes
      would let a net bitstream override an inserted SD. That is out of
      scope here; the current design keeps each mode a coherent stack
      (full-network in ``tftp-only``, SD-owned PL in ``fallback``).
+     If such a mode is added later, it must preserve netboot's ``&&`` failure
+     chain — a fetch or ``fpga load`` failure must still be able to abort the
+     boot — rather than relaxing the chain to ``;``. Weakening it to ``;``
+     would run the kernel-fetch stages even after a failed ``dhcp`` (paying
+     both timeouts on a dead network) and, because the env string is shared,
+     would also disable the ``tftp-only`` guarantee that a net kernel never
+     boots over an unprogrammed or stale PL.
 
 - The per-MAC bitstream filename is dash-separated
   (``system.bit.bin.fc-c2-3d-5a-9a-08``), like the ``pxelinux.cfg``
@@ -446,3 +482,17 @@ Notes
   never fetched; ``loadpl_net`` therefore rewrites the colons to dashes
   with ``setexpr gsub`` (requires ``CONFIG_CMD_SETEXPR`` + ``CONFIG_REGEX``,
   both on in the ZynqMP defconfig) before the fetch.
+
+- ``BOOT.BIN`` embeds the XSA bitstream by default. This follows from
+  meta-xilinx's ``xilinx-bootbin`` recipe: on the ``zynqmp-user`` machine
+  (which does not set the ``fpga-overlay`` ``MACHINE_FEATURE``),
+  ``BIF_BITSTREAM_ATTR`` defaults to ``bitstream``, so the FSBL programs the
+  PL from ``download-zynqmp-user.bit`` at power-on and the FPGA manager reads
+  ``operating`` before Linux starts. To build a ``BOOT.BIN`` that contains
+  **no** bitstream — for example, to exercise the ``startup-app-init``
+  driver-load guard on a board with no ``system.bit`` and no network
+  bitstream — set ``BIF_BITSTREAM_ATTR = ""`` in ``build/conf/local.conf``
+  (or the machine ``.conf``) and rebuild ``xilinx-bootbin``. With no embedded
+  bitstream the FPGA manager stays out of ``operating`` until something (the
+  SD ``fpgautil`` load, or the ``tftp-only`` ``fpga load``) programs the PL,
+  and the guard then skips the driver load as intended.
