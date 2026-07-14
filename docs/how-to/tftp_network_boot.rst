@@ -256,10 +256,15 @@ Steps
    ``bootm 0x10000000``; ``run netboot`` performs the whole
    fetch-and-boot. Doing it by hand lets you set ``serverip``
    explicitly (``netboot`` itself does not) and watch each stage. At
-   boot time it is U-Boot's ``bootcmd`` — ``if run netboot; then true;
-   else ...; fi`` — that runs ``netboot`` and, on failure, triggers the
-   mode-specific action from Step 2 (SD boot for ``fallback``, halt for
-   ``tftp-only``).
+   boot time it is U-Boot's ``bootcmd`` — ``run netboot;
+   <mode-action>`` — that runs ``netboot`` and then the mode-specific
+   action from Step 2 (SD boot for ``fallback``, halt for
+   ``tftp-only``). The mode action runs whenever ``netboot`` **returns
+   to U-Boot at all**: a successful boot hands control to the kernel and
+   never comes back, so simply reaching the mode action is the failure
+   signal. The fallback therefore does **not** depend on ``netboot``
+   reporting a nonzero exit code — some boot methods (notably
+   ``pxe boot``) return 0 even when no kernel booted.
 
    .. code-block:: text
 
@@ -276,6 +281,28 @@ Steps
    prefer setting ``serverip`` explicitly and running ``pxe get`` /
    ``pxe boot`` when your DHCP server does not hand out a TFTP
    ``next-server``.
+
+   **Mixed addressing — board IP from DHCP, TFTP server set by hand.**
+   When your DHCP server assigns the board's IP but does not advertise a
+   usable TFTP ``next-server`` (or advertises the wrong one), set
+   ``serverip`` yourself and let DHCP handle only the board address, then
+   run the built-in ``netboot``:
+
+   .. code-block:: text
+
+      setenv serverip 10.0.0.1
+      saveenv                    # optional: persist across reboots
+      run netboot
+
+   The shipped ``netboot`` **preserves a non-empty ``serverip`` across
+   its own internal ``dhcp`` call**, and clears ``tftpserverip`` (which
+   ``tftpboot`` and ``pxe`` would otherwise prefer over ``serverip``), so
+   your TFTP-server choice stays authoritative. This is required because
+   U-Boot's lwIP ``dhcp`` always overwrites ``serverip`` with the DHCP
+   server's own address and may set ``tftpserverip`` from the DHCP
+   next-server field. To hand TFTP addressing back to DHCP, clear it
+   again with ``setenv serverip`` (and ``saveenv`` if you had persisted
+   it).
 
    To fetch the FIT directly instead — the fallback path ``netboot``
    takes when no PXE config is served — skip the ``pxe`` commands and
@@ -437,6 +464,24 @@ Troubleshooting
      - Do not use ``fatwrite`` or raw ``mmc write``; boot Linux and
        ``cp`` the new ``BOOT.BIN`` to the mounted boot partition (see
        the warning in Step 2)
+   * - TFTP fetches fail after ``dhcp`` even though ``serverip`` was set
+       correctly by hand
+     - lwIP ``dhcp`` overwrote ``serverip`` with the DHCP server's own
+       address, or set ``tftpserverip`` from the DHCP next-server (which
+       ``tftpboot`` and ``pxe`` prefer over ``serverip``)
+     - Set ``serverip`` **before** ``run netboot`` — the shipped
+       ``netboot`` preserves a non-empty ``serverip`` across its internal
+       ``dhcp`` and clears ``tftpserverip``. To return to DHCP-supplied
+       addressing, clear it with ``setenv serverip``
+   * - A PXE config is served and ``pxe boot`` runs, but no kernel boots
+       and the board does not fall back to SD (or halt) as expected
+     - The PXE label's ``KERNEL`` FIT could not be retrieved; upstream
+       ``pxe boot`` returns exit status 0 even on that failure
+     - Handled by design: ``bootcmd`` is sequential
+       (``run netboot; <mode-action>``), so the SD fallback (or
+       ``tftp-only`` halt) runs regardless of ``netboot``'s exit code.
+       Confirm the ``KERNEL`` file named in the ``pxelinux.cfg`` is
+       actually served (``curl -sf tftp://<serverip>/<name>``)
 
 On a ``fallback`` build, the SD fallback completes within roughly 6
 seconds of the TFTP failure. This holds whether the network actively

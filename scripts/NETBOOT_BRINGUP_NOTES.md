@@ -85,6 +85,28 @@ leases to the *other* boards.
   the board. These MUST be site-configurable with documented placeholder defaults, never a
   hardcoded subnet.
 
+### `serverip` vs. lwIP `dhcp` — save/restore (PR #107 review)
+lwIP `dhcp` **unconditionally overwrites `serverip`** with the DHCP server's own address on
+every successful bind, and additionally sets `tftpserverip` from the DHCP next-server (siaddr)
+field when one is advertised. Both `tftpboot` and the PXE fetch resolve the TFTP server in
+priority order: explicit `ip:` prefix → `tftpserverip` → `serverip` — so a DHCP-provided
+`tftpserverip` outranks a manually-set `serverip`, and a `saveenv`-persisted `serverip` is
+clobbered by every `dhcp`. The legacy `CONFIG_BOOTP_SERVERIP` knob that suppresses this in the
+old net stack **does not exist in the lwIP DHCP path**, so there is no Kconfig fix — it is
+handled in the shipped U-Boot env. `netboot` therefore treats a **non-empty `serverip` as
+authoritative site configuration**: it stashes `serverip` (scratch var `_sip`), runs `dhcp`,
+then restores `serverip` and clears `tftpserverip`. A failed `dhcp` short-circuits the `&&`
+chain *before* the restore — correct, because nothing was bound or clobbered — and preserves
+the fail-fast timeout. **Practical rule: to hand TFTP addressing back to DHCP, clear `serverip`**
+(`setenv serverip`, optional `saveenv`). This covers the reviewer's mixed case — board IP from
+DHCP, but `serverip` set manually because the site DHCP advertises a wrong next-server.
+
+**Verified on hardware (RFSoC 4x2, manual env at `ZynqMP>`):** with a manual
+`serverip=1.2.3.4`, a plain `dhcp` overwrote it to the DHCP server address `10.0.0.1`
+(clobber reproduced); the shipped save/restore
+(`setenv _sip ${serverip}; dhcp && setenv serverip ${_sip} && setenv tftpserverip && setenv _sip`)
+left `serverip=1.2.3.4`, cleared `tftpserverip` (undefined afterward), and cleaned `_sip`.
+
 ### Subnet is a lab artifact, not a design constraint
 `10.0.0.x` is this lab's addressing only. The boot path is **subnet-agnostic**: the board
 takes its IP from whatever DHCP server is present, and `serverip` is set explicitly on the
@@ -114,12 +136,24 @@ bootm 0x10000000                  # -> kernel boots -> "SimpleRfSoc4x2Example-<m
 `shared/Yocto/recipes-bsp/u-boot/u-boot-xlnx_%.bbappend` substitutes `@UBOOT_NETBOOT_MODE@`
 in `platform-top.h`, so the mode is baked into U-Boot (i.e. into `BOOT.BIN`):
 ```
-bootcmd = if run netboot; then true; else @UBOOT_NETBOOT_MODE@; fi
+bootcmd = run netboot; @UBOOT_NETBOOT_MODE@
 ```
-| `UBOOT_NETBOOT_MODE` | else-branch substitution | on TFTP failure |
+| `UBOOT_NETBOOT_MODE` | mode-action substitution | on TFTP failure |
 |----------------------|--------------------------|-----------------|
 | `fallback` (default) | `run sdboot`             | boots the on-SD `image.ub` |
 | `tftp-only`          | `echo TFTP-only build: not falling back to SD` | prints the message and halts at `ZynqMP>` |
+
+**Sequential, not exit-code-gated (PR #107 review).** `bootcmd` runs `netboot` and then the
+mode action **unconditionally in sequence** — it does *not* branch on `run netboot`'s exit
+status. The invariant: a successful boot hands control to the kernel and **never returns to the
+U-Boot shell**, so merely reaching the mode action proves netboot failed. This is robust even
+for boot methods that report a dishonest exit code: upstream `pxe boot` returns **0** after a
+failed `label_boot()` (kernel retrieval failed) because `handle_pxe_menu()` is `void` and
+`pxe_process()` discards the nonzero (verified in `boot/pxe_utils.c` / `cmd/pxe.c` of the pinned
+`xilinx-v2026.1` tag). Because `netboot` is PXE-first, an exit-code-gated `bootcmd`
+(`if run netboot; then true; else ...; fi`) would read that lie as success and **silently skip
+the fallback**; the sequential form closes that gap without patching U-Boot. The decisive
+`pxe get` succeeds / `pxe boot` returns-0 case is re-validated on hardware in §6.
 
 The two build modes produce byte-distinct `BOOT.BIN` and `image.ub`:
 
@@ -268,10 +302,22 @@ if test -n "${ipaddr}"; then true; else dhcp; fi && if pxe get; then pxe boot; e
 - **Validated on hardware (RFSoC 4x2, both build modes).** The full PXE fetch/boot path was
   exercised on the board; every case below was observed on the serial console, and the
   reflashed builds' baked-in env (`printenv netboot`/`bootcmd`) byte-matches the strings in
-  this section. The `bootcmd` wrappers built for each mode are exactly
+  this section. The `bootcmd` wrappers built for each mode at the time were exactly
   `if run netboot; then true; else run sdboot; fi` (fallback) and
   `if run netboot; then true; else echo TFTP-only build: not falling back to SD; fi`
   (tftp-only).
+
+  **Update (PR #107 review) — sequential `bootcmd`.** `bootcmd` has since been changed to the
+  exit-code-agnostic sequential form `run netboot; <mode-action>` (fallback →
+  `run netboot; run sdboot`; tftp-only → `run netboot; echo TFTP-only build: not falling back to
+  SD`). The validation recorded here was performed with the earlier exit-code-gated wrapper; the
+  sequential form is behaviorally identical for every case below (a successful boot never returns
+  to the shell, so the mode action still runs only on failure) and additionally closes the one
+  case the old wrapper could not — `pxe get` **succeeds** but `pxe boot` fails to retrieve the
+  kernel and returns 0, where `if run netboot; then true; else ...; fi` reads the lie as success
+  and skips the fallback. The upstream `pxe boot` exit-0 behavior is confirmed in the pinned
+  `xilinx-v2026.1` source; the decisive case is additionally re-checked on the RFSoC 4x2 in this
+  session (see the added case in the validated list below).
   - *PXE default happy path* — `run netboot` → `pxe get` fetches `pxelinux.cfg/default` →
     `pxe boot` loads the `KERNEL` FIT at `kernel_addr_r` (`0x18000000`) → boots to `login:`.
     The observed `pxe get` search order matches the documented one exactly: MAC
@@ -290,6 +336,21 @@ if test -n "${ipaddr}"; then true; else dhcp; fi && if pxe get; then pxe boot; e
     silent black hole.
   - Static-IP override (DHCP skipped, `ipaddr` set) and the distro `run bootcmd_pxe`
     one-liner also PXE-boot as expected.
+  - *`pxe boot` exit-0 lie / sequential-`bootcmd` gap (PR #107 review, re-validated on
+    the RFSoC 4x2)* — with a board-MAC `pxelinux.cfg/01-fc-c2-3d-5a-9a-08` naming a
+    **nonexistent** kernel FIT, `pxe get` succeeded (`GET_RC=0`, 41-byte config fetched)
+    but `pxe boot` failed to retrieve the kernel (`TFTP error: 256 (... not found)` →
+    `Skipping Linux for failure retrieving kernel`) and **still returned `BOOT_RC=0`** —
+    the upstream lie, reproduced. Consequences observed at `ZynqMP>`: the old
+    exit-code-gated wrapper (`if run netboot; then true; else ...; fi`) took the `true`
+    branch and **skipped the fallback** (`OLD_SAID_OK_NO_FALLBACK`), while the new
+    sequential `bootcmd` (`run netboot; <mode-action>`) **always ran the mode action**
+    (`NEW_FALLBACK_RAN`) — the gap is closed without patching U-Boot. The reviewer fixes
+    were exercised by loading the new env at the prompt (the board's SD `BOOT.BIN` was an
+    older stock build predating the hooks, so a baked-in `printenv` byte-match awaits the
+    next full rebuild+reflash). The positive path was also re-run end-to-end: the full new
+    `netboot` (serverip preserved across `dhcp`) → `pxe get` default → `pxe boot` →
+    `SimpleRfSoc4x2Example-tftponly login:`.
 - **Silent-black-hole failure is now slow (~110 s); the port-closed case stays fast
   (~6 s).** This is a behavioral change the PXE-first hook introduces relative to Section
   5's pre-PXE figures, and it is worth accounting for wherever a bounded fallback time

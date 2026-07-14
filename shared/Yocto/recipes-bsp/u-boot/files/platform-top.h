@@ -34,11 +34,25 @@
 	/* lets boot behavior change server-side without reflashing U-Boot or editing the */ \
 	/* board env. If no PXE config is served, fall back to fetching image.ub directly. */ \
 	/* Addresses (pxefile_addr_r/kernel_addr_r) come from ENV_MEM_LAYOUT_SETTINGS -- do */ \
-	/* not hand-set them here. Either branch returns nonzero on failure, so bootcmd's */ \
-	/* else-branch (@UBOOT_NETBOOT_MODE@) still runs. 'run @LOADPL_SEL@' is substituted */ \
-	/* at build time by the u-boot bbappend to loadpl_net (tftp-only) or loadpl_skip */ \
-	/* (fallback); the bareword swap keeps '&&' out of the bbappend sed replacement. */ \
-	"netboot=if test -n \"${ipaddr}\"; then true; else dhcp; fi && run @LOADPL_SEL@ && if pxe get; then pxe boot; else tftpboot 0x10000000 image.ub && bootm 0x10000000; fi\0" \
+	/* not hand-set them here. 'run @LOADPL_SEL@' is substituted at build time by the */ \
+	/* u-boot bbappend to loadpl_net (tftp-only) or loadpl_skip (fallback); the bareword */ \
+	/* swap keeps '&&' out of the bbappend sed replacement. */ \
+	/* DHCP + serverip (lwIP): 'dhcp' unconditionally overwrites ${serverip} with the */ \
+	/* DHCP server's own address, and sets ${tftpserverip} from the next-server (siaddr) */ \
+	/* field when present; 'tftpboot'/'pxe' prefer ${tftpserverip} over ${serverip}. The */ \
+	/* legacy CONFIG_BOOTP_SERVERIP knob does NOT exist in the lwIP DHCP path, so we work */ \
+	/* around it here: when ${serverip} is already set (authoritative site config), stash */ \
+	/* it, run dhcp, then restore serverip and clear tftpserverip. A failed dhcp short- */ \
+	/* circuits the && chain with no restore (correct -- nothing was bound/clobbered), */ \
+	/* still bailing at the hardcoded lwIP timeout. To hand TFTP addressing back to DHCP, */ \
+	/* clear serverip ('setenv serverip'). */ \
+	"netboot=if test -n \"${ipaddr}\"; then true; else if test -n \"${serverip}\"; then setenv _sip ${serverip}; dhcp && setenv serverip ${_sip} && setenv tftpserverip && setenv _sip; else dhcp; fi; fi && run @LOADPL_SEL@ && if pxe get; then pxe boot; else tftpboot 0x10000000 image.ub && bootm 0x10000000; fi\0" \
 	/* Reuse the existing, unmodified SD-boot mechanism verbatim. */ \
 	"sdboot=run distro_bootcmd\0" \
-	"bootcmd=if run netboot; then true; else @UBOOT_NETBOOT_MODE@; fi\0"
+	/* bootcmd is sequential, NOT exit-code-gated: a successful boot never returns to */ \
+	/* the U-Boot shell, so merely reaching the mode action proves netboot failed -- */ \
+	/* no exit code needed. This stays correct even for boot methods that lie about their */ \
+	/* status: upstream 'pxe boot' returns 0 after a failed label_boot() (handle_pxe_menu */ \
+	/* is void, pxe_process() discards the nonzero), so an exit-code-gated fallback would */ \
+	/* silently never fire now that netboot is PXE-first. */ \
+	"bootcmd=run netboot; @UBOOT_NETBOOT_MODE@\0"
