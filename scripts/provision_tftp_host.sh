@@ -91,6 +91,20 @@ fi
 [ -d "$hardwareDir/$board" ] || die "Unknown board '$board' (no directory $hardwareDir/$board)"
 
 ##############################################################################
+# Step 0: ensure the TFTP root exists before anything references it. dnsmasq
+# serves it (tftp-root), and the staging steps below cp/mkdir into it without
+# sudo -- so create it root-side once, owned by the invoking user, 0755 so the
+# privilege-dropped dnsmasq (user 'nobody') can still read it. Check-then-act:
+# a re-run with the directory already usable never prompts for sudo.
+##############################################################################
+
+if [ ! -d "$TFTP_ROOT" ]; then
+   echo "Creating $TFTP_ROOT"
+   sudo install -d -m 0755 -o "$(id -un)" -g "$(id -gn)" "$TFTP_ROOT"
+fi
+[ -w "$TFTP_ROOT" ] || die "$TFTP_ROOT exists but is not writable by $(id -un); fix ownership (e.g. sudo chown $(id -un) $TFTP_ROOT)"
+
+##############################################################################
 # Board -> Yocto project-name glob mapping.
 # This milestone serves only the RFSoC 4x2; add a case here if/when this
 # script needs to support additional boards' Yocto project-dir naming.
