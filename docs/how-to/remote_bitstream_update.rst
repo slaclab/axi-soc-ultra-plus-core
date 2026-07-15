@@ -62,3 +62,9 @@ Notes
 - The runtime filesystem is in memory (tmpfs/initramfs), so the
   system continues operating normally while ``/boot/`` is being
   written.
+- This procedure updates the bitstream on the SD card, which the running
+  Linux loads with ``fpgautil`` at startup. For a board with **no SD
+  card** (diskless QSPI boot), the PL can instead be fetched over the
+  network at boot time — see **TFTP Network Boot** in this how-to section
+  (build a ``tftp-only`` image and stage the bitstream with
+  ``provision_tftp_host.sh -B``).

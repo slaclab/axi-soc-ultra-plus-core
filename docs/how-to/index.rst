@@ -10,5 +10,6 @@ Step-by-step recipes for common operational tasks.
    rogue_gui_launch
    remote_bitstream_update
    sd_card_imaging
+   tftp_network_boot
    xsct_boot_mode
    qspi_flash
