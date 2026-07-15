@@ -37,7 +37,8 @@ function show_help {
 
 doConfigure=0
 image=petalinux-image-minimal
-while getopts p:n:h:x:l:d:t:r:s:f:cHT:m: flag
+uboot_netboot_mode=fallback
+while getopts p:n:h:x:l:d:t:r:s:cHT:i:m: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
@@ -56,6 +57,11 @@ do
         H) show_help;;
     esac
 done
+
+case "$uboot_netboot_mode" in
+   fallback|tftp-only) ;;
+   *) echo "Invalid -m MODE '$uboot_netboot_mode' (expected 'fallback' or 'tftp-only')"; show_help;;
+esac
 
 if [ -z "$name" ] || [ -z "$path" ] || [ -z "$hwType" ] || [ -z "$xsa" ] || [ -z "$projTop" ]
 then
@@ -270,7 +276,7 @@ then
    echo "DMA_BUFF_SIZE = \"${dmaBuffSize}\""        >> $proj_dir/build/conf/local.conf
 
    # Set the shared U-Boot netboot hook's build-time mode in the local.conf
-   echo "UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode:-fallback}\"" >> $proj_dir/build/conf/local.conf
+   echo "UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode}\"" >> $proj_dir/build/conf/local.conf
 
    # Install the samples/tests
    echo "IMAGE_INSTALL:append = \" axidmasamples\"" >> $proj_dir/build/conf/local.conf
