@@ -32,13 +32,27 @@ server address) being set, explicitly or via DHCP.
 On boards built **tftp-only** for diskless (no-SD) operation, U-Boot
 also fetches the **PL bitstream** over TFTP and programs it with
 ``fpga load`` before booting the kernel, so the PL can be updated
-server-side without reflashing. It tries a per-MAC file
-(``system.bit.bin.<mac>``, the MAC dash-separated and lowercased, e.g.
-``system.bit.bin.fc-c2-3d-5a-9a-08``) first, then a generic
-``system.bit.bin``. (U-Boot's ``tftpboot`` treats a ``:`` in a filename
-as a ``hostIP:file`` separator, so the env uses ``setexpr gsub`` to
-rewrite ``${ethaddr}``'s colons to dashes before the fetch.) This step
-is **mandatory** in ``tftp-only`` mode:
+server-side without reflashing. It probes four filenames, most- to
+least-specific, preferring the Vivado ``.bit`` at each level:
+
+.. code-block:: text
+
+   system.bit.<mac>       (e.g. system.bit.fc-c2-3d-5a-9a-08)
+   system.bin.<mac>
+   system.bit
+   system.bin
+
+The MAC is dash-separated and lowercased. (U-Boot's ``tftpboot`` treats
+a ``:`` in a filename as a ``hostIP:file`` separator, so the env uses
+``setexpr gsub`` to rewrite ``${ethaddr}``'s colons to dashes before the
+fetch.) A miss costs one immediate TFTP "not found" reply rather than a
+timeout, so the extra probes are effectively free — **provided the server
+is reachable**. If nothing answers at all, each probe instead waits its
+full request timeout; see **Troubleshooting**.
+
+``fpga load`` accepts **either** a Vivado ``.bit`` or a bootgen-produced
+raw ``.bin`` — see :ref:`bitstream formats <tftp-bitstream-formats>`
+below. This step is **mandatory** in ``tftp-only`` mode:
 if the bitstream fetch or ``fpga load`` fails, netboot aborts before the
 kernel boots, so a net kernel never runs over an unprogrammed or stale
 PL. A ``fallback`` build does **not** fetch a bitstream in U-Boot — its
@@ -147,26 +161,38 @@ Steps
    the shared ``default`` config or reflashing that board's U-Boot.
 
    For a **tftp-only** (diskless) board, also stage the PL bitstream so
-   U-Boot can fetch and ``fpga load`` it (see **How It Works**). Add
-   ``-B`` to stage the generic ``system.bit.bin``, and ``-M <mac>``
-   (repeatable) to stage per-MAC copies ``system.bit.bin.<mac>``:
+   U-Boot can fetch and ``fpga load`` it (see **How It Works**).
+
+   Add ``-B`` to stage the bitstream, and ``-M <mac>`` (repeatable) for
+   per-board copies:
 
    .. code-block:: bash
 
       scripts/provision_tftp_host.sh -b RealDigitalRfSoC4x2 -B -M fc:c2:3d:5a:9a:08
 
-   The build produces ``linux/system.bit`` (a Vivado ``.bit`` with a
-   header) next to ``image.ub``; U-Boot's ``fpga load`` needs the raw PL
-   configuration ``.bin``, so ``-B`` converts it with ``bootgen``
-   (``bootgen -arch zynqmp -image <bif> -process_bitstream bin``). Source
-   your Vitis/Vivado ``settings64.sh`` first so ``bootgen`` is on
-   ``PATH`` — the script exits with a clear message if it is not. The MAC
-   in ``-M`` may be given with colons or dashes; it is stored
+   ``-B`` copies ``linux/system.bit`` across unconverted. That needs no
+   Vitis environment, and it is the first name ``loadpl_net`` probes.
+   Use ``-F bin`` instead to convert with ``bootgen``
+   (``bootgen -arch zynqmp -image <bif> -process_bitstream bin``); that
+   requires sourcing your Vitis/Vivado ``settings64.sh`` first to put
+   ``bootgen`` on ``PATH``, and the script exits with a clear message if it
+   is not there. ``-F`` implies ``-B``.
+
+   The MAC in ``-M`` may be given with colons or dashes; it is stored
    **dash-separated and lowercased** (e.g.
-   ``system.bit.bin.fc-c2-3d-5a-9a-08``) to match what the board's
+   ``system.bit.fc-c2-3d-5a-9a-08``) to match what the board's
    ``loadpl_net`` requests (it rewrites ``${ethaddr}``'s colons to dashes
    with ``setexpr``). ``fallback``-mode servers do not need any of this —
-   omit ``-B``/``-M`` and only ``image.ub`` and the PXE config are staged.
+   omit ``-B``/``-F``/``-M`` and only ``image.ub`` and the PXE config are
+   staged.
+
+   .. note::
+
+      The formats are staged exclusively: whichever you pick, the other's
+      names are removed, because a ``.bit`` and a ``.bin`` cannot both be
+      useful at once. See
+      :ref:`bitstream formats <tftp-bitstream-formats>` for why, and for
+      the substantial load-time difference between them.
 
    The server is **TFTP-only** (``dnsmasq`` runs with DNS and DHCP
    disabled), so it is safe to run alongside an existing site DHCP
@@ -215,14 +241,33 @@ Steps
           at the ``ZynqMP>`` prompt; the SD image is never consulted.
 
    ``fallback`` is the default, so it is applied even when ``-m`` is
-   omitted. The two modes produce byte-distinct ``BOOT.BIN`` images and
-   embed distinct login-banner hostnames (see **Verification** below),
-   so you can always tell which mode a board is actually running.
+   omitted. The two modes produce byte-distinct ``BOOT.BIN`` images. To
+   read a board's mode straight out of the artifact — no board required —
+   grep the ``bootcmd`` that was baked into it:
+
+   .. code-block:: bash
+
+      strings -a BOOT.BIN | grep -a '^bootcmd='
+
+   .. code-block:: text
+
+      bootcmd=run netboot; run sdboot                                    <- fallback
+      bootcmd=run netboot; echo TFTP-only build: not falling back to SD  <- tftp-only
+
+   That works on a freshly built image or on the SD card's copy at
+   ``/boot/BOOT.BIN``, and unlike a checksum it does not go stale between
+   rebuilds. Observing the TFTP-failure behavior distinguishes them too.
+   The login-banner hostname is **not** a mode indicator: it comes from the
+   target name via ``hostname:pn-base-files`` and is identical in both modes
+   (see **Verification** below).
 
    The mode also decides where the PL bitstream comes from. A
    ``tftp-only`` build additionally requires the bitstream to be staged
-   on the TFTP server (Step 1, ``-B``/``-M``) and will **halt** rather
-   than boot if it is missing. A ``fallback`` build ignores any staged
+   on the TFTP server (Step 1, ``-B``/``-F``/``-M``) and will **halt** rather
+   than boot if it is missing. It also requires ``/boot/system.bit`` to be
+   **absent** on the board: ``startup-app-init`` re-programs the PL from
+   that file whenever it exists, overriding whatever U-Boot just fetched.
+   A ``fallback`` build ignores any staged
    bitstream and programs the PL from the SD card's ``system.bit`` after
    Linux boots, exactly as a normal SD boot does.
 
@@ -332,10 +377,13 @@ Steps
 
       dhcp
       setenv serverip 10.0.0.1
-      tftpboot 0x10000000 system.bit.bin
+      tftpboot 0x10000000 system.bit
       fpga load 0 0x10000000 ${filesize}
       tftpboot 0x10000000 image.ub
       bootm 0x10000000
+
+   Substitute ``system.bin`` for ``system.bit`` if that is what you
+   staged — ``fpga load`` handles both identically.
 
    If your network has no DHCP server, set a static IP instead (keep
    it volatile — do not ``saveenv`` — so a plain ``reset`` restores the
@@ -363,13 +411,19 @@ A successful TFTP fetch reports the size of the FIT image (roughly
 
 .. code-block:: text
 
-   Bytes transferred = 116833531
+   Bytes transferred = 116835243
 
 On a ``tftp-only`` build, the bitstream fetch and ``fpga load`` run
-first — a successful load prints its own ``Bytes transferred`` line for
-``system.bit.bin`` followed by no error from ``fpga load``. Once Linux
-is up, ``startup-app-init`` confirms the PL is programmed before it
-loads the DMA drivers:
+first — a successful load prints a ``Filename`` line naming whichever of
+the four probed names hit, its own ``Bytes transferred`` line, and no
+error from ``fpga load``. A ``.bit`` transfers 222 bytes more than the
+equivalent ``.bin`` (the Vivado header); both program the same PL
+configuration. ``fpga load`` prints nothing at all on success, so the only
+sign it ran is the next command appearing — after roughly 16 s for a
+``.bit``, or a fraction of a second for a ``.bin``. A long silent pause
+directly after the bitstream's ``Bytes transferred`` line is therefore
+expected, not a hang. Once Linux is up, ``startup-app-init`` confirms the
+PL is programmed before it loads the DMA drivers:
 
 .. code-block:: text
 
@@ -389,10 +443,10 @@ The banner hostname comes from the project name of the built image
 (``SimpleRfSoc4x2Example`` here, set via ``hostname:pn-base-files``),
 not from the ``hardware`` directory name ``RealDigitalRfSoC4x2`` used
 in Step 1. It is the same for **both** boot modes, so it does not tell
-you which mode's ``BOOT.BIN`` is running -- distinguish the modes by the
-``BOOT.BIN`` md5, or by the TFTP-failure behavior (a ``fallback`` build
-SD-boots; a ``tftp-only`` build halts). Finally, confirm the board is
-reachable over the network:
+you which mode's ``BOOT.BIN`` is running -- distinguish the modes with the
+``strings -a BOOT.BIN | grep -a '^bootcmd='`` check from Step 2, or by the
+TFTP-failure behavior (a ``fallback`` build SD-boots; a ``tftp-only`` build
+halts). Finally, confirm the board is reachable over the network:
 
 .. code-block:: bash
 
@@ -422,31 +476,48 @@ Troubleshooting
      - Confirm ``/tftpboot/pxelinux.cfg/default`` exists and fetch it
        back from the host with the same TFTP check as Step 1
        (``curl -sf tftp://10.0.0.1/pxelinux.cfg/default``)
-   * - ``netboot`` takes ~2 minutes to fail (repeated ``TFTP error: -1
-       (Request timeout)`` with no ``ICMP`` lines) before the SD
-       fallback or halt runs
-     - A silent TFTP black hole -- packets dropped rather than refused
-       (e.g. a ``DROP`` firewall rule). Each of ``pxe get``'s config-name
-       probes waits its full request timeout with no ICMP to
-       short-circuit it (~110 s total)
-     - Expected under a silent drop. A *port-closed* host (TFTP daemon
-       stopped) instead fails in ~6 s because ICMP destination-unreachable
-       aborts each probe; restore TFTP reachability to get the fast path
-       back
+   * - ``netboot`` takes 1-2 minutes to fail (repeated ``TFTP error: -1
+       (Request timeout)``) before the SD fallback or halt runs
+     - No TFTP server is answering. ``netboot`` is PXE-first, so
+       ``pxe get`` walks 13 ``pxelinux.cfg`` names before the direct FIT
+       fetch, and each of those 14 attempts waits its **full** request
+       timeout (~6 s) when nothing replies: ~85 s with the daemon stopped,
+       ~110 s under a silent ``DROP`` firewall rule
+     - Expected when TFTP is unreachable, and **not** a hang. ICMP
+       ``destination unreachable`` does *not* shorten it -- a stopped
+       daemon does emit it, and each attempt still times out anyway, so
+       the presence or absence of ICMP lines does not distinguish the two
+       cases. Restore TFTP reachability: once the server answers, a
+       missing file draws an immediate ``TFTP error: 256`` refusal and the
+       whole 14-name walk costs almost nothing
    * - ``TFTP-only build: not falling back to SD`` followed by a halt
        at a bare ``ZynqMP>`` prompt, no kernel banner
      - Expected behavior: a ``tftp-only`` build halts by design when
        TFTP fails, instead of silently falling back to an SD image
      - Bring the TFTP host back up and run ``reset``, or reflash the
        board with a ``fallback`` build's ``BOOT.BIN``
-   * - ``tftp-only`` netboot halts after a failed ``system.bit.bin``
-       fetch, before any kernel fetch
-     - The PL bitstream is not staged on the server; the mandatory
-       ``loadpl_net`` step aborts netboot (never boots a net kernel over
-       an unprogrammed PL)
-     - Stage it with ``-B`` (and ``-M`` for a per-MAC copy) in Step 1,
-       and confirm ``curl -sf tftp://10.0.0.1/system.bit.bin`` fetches
-       it back from the host
+   * - ``tftp-only`` netboot halts after all four bitstream fetches fail,
+       before any kernel fetch
+     - The PL bitstream is not staged on the server under any of the
+       probed names; the mandatory ``loadpl_net`` step aborts netboot
+       (never boots a net kernel over an unprogrammed PL)
+     - Stage it in Step 1 with ``-B`` (and ``-M`` for a per-MAC copy), then
+       confirm ``curl -sf tftp://10.0.0.1/system.bit`` (or
+       ``.../system.bin``) fetches it back from the host
+   * - Board loads a stale bitstream even after re-running
+       ``provision_tftp_host.sh``
+     - A per-MAC name outranks the generic one, and a run without ``-M``
+       cannot clean per-MAC leftovers — it only warns about them
+     - Re-run with ``-M <board-MAC>``, which refreshes that per-MAC copy and
+       removes the other format's per-MAC name
+   * - ``tftp-only`` board fetches and loads a bitstream, but the PL ends up
+       running the SD card's one instead
+     - ``startup-app-init`` re-programs the PL with ``fpgautil`` whenever
+       ``/boot/system.bit`` exists, roughly 15 s into boot, discarding what
+       U-Boot loaded. ``tftp-only`` presumes a diskless board with no such
+       file
+     - Remove ``/boot/system.bit`` on boards that boot ``tftp-only``; the
+       served bitstream is only authoritative when it is absent
    * - ``ERROR: PL not programmed`` at the end of boot; no runtime
        application starts
      - ``startup-app-init`` found ``fpga_manager/fpga0/state`` not
@@ -483,12 +554,16 @@ Troubleshooting
        Confirm the ``KERNEL`` file named in the ``pxelinux.cfg`` is
        actually served (``curl -sf tftp://<serverip>/<name>``)
 
-On a ``fallback`` build, the SD fallback completes within roughly 6
-seconds of the TFTP failure. This holds whether the network actively
-refuses the connection or silently drops packets — both time out on
-the same schedule. If more than ~6 seconds have passed with no kernel
-banner, the fallback has already happened (or a ``tftp-only`` build
-has halted); there is nothing to gain by waiting longer.
+How long the SD fallback takes depends entirely on whether the TFTP
+server *answers*. A single ``tftpboot`` gives up after roughly 6 seconds,
+but ``netboot`` is PXE-first: ``pxe get`` tries 13 ``pxelinux.cfg`` names
+ahead of the direct FIT fetch, so a ``fallback`` board on a network with
+**no reachable TFTP server** pays that timeout 14 times over — about
+85 seconds with the daemon stopped, and about 110 seconds if packets are
+silently dropped. When the server *is* reachable and merely missing a
+file, every attempt is refused immediately and the fallback is effectively
+instant. Allow up to ~2 minutes before concluding a board has hung, and
+see the ``Request timeout`` entry in **Troubleshooting** above.
 
 Notes
 -----
@@ -520,7 +595,7 @@ Notes
      boots over an unprogrammed or stale PL.
 
 - The per-MAC bitstream filename is dash-separated
-  (``system.bit.bin.fc-c2-3d-5a-9a-08``), like the ``pxelinux.cfg``
+  (``system.bit.fc-c2-3d-5a-9a-08``), like the ``pxelinux.cfg``
   MAC form but without the ``01-`` prefix. U-Boot's ``tftpboot`` parses
   the first ``:`` in a filename as a ``hostIP:file`` separator, so a
   colon-form name (``${ethaddr}`` verbatim) is silently mis-parsed and
@@ -541,3 +616,89 @@ Notes
   bitstream the FPGA manager stays out of ``operating`` until something (the
   SD ``fpgautil`` load, or the ``tftp-only`` ``fpga load``) programs the PL,
   and the guard then skips the driver load as intended.
+
+.. _tftp-bitstream-formats:
+
+Bitstream formats: ``.bit`` and ``.bin``
+----------------------------------------
+
+``fpga load`` on this platform accepts a Vivado ``.bit`` and a
+bootgen-produced raw ``.bin``, and both program the same PL design. They
+are not, however, the same bytes. Beyond the ``.bit``'s 222-byte Vivado
+header (34,437,578 B versus 34,437,356 B for this design), ``bootgen``
+also byte-reverses every 32-bit word — the sync word is ``AA 99 55 66`` in
+the ``.bit`` and ``66 55 99 AA`` in the ``.bin``, and the bus-width-detect
+pattern ``00 00 00 BB`` / ``11 22 00 44`` is reversed the same way.
+Stripping the header off a ``.bit`` therefore does **not** produce the
+``.bin``: 2,363,968 of 34,437,356 bytes differ, a figure that looks small
+only because ``0x00000000`` and ``0xFFFFFFFF`` words are invariant under a
+word swap. An unconverted ``.bit`` loads because the PCAP auto-detects bus
+width and endianness from that pattern ahead of the sync word — not
+because the two payloads agree.
+
+The reason is in U-Boot's ZynqMP driver (``drivers/fpga/zynqmppl.c``).
+``zynqmp_load()`` calls its format validator **only** on ancient PMU
+firmware:
+
+.. code-block:: c
+
+   if (zynqmp_firmware_version() <= PMUFW_V1_0) {
+           ...
+           if (zynqmp_validate_bitstream(desc, buf, bsize, bsize, &swap))
+                   return FPGA_FAIL;
+           ...
+   } else {
+           bstype = 0;          /* modern PMUFW: no validation at all */
+   }
+
+On any current PMUFW the ``else`` branch is taken: U-Boot performs no
+sync-word scan, no byte-swap, and no format check, and hands the buffer
+verbatim to the PMU via ``PM_FPGA_LOAD``. The PMU's PCAP loader skips the
+``.bit`` header itself.
+
+.. important::
+
+   The two formats do not cost the same to load. Measured on this design's
+   34 MB bitstream (RFSoC 4x2, PMUFW from Vivado 2026.1):
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 20 25 25
+
+      * - Format
+        - ``fpga load``
+        - Total netboot
+      * - ``.bin``
+        - ~0.2 s
+        - ~40 s
+      * - ``.bit``
+        - ~16.6 s
+        - ~60 s
+
+   The TFTP transfer is identical either way (~17.6 MiB/s for both), so the
+   entire difference falls inside ``fpga load`` — consistent with the PMU
+   performing the word swap in software. Because ``loadpl_net`` prefers
+   ``.bit``, a board served one pays this on **every** boot. Prefer
+   ``-F bin`` where boot time matters and ``bootgen`` is available.
+
+.. warning::
+
+   None of this holds on PMUFW ≤ v1.0. There the validator runs,
+   ``check_data()`` locates the sync word at a nonzero offset, and the
+   load fails with ``Bitstream is not validated yet (diff ...)``. A raw
+   ``.bin`` is the only format that works across both, which is why
+   ``provision_tftp_host.sh -F bin`` still converts.
+
+   Staging both formats is **not** a way to cover both PMUFW generations.
+   ``loadpl_net``'s if/elif chain selects on *fetch* success, and the
+   ``fpga load`` result for whichever name it fetched is final. On
+   PMUFW ≤ v1.0 a co-present ``.bit`` would be fetched first, fail to load,
+   and halt the boot with the ``.bin`` sitting there untried.
+
+``loadpl_net`` probes ``.bit`` before ``.bin`` at each specificity level,
+so a leftover ``system.bit`` outranks a ``system.bin``.
+``provision_tftp_host.sh`` removes the unselected format's names — the
+generic one and one per ``-M`` MAC — so re-running it cannot leave a stale
+file of the other format behind. Without ``-M`` it cannot know the board's
+MAC and so cannot clean a per-MAC leftover; it warns about any it finds,
+since a per-MAC name outranks the generic one.
