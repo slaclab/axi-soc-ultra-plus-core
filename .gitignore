@@ -50,3 +50,12 @@ bin*
 # Sphinx build output
 docs/_build/
 .venv-docs/
+
+# AI Agents
+.vscode/
+.cursor/
+.claude/
+.planning/
+planning/
+CLAUDE.md
+
