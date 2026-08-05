@@ -15,10 +15,26 @@
 ## pxelinux.cfg/default PXE config that names it. Safe to re-run --
 ## a no-op re-invocation does not re-prompt for sudo and does not re-copy.
 ##
-## With -B, also stages the PL bitstream as a raw .bin (system.bit.bin, plus
-## per-MAC copies via -M) for the tftp-only (diskless) build, whose U-Boot env
-## fetches and 'fpga load's it before booting the kernel. Fallback-mode servers
-## do not need this -- omit -B and only image.ub/PXE are staged.
+## With -B, also stages the PL bitstream (plus per-MAC copies via -M) for the
+## tftp-only (diskless) build, whose U-Boot env fetches and 'fpga load's it
+## before booting the kernel. Fallback-mode servers do not need this -- omit -B
+## and only image.ub/PXE are staged.
+##
+## -F selects the format. The default is the unconverted Vivado .bit: it needs no
+## bootgen and is the name loadpl_net probes first, so it is the common case.
+## 'fpga load' accepts it on current PMUFW at the cost of a much slower load
+## (~16.6 s versus ~0.2 s for a raw .bin, measured on this design's 34 MB
+## bitstream). -F bin converts with bootgen and is required on PMUFW <= v1.0,
+## where the validator runs and rejects a .bit.
+##
+## The formats are mutually exclusive on purpose. loadpl_net's if/elif chain
+## selects on fetch success, so the highest-ranked staged name wins the probe and
+## its 'fpga load' result is final. Staging both would therefore not give a
+## PMUFW <= v1.0 board a working fallback: the .bit outranks the .bin, is fetched
+## first, fails to load, and halts the boot with the .bin never tried. Staging one
+## format consequently removes the other's names, which also closes the stale-file
+## hazard of a leftover system.bit outranking a freshly staged system.bin.
+## See docs/how-to/tftp_network_boot.rst, "Bitstream formats".
 ##
 ## Reference (proven manual procedure this script formalizes):
 ##   axi-soc-ultra-plus-core/scripts/NETBOOT_BRINGUP_NOTES.md, sections 1 and 3.
@@ -36,14 +52,21 @@ PIDFILE=/run/dnsmasq-tftp-lab.pid
 board=
 srcOverride=
 stageBitstream=0
+bitFormat=bit
 macs=()
 
 function show_help {
-   echo "USAGE: $0 -b BOARD [-f PATH] [-B] [-M MAC] [-H]"
+   echo "USAGE: $0 -b BOARD [-f PATH] [-B] [-F FORMAT] [-M MAC] [-H]"
    echo " -b BOARD     - Board name, must match a directory name in axi-soc-ultra-plus-core/hardware (required)"
    echo " -f PATH      - Explicit image.ub source path (bypasses build-dir auto-detect)"
-   echo " -B           - Also stage the PL bitstream (system.bit -> system.bit.bin) for tftp-only/diskless netboot"
-   echo " -M MAC       - Stage a per-MAC bitstream copy system.bit.bin.<mac-dashes> (repeatable; implies -B; MAC colons or dashes, stored dash-form)"
+   echo " -B           - Also stage the PL bitstream for tftp-only/diskless netboot (format from -F, default 'bit')"
+   echo " -F FORMAT    - Bitstream format, implies -B:"
+   echo "                  bit - copy linux/system.bit unconverted (default; no bootgen needed; probed first)"
+   echo "                  bin - convert with bootgen to a raw .bin (needs bootgen on PATH; loads far faster,"
+   echo "                        and is the only format accepted on PMUFW <= v1.0)"
+   echo "                Staging one format removes the other's names; they are not usable side by side."
+   echo " -M MAC       - Also stage a per-MAC copy of the staged format (repeatable; implies -B;"
+   echo "                MAC colons or dashes, stored dash-form)"
    echo " -H           - Show this help text"
    exit 1
 }
@@ -53,15 +76,16 @@ function die {
     exit 1
 }
 
-while getopts b:f:BM:H flag
+while getopts b:f:BF:M:H flag
 do
     case "${flag}" in
         b) board=${OPTARG};;
         f) srcOverride=${OPTARG};;
         B) stageBitstream=1;;
+        F) stageBitstream=1; bitFormat="${OPTARG,,}";;
         # Store the MAC lowercased with ':' -> '-'. U-Boot's tftpboot treats the
         # first ':' in a filename as a hostIP separator, so the board's loadpl_net
-        # uses 'setexpr gsub' to request system.bit.bin.<mac-dashes>; the staged
+        # uses 'setexpr gsub' to request system.<fmt>.<mac-dashes>; the staged
         # filename must match that dash form. Accepts -M with colons or dashes.
         M) stageBitstream=1; m="${OPTARG,,}"; macs+=("${m//:/-}");;
         H) show_help;;
@@ -70,6 +94,11 @@ do
 done
 
 [ -n "$board" ] || { echo "Missing required -b BOARD"; show_help; }
+
+case "$bitFormat" in
+   bit|bin) ;;
+   *) echo "Invalid -F FORMAT '$bitFormat' (expected 'bit' or 'bin')"; show_help;;
+esac
 
 ##############################################################################
 # Check for missing host tools before we start
@@ -223,43 +252,56 @@ else
 fi
 
 ##############################################################################
-# Step 5 (optional, -B/-M): stage the PL bitstream as a raw .bin for the
-# tftp-only (diskless) build. The build produces linux/system.bit (a .bit with
-# a Vivado header) next to image.ub; U-Boot's 'fpga load' wants the raw PL
-# config .bin, so convert with bootgen. Stage the generic system.bit.bin plus
-# a per-MAC copy for each -M (U-Boot's loadpl_net tries system.bit.bin.<ethaddr>
-# first, then the generic name). Same check-then-act idempotency as above.
+# Step 5 (optional, -B/-F/-M): stage the PL bitstream for the tftp-only
+# (diskless) build. The build produces linux/system.bit (a .bit with a Vivado
+# header) next to image.ub.
+#
+# -F bit (the default) copies it unconverted: no bootgen, and it is the first
+# name loadpl_net probes. -F bin converts it with bootgen, which loads far faster
+# on current PMUFW and is the only format accepted on PMUFW <= v1.0.
+#
+# loadpl_net probes system.bit.<mac> -> system.bin.<mac> -> system.bit ->
+# system.bin and the 'fpga load' result for whichever name it fetches is final,
+# so the formats cannot coexist usefully. The unselected format's names are
+# removed once staging succeeds, rather than left behind to outrank the names
+# written here. Same check-then-act idempotency as the steps above.
 ##############################################################################
 
 if [ "$stageBitstream" -eq 1 ]; then
-   command -v bootgen >/dev/null 2>&1 || \
-      die "bootgen not found in PATH (source your Vitis/Vivado settings64.sh); required for -B/-M .bit->.bin conversion"
-
    bitSrc="$(dirname "$src")/system.bit"  # sits next to the resolved image.ub
    [ -f "$bitSrc" ] || die "No system.bit found next to image.ub at '$bitSrc'"
 
-   # Convert .bit -> raw .bin in an isolated temp dir so bootgen's output name
-   # (which is version-dependent) does not matter -- we glob the single *.bin.
-   tmpBit=$(mktemp -d)
-   trap 'rm -rf "$tmpBit"' EXIT
-   cp "$bitSrc" "$tmpBit/system.bit"
-   printf 'all:\n{\n    system.bit\n}\n' > "$tmpBit/bitstream.bif"
-   ( cd "$tmpBit" && bootgen -arch zynqmp -image bitstream.bif -process_bitstream bin >/dev/null ) \
-      || die "bootgen .bit->.bin conversion failed"
-   binOut=$(find "$tmpBit" -maxdepth 1 -name '*.bin' | head -1)
-   [ -n "$binOut" ] || die "bootgen produced no .bin in $tmpBit"
+   if [ "$bitFormat" = "bin" ]; then
+      command -v bootgen >/dev/null 2>&1 || \
+         die "bootgen not found in PATH (source your Vitis/Vivado settings64.sh); required for -F bin"
 
-   bitDest="$TFTP_ROOT/system.bit.bin"
-   if cmp -s "$binOut" "$bitDest" 2>/dev/null; then
+      # Convert .bit -> raw .bin in an isolated temp dir so bootgen's output name
+      # (which is version-dependent) does not matter -- we glob the single *.bin.
+      tmpBit=$(mktemp -d)
+      trap 'rm -rf "$tmpBit"' EXIT
+      cp "$bitSrc" "$tmpBit/system.bit"
+      printf 'all:\n{\n    system.bit\n}\n' > "$tmpBit/bitstream.bif"
+      ( cd "$tmpBit" && bootgen -arch zynqmp -image bitstream.bif -process_bitstream bin >/dev/null ) \
+         || die "bootgen .bit->.bin conversion failed"
+      staged=$(find "$tmpBit" -maxdepth 1 -name '*.bin' | head -1)
+      [ -n "$staged" ] || die "bootgen produced no .bin in $tmpBit"
+      otherFormat=bit
+   else
+      staged="$bitSrc"
+      otherFormat=bin
+   fi
+
+   bitDest="$TFTP_ROOT/system.$bitFormat"
+   if cmp -s "$staged" "$bitDest" 2>/dev/null; then
       echo "$bitDest already up to date"
    else
-      echo "Staging $bitSrc -> $bitDest ($(stat -c%s "$binOut") bytes .bin)"
-      cp "$binOut" "$bitDest"
-      cmp -s "$binOut" "$bitDest" || die "Post-copy verification failed: $bitDest"
+      echo "Staging $bitSrc -> $bitDest ($(stat -c%s "$staged") bytes .$bitFormat)"
+      cp "$staged" "$bitDest"
+      cmp -s "$staged" "$bitDest" || die "Post-copy verification failed: $bitDest"
    fi
 
    for mac in ${macs[@]+"${macs[@]}"}; do
-      macDest="$TFTP_ROOT/system.bit.bin.$mac"
+      macDest="$TFTP_ROOT/system.$bitFormat.$mac"
       if cmp -s "$bitDest" "$macDest" 2>/dev/null; then
          echo "$macDest already up to date"
       else
@@ -268,4 +310,27 @@ if [ "$stageBitstream" -eq 1 ]; then
          cmp -s "$bitDest" "$macDest" || die "Post-copy verification failed: $macDest"
       fi
    done
+
+   # Only now that the selected format is staged and verified, drop the other
+   # format's names -- doing it earlier would leave a window with nothing served.
+   # Scoped to exactly what this invocation manages (generic plus each -M MAC);
+   # deliberately not a glob, since other boards' per-MAC files may share this root.
+   for stale in "$TFTP_ROOT/system.$otherFormat" \
+                ${macs[@]+"${macs[@]/#/$TFTP_ROOT/system.$otherFormat.}"}; do
+      [ -e "$stale" ] || continue
+      echo "Removing superseded $stale (.$otherFormat is not usable alongside .$bitFormat)"
+      rm -f "$stale"
+   done
+
+   # Without -M this run cannot know the board's MAC, so it can only clean the
+   # generic name above. Any per-MAC file left in the root outranks a generic one
+   # in loadpl_net's probe order, so a stale one would silently win over what was
+   # just staged. Flag them rather than guess which board they belong to.
+   if [ ${#macs[@]} -eq 0 ]; then
+      for leftover in "$TFTP_ROOT"/system.bit.* "$TFTP_ROOT"/system.bin.*; do
+         [ -e "$leftover" ] || continue
+         echo "WARNING: $leftover outranks $bitDest in loadpl_net's probe order." >&2
+         echo "         Re-run with -M <board-MAC> to refresh or remove it." >&2
+      done
+   fi
 fi

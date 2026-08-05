@@ -18,14 +18,24 @@
 	/* Bitstream fetch+program, run by netboot only in the tftp-only (diskless) */ \
 	/* build. 'setexpr gsub' rewrites ${ethaddr}'s colons to dashes into ${macfn} */ \
 	/* (U-Boot's tftpboot parses the first ':' in a filename as a hostIP separator, */ \
-	/* so a colon-form name is unusable). Tries the per-MAC file first */ \
-	/* (system.bit.bin.<mac-dashes>), then a generic system.bit.bin, then 'fpga */ \
-	/* load's the raw .bin to the PL via PCAP. Reuses 0x10000000 sequentially: fpga */ \
+	/* so a colon-form name is unusable). Probe order is most- to least-specific, */ \
+	/* preferring the Vivado .bit at each level: */ \
+	/*   system.bit.<mac-dashes> -> system.bin.<mac-dashes> -> system.bit -> system.bin */ \
+	/* then 'fpga load's whichever hit to the PL via PCAP. Both formats are accepted: */ \
+	/* on PMUFW > v1.0 zynqmp_load() skips zynqmp_validate_bitstream() entirely and */ \
+	/* hands the buffer verbatim to the PMU. The .bit is not just the .bin plus a */ \
+	/* ~222-byte header: bootgen also byte-reverses every 32-bit word (sync AA995566 */ \
+	/* vs 665599AA), so a .bit loads because the PCAP auto-detects bus width and */ \
+	/* endianness, and it costs ~16.6s versus ~0.2s for a .bin on a 34MB bitstream -- */ \
+	/* paid on every boot, since .bit is preferred. A .bit is rejected only on PMUFW */ \
+	/* <= v1.0, where the validator runs and fails the header-offset 'diff' check. */ \
+	/* A miss costs one immediate TFTP NAK, not a timeout, so the extra probes are */ \
+	/* effectively free. Reuses 0x10000000 sequentially: fpga */ \
 	/* load consumes the buffer before netboot fetches the kernel FIT to the same */ \
 	/* address. It is && so a total fetch or program failure aborts netboot before */ \
 	/* the kernel boots (never a net kernel over an unprogrammed PL). ${filesize} is */ \
 	/* set by whichever tftpboot succeeded. */ \
-	"loadpl_net=setexpr macfn gsub : - ${ethaddr} && if tftpboot 0x10000000 system.bit.bin.${macfn}; then true; else tftpboot 0x10000000 system.bit.bin; fi && fpga load 0 0x10000000 ${filesize}\0" \
+	"loadpl_net=setexpr macfn gsub : - ${ethaddr} && if tftpboot 0x10000000 system.bit.${macfn}; then true; elif tftpboot 0x10000000 system.bin.${macfn}; then true; elif tftpboot 0x10000000 system.bit; then true; else tftpboot 0x10000000 system.bin; fi && fpga load 0 0x10000000 ${filesize}\0" \
 	/* fallback build: no U-Boot bitstream load -- the SD's startup-app-init fpgautil */ \
 	/* owns the PL exactly as before (avoids a double-program). */ \
 	"loadpl_skip=true\0" \
