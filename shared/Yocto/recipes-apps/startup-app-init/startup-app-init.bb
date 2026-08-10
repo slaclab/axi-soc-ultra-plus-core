@@ -41,6 +41,13 @@ do_install() {
         sed -i "s/@DMA_RX_BUFF_COUNT@/${DMA_RX_BUFF_COUNT}/g" ${WORKDIR}/startup-app-init
         sed -i "s/@DMA_BUFF_SIZE@/${DMA_BUFF_SIZE}/g"         ${WORKDIR}/startup-app-init
 
+        # Scale the kernel thread cap with numLane*numDest (rogue TCP bridge)
+        sed -i "s/@DMA_THREADS_MAX@/${DMA_THREADS_MAX}/g" ${WORKDIR}/startup-app-init
+
+        # Scale the systemd resource limits with numLane*numDest (rogue TCP bridge)
+        sed -i "s/@DMA_LIMIT_NOFILE@/${DMA_LIMIT_NOFILE}/g" ${WORKDIR}/startup-app-init.service
+        sed -i "s/@DMA_LIMIT_NPROC@/${DMA_LIMIT_NPROC}/g"   ${WORKDIR}/startup-app-init.service
+
         if ${@bb.utils.contains('DISTRO_FEATURES', 'sysvinit', 'true', 'false', d)}; then
                 install -d ${D}${sysconfdir}/init.d/
                 install -m 0755 ${WORKDIR}/startup-app-init ${D}${sysconfdir}/init.d/

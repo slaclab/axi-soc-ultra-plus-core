@@ -19,6 +19,7 @@ import socket
 import ipaddress
 import time
 import argparse
+import resource
 
 #################################################################
 
@@ -40,18 +41,15 @@ class ZynqTcpServer(object):
         self.memServer = rogue.interfaces.memory.TcpServer('*', 9000)
         self.memServer >> self.memMap
 
-        # Data server on port [10000+512*lane+2*tdest:10000+512*lane+2*tdest+1]
-        self.dmaStream = [[None] * numDest for _ in range(numLane)]
-        self.dataServer = [[None] * numDest for _ in range(numLane)]
-        for lane in range(numLane):
-            for tdest in range(numDest):
-                port = 10000+512*lane+2*tdest
-                print( f'Starting Stream TcpServer at Port={port} and Port={port+1} for DMA[{lane}][{tdest}]' )
-                self.dmaStream[lane][tdest] = rogue.hardware.axi.AxiStreamDma('/dev/axi_stream_dma_0', 256*lane+tdest, True)
-                self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
-                self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
-
         # PyRFdc Integration
+        #
+        # Initialize PyRFdc/libmetal BEFORE opening the DMA streams.  libmetal's
+        # Linux IRQ thread select()s over its UIO file descriptor, which must
+        # stay below FD_SETSIZE (1024).  Opening the per-stream descriptors first
+        # would push libmetal's UIO fd >= 1024 once numLane*numDest is large,
+        # crashing with "bit out of range 0 - FD_SETSIZE on fd_set" and
+        # "metal_linux_irq_register_dev: Failed to register device to irq".
+        # rogue's stream path is epoll-based and tolerates high fds.  See ESROGUE-549.
         self.apiMap = None
         self.rfdcApi = None
 
@@ -68,6 +66,17 @@ class ZynqTcpServer(object):
             print("PyRFdc module is not installed.")
         except Exception as e:
             print(f"Error initializing PyRFdc: {e}")
+
+        # Data server on port [10000+512*lane+2*tdest:10000+512*lane+2*tdest+1]
+        self.dmaStream = [[None] * numDest for _ in range(numLane)]
+        self.dataServer = [[None] * numDest for _ in range(numLane)]
+        for lane in range(numLane):
+            for tdest in range(numDest):
+                port = 10000+512*lane+2*tdest
+                print( f'Starting Stream TcpServer at Port={port} and Port={port+1} for DMA[{lane}][{tdest}]' )
+                self.dmaStream[lane][tdest] = rogue.hardware.axi.AxiStreamDma('/dev/axi_stream_dma_0', 256*lane+tdest, True)
+                self.dataServer[lane][tdest] = rogue.interfaces.stream.TcpServer('*',port)
+                self.dmaStream[lane][tdest] == self.dataServer[lane][tdest]
 
     def __enter__(self):
         """Enable using the class as a context manager."""
@@ -122,6 +131,26 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = parser.parse_args()
+
+    #################################################################
+
+    # Each TCP stream costs ~10 file descriptors and ~4 threads.  Raise the
+    # open-file soft limit toward the hard limit so a manually-launched run is
+    # not capped at the shell default (often 1024).  The systemd service sets
+    # LimitNOFILE/LimitNPROC for the boot path; this covers running by hand.
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if soft < hard:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+        soft = hard
+
+    streams = args.lane * args.tdest
+    projFds = streams * 10 + 64
+    projThreads = streams * 4 + 16
+    print(f"Resource budget: {streams} streams ~ {projFds} fds, ~{projThreads} threads "
+          f"(RLIMIT_NOFILE soft={soft}).")
+    if projFds > soft:
+        print(f"WARNING: ~{projFds} fds needed but RLIMIT_NOFILE soft={soft}. "
+              f"Raise LimitNOFILE / ulimit -n. See ESROGUE-549.")
 
     #################################################################
 

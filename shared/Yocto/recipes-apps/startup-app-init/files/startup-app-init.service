@@ -6,6 +6,10 @@ After=local-fs.target systemd-user-sessions
 [Service]
 Type=idle
 Restart=always
+# Scaled with numLane*numDest at build time (see BuildYoctoProject.sh).
+# Each rogue TCP stream costs ~10 file descriptors and ~4 threads.
+LimitNOFILE=@DMA_LIMIT_NOFILE@
+LimitNPROC=@DMA_LIMIT_NPROC@
 ExecStart=/usr/bin/startup-app-init
 StandardOutput=journal+console
   
