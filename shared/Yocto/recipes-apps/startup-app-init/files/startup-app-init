@@ -108,9 +108,23 @@ then
    echo "/sys/class/fpga_manager/fpga0/state: $(cat /sys/class/fpga_manager/fpga0/state)"
 fi
 
-# Load custom kernel driver
-insmod /lib/modules/$(uname -r)/updates/axi_memory_map.ko
-insmod /lib/modules/$(uname -r)/updates/axi_stream_dma.ko cfgTxCount0=@DMA_TX_BUFF_COUNT@ cfgRxCount0=@DMA_RX_BUFF_COUNT@ cfgSize0=@DMA_BUFF_SIZE@
+# Backstop: the PL must be programmed before the DMA drivers bind -- whether by
+# the SD "2nd stage" fpgautil load above, or by U-Boot's "fpga load" in the
+# tftp-only (diskless) netboot where there is no /boot/system.bit. If the FPGA
+# manager does not report "operating", fail loudly here instead of letting the
+# insmods fail with cryptic DMA errors. The PRIMARY guard for the diskless path
+# is the U-Boot netboot && chain, which halts before boot on any fpga-load
+# failure; this catches SD/provisioning errors and any silent PL problem.
+fpgaState=$(cat /sys/class/fpga_manager/fpga0/state 2>/dev/null)
+if [ "$fpgaState" != "operating" ]
+then
+   echo "ERROR: PL not programmed (fpga_manager/fpga0/state: ${fpgaState:-unknown}); skipping driver load" >&2
+   echo "ERROR: check the tftp-only bitstream fetch or the SD /boot/system.bit provisioning" >&2
+else
+   # Load custom kernel driver
+   insmod /lib/modules/$(uname -r)/updates/axi_memory_map.ko
+   insmod /lib/modules/$(uname -r)/updates/axi_stream_dma.ko cfgTxCount0=@DMA_TX_BUFF_COUNT@ cfgRxCount0=@DMA_RX_BUFF_COUNT@ cfgSize0=@DMA_BUFF_SIZE@
+fi
 
 ##############################################################################
 
