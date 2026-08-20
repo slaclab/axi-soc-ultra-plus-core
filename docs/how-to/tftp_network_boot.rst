@@ -4,6 +4,14 @@ TFTP Network Boot
 Boot the Linux kernel over Ethernet using TFTP instead of the SD card,
 with automatic fallback to the on-SD image if the network path fails.
 
+.. note::
+
+   Netboot is **opt-in**. The default build mode is ``sd-only``, which never
+   attempts DHCP or TFTP at all, so a board on a network with no TFTP server
+   pays none of the timeouts described below. Everything on this page applies
+   to boards built with ``-m fallback`` or ``-m tftp-only``; see
+   :ref:`Step 2 <tftp-boot-modes>` for the full mode table.
+
 How It Works
 ------------
 
@@ -55,12 +63,12 @@ raw ``.bin`` — see :ref:`bitstream formats <tftp-bitstream-formats>`
 below. This step is **mandatory** in ``tftp-only`` mode:
 if the bitstream fetch or ``fpga load`` fails, netboot aborts before the
 kernel boots, so a net kernel never runs over an unprogrammed or stale
-PL. A ``fallback`` build does **not** fetch a bitstream in U-Boot — its
-PL is programmed later, after Linux boots, by ``startup-app-init``
-running ``fpgautil`` on the SD card's ``system.bit`` (unchanged from a
-normal SD boot). ``BOOT.BIN`` itself embeds an FSBL-programmed bitstream
-in both modes; the ``tftp-only`` ``fpga load`` re-programs the PL over
-it.
+PL. A ``fallback`` or ``sd-only`` build does **not** fetch a bitstream in
+U-Boot — its PL is programmed later, after Linux boots, by
+``startup-app-init`` running ``fpgautil`` on the SD card's ``system.bit``
+(unchanged from a normal SD boot). ``BOOT.BIN`` itself embeds an
+FSBL-programmed bitstream in every mode; the ``tftp-only`` ``fpga load``
+re-programs the PL over it.
 
 Why the PL must be programmed before the drivers load: the
 ``axi_memory_map`` and ``axi_stream_dma`` kernel modules bind to AXI
@@ -74,7 +82,7 @@ continue booting** rather than halting — so the board still comes up with
 networking and a shell (a minimal recovery environment) instead of
 stopping. The only path that deliberately halts before Linux is a failed
 bitstream fetch in ``tftp-only`` mode (the netboot ``&&`` chain aborts the
-boot); a ``fallback`` board always reaches Linux.
+boot); a ``fallback`` or ``sd-only`` board always reaches Linux.
 
 .. warning::
 
@@ -82,8 +90,9 @@ boot); a ``fallback`` board always reaches Linux.
    power-on, the FPGA manager reports ``operating`` on every boot — even
    when no ``system.bit`` is present on the SD card and none is fetched
    over the network. This guarantees a programmed PL for the driver-load
-   guard above, but it also means a ``fallback`` board that is missing its
-   runtime ``system.bit`` will bind the DMA drivers against the bitstream
+   guard above, but it also means a ``fallback`` or ``sd-only`` board that
+   is missing its runtime ``system.bit`` will bind the DMA drivers against
+   the bitstream
    **frozen into BOOT.BIN at Yocto build time**, which may be stale
    relative to the firmware you intend to run. An ``operating`` state
    therefore confirms only that *a* bitstream is loaded, not that it is the
@@ -184,7 +193,8 @@ Steps
    ``loadpl_net`` requests (it rewrites ``${ethaddr}``'s colons to dashes
    with ``setexpr``). ``fallback``-mode servers do not need any of this —
    omit ``-B``/``-F``/``-M`` and only ``image.ub`` and the PXE config are
-   staged.
+   staged. ``sd-only`` boards need no TFTP server at all, so this whole
+   step is unnecessary for them.
 
    .. note::
 
@@ -223,7 +233,9 @@ Steps
 
       sudo kill "$(cat /run/dnsmasq-tftp-lab.pid)"
 
-2. Choose the board's boot mode at build time. The netboot mode is
+.. _tftp-boot-modes:
+
+2. Choose the board's boot mode at build time. The boot mode is
    baked into U-Boot — and therefore into ``BOOT.BIN`` — when the Yocto
    image is built, via the ``-m`` flag to ``BuildYoctoProject.sh`` (see
    :doc:`../tutorial/first_soc_bringup` for the full build invocation):
@@ -233,17 +245,25 @@ Steps
       :widths: 25 75
 
       * - ``-m`` value
-        - On a failed TFTP fetch
-      * - ``fallback`` (default)
-        - Boots the known-good ``image.ub`` from the SD card.
+        - Boot behavior
+      * - ``sd-only`` (default)
+        - Never attempts netboot: no DHCP, no TFTP, and none of the
+          ~85-110 s of timeouts a ``fallback`` board pays on a network with
+          no reachable TFTP server. ``run netboot`` is still defined and
+          available by hand at the ``ZynqMP>`` prompt for recovery.
+      * - ``fallback``
+        - Tries netboot first; on any failure boots the known-good
+          ``image.ub`` from the SD card.
       * - ``tftp-only``
-        - Prints ``TFTP-only build: not falling back to SD`` and halts
-          at the ``ZynqMP>`` prompt; the SD image is never consulted.
+        - Tries netboot only; on failure prints ``TFTP-only build: not
+          falling back to SD`` and halts at the ``ZynqMP>`` prompt. The SD
+          image is never consulted.
 
-   ``fallback`` is the default, so it is applied even when ``-m`` is
-   omitted. The two modes produce byte-distinct ``BOOT.BIN`` images. To
-   read a board's mode straight out of the artifact — no board required —
-   grep the ``bootcmd`` that was baked into it:
+   ``sd-only`` is the default, so it is applied even when ``-m`` is
+   omitted, and a default build therefore does **not** netboot. The three
+   modes produce byte-distinct ``BOOT.BIN`` images. To read a board's mode
+   straight out of the artifact — no board required — grep the ``bootcmd``
+   that was baked into it:
 
    .. code-block:: bash
 
@@ -251,15 +271,29 @@ Steps
 
    .. code-block:: text
 
+      bootcmd=echo SD-only build: skipping netboot; run sdboot           <- sd-only
       bootcmd=run netboot; run sdboot                                    <- fallback
       bootcmd=run netboot; echo TFTP-only build: not falling back to SD  <- tftp-only
 
    That works on a freshly built image or on the SD card's copy at
    ``/boot/BOOT.BIN``, and unlike a checksum it does not go stale between
-   rebuilds. Observing the TFTP-failure behavior distinguishes them too.
-   The login-banner hostname is **not** a mode indicator: it comes from the
-   target name via ``hostname:pn-base-files`` and is identical in both modes
-   (see **Verification** below).
+   rebuilds.
+
+   .. note::
+
+      ``strings -a BOOT.BIN | grep -aE '^(netboot|loadpl_net|loadpl_skip)='``
+      is a **weaker** check: ``loadpl_skip`` is selected by both ``fallback``
+      and ``sd-only``, so that grep separates ``tftp-only`` from the other
+      two but cannot tell those two apart. Only the ``bootcmd=`` line
+      identifies a mode uniquely.
+
+   Runtime behavior also distinguishes the modes: a ``fallback`` board
+   SD-boots after its TFTP attempts fail, a ``tftp-only`` board halts, and
+   an ``sd-only`` board prints ``SD-only build: skipping netboot`` and shows
+   no ``DHCP client bound`` or TFTP lines at all. The login-banner hostname
+   is **not** a mode indicator: it comes from the target name via
+   ``hostname:pn-base-files`` and is identical in all three modes (see
+   **Verification** below).
 
    The mode also decides where the PL bitstream comes from. A
    ``tftp-only`` build additionally requires the bitstream to be staged
@@ -267,7 +301,7 @@ Steps
    than boot if it is missing. It also requires ``/boot/system.bit`` to be
    **absent** on the board: ``startup-app-init`` re-programs the PL from
    that file whenever it exists, overriding whatever U-Boot just fetched.
-   A ``fallback`` build ignores any staged
+   A ``fallback`` or ``sd-only`` build ignores any staged
    bitstream and programs the PL from the SD card's ``system.bit`` after
    Linux boots, exactly as a normal SD boot does.
 
@@ -278,7 +312,7 @@ Steps
 
    .. warning::
 
-      To switch a board between ``fallback`` and ``tftp-only`` mode, it
+      To switch a board between any two of the three modes, it
       is sufficient to replace only ``BOOT.BIN`` on the SD card's FAT
       boot partition. On boards imaged by this platform's tooling
       (1 GiB FAT32 boot partition), do that with a plain Linux ``cp``
@@ -300,16 +334,23 @@ Steps
    config is served, falls back to ``tftpboot 0x10000000 image.ub`` then
    ``bootm 0x10000000``; ``run netboot`` performs the whole
    fetch-and-boot. Doing it by hand lets you set ``serverip``
-   explicitly (``netboot`` itself does not) and watch each stage. At
-   boot time it is U-Boot's ``bootcmd`` — ``run netboot;
-   <mode-action>`` — that runs ``netboot`` and then the mode-specific
-   action from Step 2 (SD boot for ``fallback``, halt for
-   ``tftp-only``). The mode action runs whenever ``netboot`` **returns
-   to U-Boot at all**: a successful boot hands control to the kernel and
-   never comes back, so simply reaching the mode action is the failure
-   signal. The fallback therefore does **not** depend on ``netboot``
-   reporting a nonzero exit code — some boot methods (notably
+   explicitly (``netboot`` itself does not) and watch each stage.
+
+   On a ``fallback`` or ``tftp-only`` board, boot time reaches ``netboot``
+   through U-Boot's ``bootcmd`` — ``run netboot; <mode-action>`` — which
+   runs ``netboot`` and then the mode-specific action from Step 2 (SD boot
+   for ``fallback``, halt for ``tftp-only``). The mode action runs whenever
+   ``netboot`` **returns to U-Boot at all**: a successful boot hands control
+   to the kernel and never comes back, so simply reaching the mode action is
+   the failure signal. The fallback therefore does **not** depend on
+   ``netboot`` reporting a nonzero exit code — some boot methods (notably
    ``pxe boot``) return 0 even when no kernel booted.
+
+   An ``sd-only`` board's ``bootcmd`` is not of that form at all: it omits
+   ``run netboot`` entirely, which is the whole point of the mode. The
+   ``netboot``, ``loadpl_net``, and ``loadpl_skip`` environment variables are
+   still defined there, though, so this manual sequence is exactly how you
+   exercise netboot on such a board without rebuilding it.
 
    .. code-block:: text
 
@@ -442,11 +483,13 @@ Reaching a login prompt confirms the board booted:
 The banner hostname comes from the project name of the built image
 (``SimpleRfSoc4x2Example`` here, set via ``hostname:pn-base-files``),
 not from the ``hardware`` directory name ``RealDigitalRfSoC4x2`` used
-in Step 1. It is the same for **both** boot modes, so it does not tell
+in Step 1. It is the same for **all three** boot modes, so it does not tell
 you which mode's ``BOOT.BIN`` is running -- distinguish the modes with the
 ``strings -a BOOT.BIN | grep -a '^bootcmd='`` check from Step 2, or by the
-TFTP-failure behavior (a ``fallback`` build SD-boots; a ``tftp-only`` build
-halts). Finally, confirm the board is reachable over the network:
+runtime behavior (a ``fallback`` build SD-boots after its TFTP attempts
+fail; a ``tftp-only`` build halts; an ``sd-only`` build prints ``SD-only
+build: skipping netboot`` and never touches the network). Finally, confirm
+the board is reachable over the network:
 
 .. code-block:: bash
 
@@ -489,13 +532,27 @@ Troubleshooting
        the presence or absence of ICMP lines does not distinguish the two
        cases. Restore TFTP reachability: once the server answers, a
        missing file draws an immediate ``TFTP error: 256`` refusal and the
-       whole 14-name walk costs almost nothing
+       whole 14-name walk costs almost nothing. If the board has **no**
+       TFTP server by design, rebuild it with ``-m sd-only`` (Step 2) --
+       that removes ``run netboot`` from ``bootcmd`` entirely and is the
+       structural fix rather than a workaround
    * - ``TFTP-only build: not falling back to SD`` followed by a halt
        at a bare ``ZynqMP>`` prompt, no kernel banner
      - Expected behavior: a ``tftp-only`` build halts by design when
-       TFTP fails, instead of silently falling back to an SD image
+       TFTP fails, instead of silently falling back to an SD image.
+       (An ``sd-only`` build never prints this, since it never runs
+       ``netboot`` from ``bootcmd``.)
      - Bring the TFTP host back up and run ``reset``, or reflash the
-       board with a ``fallback`` build's ``BOOT.BIN``
+       board with a ``fallback`` or ``sd-only`` build's ``BOOT.BIN``
+   * - An ``sd-only`` board drops to ``ZynqMP>``, or pays TFTP timeouts
+       anyway, despite ``bootcmd`` containing no ``run netboot``
+     - SD boot itself failed, so ``distro_bootcmd`` fell through the
+       ``mmc`` targets to its trailing ``pxe``/``dhcp`` targets. A missing
+       or corrupt ``/boot/boot.scr`` or ``/boot/image.ub`` is the usual
+       cause; in ``sd-only`` there is no netboot path masking it
+     - Confirm both files are present on the FAT boot partition (they are
+       staged by ``BuildYoctoProject.sh`` and validated in its release file
+       list). Re-image per :doc:`sd_card_imaging` if either is missing
    * - ``tftp-only`` netboot halts after all four bitstream fetches fail,
        before any kernel fetch
      - The PL bitstream is not staged on the server under any of the
@@ -565,6 +622,24 @@ file, every attempt is refused immediately and the fallback is effectively
 instant. Allow up to ~2 minutes before concluding a board has hung, and
 see the ``Request timeout`` entry in **Troubleshooting** above.
 
+That full 14-attempt cost needs a **reachable DHCP server** as well as an
+unreachable TFTP one. ``netboot`` starts with ``dhcp`` in an ``&&`` chain, so
+on a network with no DHCP server at all it short-circuits at the DHCP
+timeout and never reaches the TFTP attempts. An ``sd-only`` board pays
+neither: its ``bootcmd`` contains no ``run netboot``, so there is no DHCP
+attempt and no TFTP attempt on the boot path at all.
+
+.. note::
+
+   ``sd-only`` removes netboot from the **success** path, not from every
+   possible path. ``sdboot`` is ``run distro_bootcmd``, which walks
+   ``boot_targets`` in order; the ``mmc`` targets come first and a healthy SD
+   card short-circuits there, but a board whose SD boot *fails* still falls
+   through to ``distro_bootcmd``'s trailing ``pxe`` and ``dhcp`` targets and
+   can pay the usual timeouts there. That tail is identical to a
+   ``fallback`` build's and is unchanged by this mode. Read the list off an
+   artifact with ``strings -a BOOT.BIN | grep -a '^boot_targets='``.
+
 Notes
 -----
 
@@ -574,10 +649,10 @@ Notes
 
 - The ``tftp-only`` bitstream step is deliberately mode-gated and
   all-or-nothing: in ``tftp-only`` it is mandatory (halt on failure),
-  and in ``fallback`` it is skipped entirely so the SD ``fpgautil`` load
-  stays authoritative and there is no double-program. It does **not**
-  fetch a network bitstream to override an inserted SD in ``fallback``
-  mode.
+  and in ``fallback`` and ``sd-only`` it is skipped entirely so the SD
+  ``fpgautil`` load stays authoritative and there is no double-program. It
+  does **not** fetch a network bitstream to override an inserted SD in
+  either of those modes.
 
   .. note::
 
@@ -585,7 +660,8 @@ Notes
      if one is served but continues (rather than halting) if none is —
      would let a net bitstream override an inserted SD. That is out of
      scope here; the current design keeps each mode a coherent stack
-     (full-network in ``tftp-only``, SD-owned PL in ``fallback``).
+     (full-network in ``tftp-only``, SD-owned PL in ``fallback``, and no
+     network on the boot path at all in ``sd-only``).
      If such a mode is added later, it must preserve netboot's ``&&`` failure
      chain — a fetch or ``fpga load`` failure must still be able to abort the
      boot — rather than relaxing the chain to ``;``. Weakening it to ``;``

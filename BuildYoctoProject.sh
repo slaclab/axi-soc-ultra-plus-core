@@ -29,7 +29,10 @@ function show_help {
    echo " -r RXCNT     - Number of DMA RX buffers"
    echo " -s BUFFSZ    - DMA buffer size in bytes"
    echo " -i IMAGE     - Name of the target image (Default: petalinux-image-minimal)"
-   echo " -m MODE      - U-Boot netboot fallback mode: 'fallback' boots from SD if TFTP fails, 'tftp-only' does not (Default: fallback)"
+   echo " -m MODE      - U-Boot boot mode (Default: sd-only):"
+   echo "                  'sd-only'   skips netboot entirely; fastest boot, no TFTP server needed"
+   echo "                  'fallback'  tries TFTP first, then boots from SD if that fails"
+   echo "                  'tftp-only' tries TFTP first, then halts instead of booting from SD"
    echo " -c           - Force reconfigure if the project has already been configured"
    echo " -H           - Show this help text"
    exit 1
@@ -37,7 +40,8 @@ function show_help {
 
 doConfigure=0
 image=petalinux-image-minimal
-uboot_netboot_mode=fallback
+uboot_netboot_mode=sd-only
+modeExplicit=0
 while getopts p:n:h:x:l:d:t:r:s:cHT:i:m: flag
 do
     case "${flag}" in
@@ -53,14 +57,14 @@ do
         c) doConfigure=1;;
         T) projTop=${OPTARG};;
         i) image=${OPTARG};;
-        m) uboot_netboot_mode=${OPTARG};;
+        m) uboot_netboot_mode=${OPTARG}; modeExplicit=1;;
         H) show_help;;
     esac
 done
 
 case "$uboot_netboot_mode" in
-   fallback|tftp-only) ;;
-   *) echo "Invalid -m MODE '$uboot_netboot_mode' (expected 'fallback' or 'tftp-only')"; show_help;;
+   sd-only|fallback|tftp-only) ;;
+   *) echo "Invalid -m MODE '$uboot_netboot_mode' (expected 'sd-only', 'fallback' or 'tftp-only')"; show_help;;
 esac
 
 if [ -z "$name" ] || [ -z "$path" ] || [ -z "$hwType" ] || [ -z "$xsa" ] || [ -z "$projTop" ]
@@ -351,6 +355,30 @@ else
 
    # Xilinx environment specific Yocto setup and automation scripts
    BDIR=build source setupsdk > /dev/null
+fi
+
+##############################################################################
+# Re-sync an explicitly requested -m MODE on an existing project
+##############################################################################
+
+# UBOOT_NETBOOT_MODE is only written to local.conf on a fresh/-c configure, so
+# without this a plain re-run would silently ignore -m and rebuild the mode the
+# project was originally configured with. Switching an already-built board to
+# sd-only is exactly the case that hits this, so keep the two in sync.
+#
+# Gated on -m being passed explicitly: editing UBOOT_NETBOOT_MODE in local.conf
+# by hand and re-running bitbake is a supported way to switch modes without a
+# reconfigure, and an unconditional rewrite would silently revert it.
+if [ $modeExplicit -eq 1 ]
+then
+   localConf="$proj_dir/build/conf/local.conf"
+   if grep -q '^UBOOT_NETBOOT_MODE = ' "$localConf"
+   then
+      sed -i "s|^UBOOT_NETBOOT_MODE = .*|UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode}\"|" "$localConf"
+   else
+      echo "UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode}\"" >> "$localConf"
+   fi
+   echo "U-Boot boot mode: ${uboot_netboot_mode}"
 fi
 
 ##############################################################################
