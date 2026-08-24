@@ -136,17 +136,34 @@ bootm 0x10000000                  # -> kernel boots -> "SimpleRfSoc4x2Example lo
 - The full ~112 MiB FIT transfers cleanly over lwIP TFTP (no throughput/blocksize problem).
 
 ### Boot-mode switch (build-time)
-`shared/Yocto/recipes-bsp/u-boot/u-boot-xlnx_%.bbappend` substitutes `@UBOOT_NETBOOT_MODE@`
+`shared/Yocto/recipes-bsp/u-boot/u-boot-xlnx_%.bbappend` substitutes `@BOOTCMD_SEL@`
 in `platform-top.h`, so the mode is baked into U-Boot (i.e. into `BOOT.BIN`):
 ```
-bootcmd = run netboot; @UBOOT_NETBOOT_MODE@
+bootcmd = @BOOTCMD_SEL@
 ```
-| `UBOOT_NETBOOT_MODE` | mode-action substitution | on TFTP failure |
-|----------------------|--------------------------|-----------------|
-| `fallback` (default) | `run sdboot`             | boots the on-SD `image.ub` |
-| `tftp-only`          | `echo TFTP-only build: not falling back to SD` | prints the message and halts at `ZynqMP>` |
+The placeholder is the **whole** `bootcmd` value, not just a trailing mode action, so a mode
+can decline to run `netboot` at all. (The BitBake variable is still named
+`UBOOT_NETBOOT_MODE`; only the in-file placeholder is `@BOOTCMD_SEL@`.)
 
-**Sequential, not exit-code-gated (PR #107 review).** `bootcmd` runs `netboot` and then the
+| `UBOOT_NETBOOT_MODE` | `@BOOTCMD_SEL@` substitution | boot behavior |
+|----------------------|------------------------------|---------------|
+| `sd-only` (default)  | `echo SD-only build: skipping netboot; run sdboot` | never attempts DHCP or TFTP; boots SD directly |
+| `fallback`           | `run netboot; run sdboot`    | on TFTP failure, boots the on-SD `image.ub` |
+| `tftp-only`          | `run netboot; echo TFTP-only build: not falling back to SD` | on TFTP failure, prints the message and halts at `ZynqMP>` |
+
+`sd-only` exists because the netboot path is expensive when it cannot succeed: see §5 for the
+measured ~85-110 s of TFTP timeouts a `fallback` board pays on every boot on a network with a
+reachable DHCP server and no reachable TFTP server. Its leading `echo` is deliberate, not
+decoration: a bare `run sdboot` would be textually identical to the stock upstream
+`run distro_bootcmd`, so the `echo` is what gives the mode a unique `strings BOOT.BIN`
+signature and a serial-console one.
+
+`netboot`, `loadpl_net`, and `loadpl_skip` are defined **unconditionally** in
+`platform-top.h`, in all three modes. Only `bootcmd` changes, so `run netboot` by hand at
+`ZynqMP>` remains available on an `sd-only` board for recovery.
+
+**Sequential, not exit-code-gated (PR #107 review).** In the two modes whose `bootcmd`
+contains `run netboot` (`fallback`, `tftp-only`), `bootcmd` runs `netboot` and then the
 mode action **unconditionally in sequence** — it does *not* branch on `run netboot`'s exit
 status. The invariant: a successful boot hands control to the kernel and **never returns to the
 U-Boot shell**, so merely reaching the mode action proves netboot failed. This is robust even
@@ -158,27 +175,32 @@ failed `label_boot()` (kernel retrieval failed) because `handle_pxe_menu()` is `
 the fallback**; the sequential form closes that gap without patching U-Boot. The decisive
 `pxe get` succeeds / `pxe boot` returns-0 case is re-validated on hardware in §6.
 
-The two build modes produce byte-distinct `BOOT.BIN` and `image.ub`. Exact sizes and md5s
+The three build modes produce byte-distinct `BOOT.BIN` and `image.ub`. Exact sizes and md5s
 change with every rebuild, so **do not compare against committed figures** — read the mode
 out of the artifact instead. The baked-in `bootcmd` is the definitive discriminator and never
 goes stale:
 
 ```
 strings -a BOOT.BIN | grep -a '^bootcmd='
+  bootcmd=echo SD-only build: skipping netboot; run sdboot          -> sd-only
   bootcmd=run netboot; run sdboot                                  -> fallback
   bootcmd=run netboot; echo TFTP-only build: not falling back to SD -> tftp-only
 ```
-`strings -a BOOT.BIN | grep -aE '^(netboot|loadpl_net|loadpl_skip)='` likewise shows whether
-`netboot` calls `run loadpl_net` (tftp-only) or `run loadpl_skip` (fallback). This works on a
+`strings -a BOOT.BIN | grep -aE '^(netboot|loadpl_net|loadpl_skip)='` is a **weaker** check
+and no longer identifies a mode on its own: `run loadpl_net` means `tftp-only`, but
+`run loadpl_skip` is selected by **both** `fallback` and `sd-only`, so it cannot tell those
+two apart. Anything (or anyone) using that grep as a mode check will misread an `sd-only`
+board as `fallback`. Only the `bootcmd=` line above is conclusive. Both work on a
 built artifact *or* on the SD copy at `/boot/BOOT.BIN`, with no board involved. For scale, the
 build current at the time of writing produced `image.ub` = `116835243` B and `BOOT.BIN` =
 `36383360` B in `fallback` mode.
 
-On the committed build the login banner is `SimpleRfSoc4x2Example` for **both** modes: the
+On the committed build the login banner is `SimpleRfSoc4x2Example` for **all** modes: the
 hostname is set from the project name (`hostname:pn-base-files = "$Name"`), independent of
 `UBOOT_NETBOOT_MODE`, so it is **not** a mode distinguisher. Besides the `bootcmd` check
-above, the TFTP-failure behavior also tells the modes apart (a `fallback` build SD-boots; a
-`tftp-only` build halts at `ZynqMP>`).
+above, runtime behavior also tells the modes apart (a `fallback` build SD-boots after its
+TFTP attempts fail; a `tftp-only` build halts at `ZynqMP>`; an `sd-only` build prints
+`SD-only build: skipping netboot` and emits no `DHCP client bound` or TFTP lines at all).
 
 ### Static-IP override (no-DHCP path)
 At `ZynqMP>`, set `ipaddr` (e.g. `10.0.0.50` — outside the dhcpd pool, not a fixed host,
@@ -228,7 +250,10 @@ cmp /tmp/BOOT.BIN /boot/BOOT.BIN       # on-SD byte-identical
 
 ## 5. Fallback vs no-fallback behavior (validated on hardware)
 
-Both build modes were exercised on the board with TFTP made unreachable two ways.
+Both **netboot** build modes (`fallback`, `tftp-only`) were exercised on the board with TFTP
+made unreachable two ways. `sd-only` was added after this section was written and is **not
+covered by any measurement here** — see "sd-only is not yet hardware-validated" at the end of
+§8.
 
 ### Fallback build (`UBOOT_NETBOOT_MODE=fallback`), TFTP down → boots SD
 On a failed `run netboot`, the else-branch runs `sdboot`, which boots the on-SD `image.ub`
@@ -317,7 +342,7 @@ if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _s
   `.config` — and `bootcmd_pxe` (`run boot_net_usb_start; dhcp; if pxe get; then pxe boot;
   fi`) is present in the built default environment. `bsp.cfg` only carries a comment noting
   this so a future reader need not re-derive it.
-- **Validated on hardware (RFSoC 4x2, both build modes).** The full PXE fetch/boot path was
+- **Validated on hardware (RFSoC 4x2, both netboot build modes).** The full PXE fetch/boot path was
   exercised on the board; every case below was observed on the serial console, and the
   reflashed builds' baked-in env (`printenv netboot`/`bootcmd`) byte-matches the strings in
   this section. The `bootcmd` wrappers built for each mode at the time were exactly
@@ -394,9 +419,17 @@ if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _s
   than differing by ~20×.
 
   Note this cost is paid by a `fallback` board on **every** boot on a net with no TFTP server,
-  which is the usual idle-lab state. Staging `pxelinux.cfg/01-<mac-dashes>` collapses the
-  13-name search to a single hit (it is the first name probed) and is the cheapest mitigation;
-  `provision_tftp_host.sh` currently writes only `pxelinux.cfg/default`.
+  which is the usual idle-lab state. For a board that is *supposed* to netboot, staging
+  `pxelinux.cfg/01-<mac-dashes>` collapses the 13-name search to a single hit (it is the first
+  name probed) and is the cheapest mitigation; `provision_tftp_host.sh` currently writes only
+  `pxelinux.cfg/default`. For a board that will **never** have a TFTP server, the cheaper
+  answer is to stop netbooting: build it `-m sd-only` (§3), whose `bootcmd` contains no
+  `run netboot` and therefore makes zero DHCP and zero TFTP attempts by construction.
+
+  The full 14-attempt cost also requires a **reachable DHCP server**. `netboot` opens with
+  `dhcp` in an `&&` chain, so on a net with no DHCP server at all it short-circuits at the DHCP
+  timeout and never reaches the TFTP attempts (that DHCP-fail timeout is itself unmeasured).
+  Do not quote the ~85-110 s figure for the no-DHCP case.
 
 ---
 
@@ -427,7 +460,8 @@ fetches the bitstream over TFTP and `fpga load`s it before booting the kernel �
 | `UBOOT_NETBOOT_MODE` | `@LOADPL_SEL@` → | effect |
 |----------------------|------------------|--------|
 | `tftp-only`          | `loadpl_net`     | fetch bitstream + `fpga load` before the kernel; **mandatory** |
-| `fallback` (default) | `loadpl_skip` (`true`) | no-op; SD `fpgautil` owns the PL (no double-program) |
+| `fallback`           | `loadpl_skip` (`true`) | no-op; SD `fpgautil` owns the PL (no double-program) |
+| `sd-only` (default)  | `loadpl_skip` (`true`) | same no-op, but moot on the boot path: `bootcmd` never runs `netboot`. Only reachable via a manual `run netboot` |
 
 ```
 loadpl_net = setexpr macfn gsub : - ${ethaddr} && if tftpboot 0x10000000 system.bit.${macfn}; then true; elif tftpboot 0x10000000 system.bin.${macfn}; then true; elif tftpboot 0x10000000 system.bit; then true; else tftpboot 0x10000000 system.bin; fi && fpga load 0 0x10000000 ${filesize}
@@ -437,7 +471,8 @@ netboot    = if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; t
 - **Halt-on-failure by `&&` chaining.** In `tftp-only`, a failed bitstream fetch **or** a
   failed `fpga load` makes `run loadpl_net` return nonzero, so `netboot` aborts *before* any
   kernel fetch/boot and `bootcmd`'s else-branch (`echo TFTP-only build…` → halt) runs. A net
-  kernel never boots over an unprogrammed PL. PXE-first kernel boot is preserved in both modes.
+  kernel never boots over an unprogrammed PL. PXE-first kernel boot is preserved in both
+  netboot modes (in `sd-only` nothing on the boot path reaches `netboot` at all).
 - **Address reuse.** `0x10000000` is reused sequentially: `fpga load` consumes the buffer
   (PCAP program) before the kernel FIT is fetched to the same address. `${filesize}` is set by
   whichever `tftpboot` (per-MAC or generic) succeeded, and is consumed by `fpga load` before
@@ -590,10 +625,12 @@ been re-measured with `pxe get` in front of it — see §6: the per-attempt figu
 but 14 attempts make the end-to-end fallback ≈ 85 s, and ICMP does not cut an attempt short.
 
 ### The login banner is not a mode indicator
-Confirmed: every case in both modes printed the same `SimpleRfSoc4x2Example login:`.
+Confirmed: every case in both netboot modes printed the same `SimpleRfSoc4x2Example login:`.
 `BuildYoctoProject.sh` sets `hostname:pn-base-files` from the target name with no
 `UBOOT_NETBOOT_MODE` dependency, so no `-fallback`/`-tftponly` suffix exists in these builds.
-Distinguish modes by the `BOOT.BIN` md5 or the TFTP-failure behavior.
+Distinguish modes with the `strings -a BOOT.BIN | grep -a '^bootcmd='` check from §3, or by
+runtime behavior. Not by md5: per §3 the sizes and checksums move with every rebuild, so a
+committed digest goes stale immediately.
 
 ### Editing `UBOOT_NETBOOT_MODE` does not need a `cleansstate`
 Changing it in `build/conf/local.conf` and running `bitbake xilinx-bootbin` re-ran 29 of 1972
@@ -601,3 +638,33 @@ tasks and produced the other mode's `BOOT.BIN` (`run loadpl_net` present, `run l
 absent). The variable is referenced by the u-boot bbappend's `do_configure`, so BitBake's
 signature tracking picks it up. This is how Stage C switched modes without a `-c` reconfigure,
 which would have re-run `repo sync` in the middle of the run.
+
+That evidence (`loadpl_net` present / `loadpl_skip` absent) was a `fallback` ↔ `tftp-only`
+observation. For `fallback` ↔ `sd-only` both select `loadpl_skip`, so the **only** confirmation
+that the switch took is the `bootcmd=` line. The signature-tracking property still holds:
+`${UBOOT_NETBOOT_MODE}` appears literally in the `case` inside `do_configure:append`, which is
+what folds it into the task hash. Do not hoist that selection out of the task body.
+
+`BuildYoctoProject.sh` also re-syncs `UBOOT_NETBOOT_MODE` into an existing project's
+`local.conf` when `-m` is passed explicitly. Without that, a re-run without `-c` would silently
+ignore `-m` (the original write is inside the fresh-configure branch only). The re-sync is gated
+on an explicit `-m` precisely so the hand-edited-`local.conf` workflow above is not clobbered by
+a plain rebuild.
+
+### sd-only is not yet hardware-validated
+`sd-only` and the `@BOOTCMD_SEL@` refactor were added after every measurement in §5 through §8.
+Verified so far: the three substitution branches produce the expected `bootcmd` with no
+placeholder left behind, `fallback` and `tftp-only` come out byte-identical to their
+pre-refactor values, the macro still preprocesses, and the strict Sphinx docs build passes.
+**Not yet observed on a board.** The minimum set to close this out:
+
+1. `sd-only` on a net with no TFTP server: expect **zero** `DHCP client bound` lines, zero
+   `TFTP error` lines, and the `SD-only build: skipping netboot` echo. This is the test that
+   proves the feature.
+2. Boot-to-login time versus the same board built `fallback`, to confirm the ~85 s recovered.
+3. `strings -a BOOT.BIN | grep -a '^bootcmd='` yields exactly one line. Worth checking
+   explicitly: U-Boot also emits `bootcmd=` from `CONFIG_BOOTCOMMAND` into
+   `default_environment[]`, and `CFG_EXTRA_ENV_SETTINGS` is what wins today (proven by the
+   `fallback` builds in §5), but that has never been checked for a `run sdboot`-shaped value.
+4. `run netboot` by hand from `ZynqMP>` on an `sd-only` board still fetches and boots, which is
+   the recovery guarantee the mode is documented to keep.
