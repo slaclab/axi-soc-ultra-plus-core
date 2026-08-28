@@ -13,7 +13,7 @@
 #echo -ne "\033c"
 
 function show_help {
-   echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA -T PATH [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-i IMAGE] [-m MODE] [-c]"
+   echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA -T PATH [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-i IMAGE] [-m MODE] [-e] [-c]"
    echo ""
    echo "Required:"
    echo " -p PATH      - Path to the build dir"
@@ -33,6 +33,8 @@ function show_help {
    echo "                  'sd-only'   skips netboot entirely; fastest boot, no TFTP server needed"
    echo "                  'fallback'  tries TFTP first, then boots from SD if that fails"
    echo "                  'tftp-only' tries TFTP first, then halts instead of booting from SD"
+   echo " -e           - Activate the Yocto environment and drop into a shell in the build dir"
+   echo "                (instead of running bitbake)"
    echo " -c           - Force reconfigure if the project has already been configured"
    echo " -H           - Show this help text"
    exit 1
@@ -42,7 +44,8 @@ doConfigure=0
 image=petalinux-image-minimal
 uboot_netboot_mode=sd-only
 modeExplicit=0
-while getopts p:n:h:x:l:d:t:r:s:cHT:i:m: flag
+activateEnv=0
+while getopts p:n:h:x:l:d:t:r:s:ceHT:i:m: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
@@ -55,6 +58,7 @@ do
         r) dmaRxBuffCount=${OPTARG};;
         s) dmaBuffSize=${OPTARG};;
         c) doConfigure=1;;
+        e) activateEnv=1;;
         T) projTop=${OPTARG};;
         i) image=${OPTARG};;
         m) uboot_netboot_mode=${OPTARG}; modeExplicit=1;;
@@ -379,6 +383,22 @@ then
       echo "UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode}\"" >> "$localConf"
    fi
    echo "U-Boot boot mode: ${uboot_netboot_mode}"
+fi
+
+##############################################################################
+# Activate the environment instead of building, if -e was requested
+##############################################################################
+
+# setupsdk has been sourced by both the fresh-configure and existing-project
+# paths above, so the Yocto environment is live here. exec into an interactive
+# shell rather than returning: this script is a child process of the caller, so
+# a plain exit could not hand back either the working directory or the
+# environment, which is the whole point of -e.
+if [ $activateEnv -eq 1 ]
+then
+   cd "$proj_dir/build"
+   echo "Yocto environment active in $proj_dir/build. Type 'exit' to return."
+   exec "${SHELL:-bash}" -i
 fi
 
 ##############################################################################
