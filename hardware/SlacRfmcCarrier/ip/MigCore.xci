@@ -3,8 +3,8 @@
   "ip_inst": {
     "xci_name": "MigCore",
     "component_reference": "xilinx.com:ip:ddr4:2.2",
-    "ip_revision": "28",
-    "gen_directory": "../../../../RfmcCarrierLoopbackTester_project.gen/sources_1/ip/MigCore",
+    "ip_revision": "30",
+    "gen_directory": "../../../../SimpleSlacRfmcCarrierExample_project.gen/sources_1/ip/MigCore",
     "parameters": {
       "component_parameters": {
         "C0.ControllerType": [ { "value": "DDR4_SDRAM", "resolve_type": "user", "enabled": false, "usage": "all" } ],
@@ -148,7 +148,8 @@
         "C0.DDR4_Enable_LVAUX": [ { "value": "false", "resolve_type": "user", "format": "bool", "usage": "all" } ],
         "C0.DDR4_EN_PARITY": [ { "value": "false", "resolve_type": "user", "format": "bool", "usage": "all" } ],
         "EN_PP_4R_MIR": [ { "value": "false", "resolve_type": "user", "format": "bool", "usage": "all" } ],
-        "MCS_WO_DSP": [ { "value": "false", "resolve_type": "user", "format": "bool", "usage": "all" } ]
+        "MCS_WO_DSP": [ { "value": "false", "resolve_type": "user", "format": "bool", "usage": "all" } ],
+        "LOW_BRAM_MODE": [ { "value": "false", "resolve_type": "user", "format": "bool", "usage": "all" } ]
       },
       "model_parameters": {
         "C0.DDR4_Mem_Add_Map": [ { "value": "ROW_COLUMN_BANK", "resolve_type": "generated", "usage": "simulation.tlm" } ],
@@ -303,12 +304,12 @@
       },
       "runtime_parameters": {
         "IPCONTEXT": [ { "value": "IP_Flow" } ],
-        "IPREVISION": [ { "value": "28" } ],
+        "IPREVISION": [ { "value": "30" } ],
         "MANAGED": [ { "value": "TRUE" } ],
-        "OUTPUTDIR": [ { "value": "../../../../RfmcCarrierLoopbackTester_project.gen/sources_1/ip/MigCore" } ],
+        "OUTPUTDIR": [ { "value": "../../../../SimpleSlacRfmcCarrierExample_project.gen/sources_1/ip/MigCore" } ],
         "SELECTEDSIMMODEL": [ { "value": "" } ],
         "SHAREDDIR": [ { "value": "." } ],
-        "SWVERSION": [ { "value": "2025.2" } ],
+        "SWVERSION": [ { "value": "2026.1" } ],
         "SYNTHESISFLOW": [ { "value": "OUT_OF_CONTEXT" } ]
       }
     },
@@ -596,5 +597,5 @@
       }
     }
   },
-  "checksum": "60e9dd4b"
+  "checksum": "8154d532"
 }

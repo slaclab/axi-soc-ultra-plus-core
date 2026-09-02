@@ -3,11 +3,11 @@
     "design_info": {
       "boundary_crc": "0xE7D16F78A888C741",
       "device": "xczu48dr-ffvg1517-2-e",
-      "gen_directory": "../../../../RfmcCarrierLoopbackTester_project.gen/sources_1/bd/bd",
+      "gen_directory": "../../../../SimpleSlacRfmcCarrierExample_project.gen/sources_1/bd/2026",
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
-      "tool_version": "2025.1",
+      "tool_version": "2026.1",
       "validated": "true"
     },
     "design_tree": {
@@ -897,7 +897,7 @@
     "components": {
       "axi_protocol_convert_0": {
         "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
-        "ip_revision": "36",
+        "ip_revision": "38",
         "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0.xci",
         "inst_hier_path": "axi_protocol_convert_0",
@@ -932,7 +932,7 @@
       },
       "axi_protocol_convert_1": {
         "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
-        "ip_revision": "36",
+        "ip_revision": "38",
         "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0.xci",
         "inst_hier_path": "axi_protocol_convert_1",
@@ -967,7 +967,7 @@
       },
       "zynq_ultra_ps_e_0": {
         "vlnv": "xilinx.com:ip:zynq_ultra_ps_e:3.5",
-        "ip_revision": "7",
+        "ip_revision": "9",
         "xci_name": "AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0.xci",
         "inst_hier_path": "zynq_ultra_ps_e_0",
