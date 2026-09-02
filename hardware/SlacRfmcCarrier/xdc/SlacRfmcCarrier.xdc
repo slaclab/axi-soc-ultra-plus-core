@@ -145,7 +145,7 @@ set_property PACKAGE_PIN G15 [get_ports {ddrCke[0]}]
 # set_property PACKAGE_PIN G18 [get_ports {ddrCsL[1]}]
 set_property PACKAGE_PIN H18 [get_ports {ddrCsL[0]}]
 
-set_property PACKAGE_PIN F17 [get_ports {ddrBg[1]}]
+# set_property PACKAGE_PIN F17 [get_ports {ddrBg[1]}]; # x16 SODIMM has 2 bank groups, BG1 unused
 set_property PACKAGE_PIN G17 [get_ports {ddrBg[0]}]
 
 set_property PACKAGE_PIN M18 [get_ports {ddrBa[1]}]

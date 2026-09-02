@@ -3,11 +3,11 @@
     "design_info": {
       "boundary_crc": "0xE7D16F78A888C741",
       "device": "xczu48dr-ffvg1517-2-e",
-      "gen_directory": "../../../../RfmcCarrierLoopbackTester_project.gen/sources_1/bd/bd",
+      "gen_directory": "../../../../SimpleSlacRfmcCarrierExample_project.gen/sources_1/bd/2026",
       "name": "AxiSocUltraPlusCpuCore",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",
-      "tool_version": "2025.1",
+      "tool_version": "2026.1",
       "validated": "true"
     },
     "design_tree": {
@@ -897,7 +897,7 @@
     "components": {
       "axi_protocol_convert_0": {
         "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
-        "ip_revision": "36",
+        "ip_revision": "38",
         "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_0_0.xci",
         "inst_hier_path": "axi_protocol_convert_0",
@@ -932,7 +932,7 @@
       },
       "axi_protocol_convert_1": {
         "vlnv": "xilinx.com:ip:axi_protocol_converter:2.1",
-        "ip_revision": "36",
+        "ip_revision": "38",
         "xci_name": "AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0/AxiSocUltraPlusCpuCore_axi_protocol_convert_1_0.xci",
         "inst_hier_path": "axi_protocol_convert_1",
@@ -967,7 +967,7 @@
       },
       "zynq_ultra_ps_e_0": {
         "vlnv": "xilinx.com:ip:zynq_ultra_ps_e:3.5",
-        "ip_revision": "7",
+        "ip_revision": "9",
         "xci_name": "AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0",
         "xci_path": "ip/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0/AxiSocUltraPlusCpuCore_zynq_ultra_ps_e_0_0.xci",
         "inst_hier_path": "zynq_ultra_ps_e_0",
@@ -2062,7 +2062,7 @@
             "value": "1"
           },
           "PSU__ACT_DDR_FREQ_MHZ": {
-            "value": "799.992004"
+            "value": "1049.989502"
           },
           "PSU__AUX_REF_CLK__FREQMHZ": {
             "value": "33.333"
@@ -2221,10 +2221,10 @@
             "value": "IOPLL"
           },
           "PSU__CRF_APB__DDR_CTRL__ACT_FREQMHZ": {
-            "value": "399.996002"
+            "value": "524.994751"
           },
           "PSU__CRF_APB__DDR_CTRL__FREQMHZ": {
-            "value": "800"
+            "value": "1066"
           },
           "PSU__CRF_APB__DDR_CTRL__SRCSEL": {
             "value": "DPLL"
@@ -2236,7 +2236,7 @@
             "value": "600"
           },
           "PSU__CRF_APB__DPDMA_REF_CTRL__SRCSEL": {
-            "value": "DPLL"
+            "value": "APLL"
           },
           "PSU__CRF_APB__DPLL_CTRL__FRACFREQ": {
             "value": "27.138"
@@ -2278,7 +2278,7 @@
             "value": "600"
           },
           "PSU__CRF_APB__GDMA_REF_CTRL__SRCSEL": {
-            "value": "DPLL"
+            "value": "APLL"
           },
           "PSU__CRF_APB__GPU_REF_CTRL__ACT_FREQMHZ": {
             "value": "0"
@@ -2320,13 +2320,13 @@
             "value": "IOPLL"
           },
           "PSU__CRF_APB__TOPSW_MAIN_CTRL__ACT_FREQMHZ": {
-            "value": "533.328003"
+            "value": "524.994751"
           },
           "PSU__CRF_APB__TOPSW_MAIN_CTRL__FREQMHZ": {
             "value": "533.333"
           },
           "PSU__CRF_APB__TOPSW_MAIN_CTRL__SRCSEL": {
-            "value": "VPLL"
+            "value": "DPLL"
           },
           "PSU__CRF_APB__VPLL_CTRL__FRACFREQ": {
             "value": "27.138"
@@ -2731,7 +2731,7 @@
             "value": "0"
           },
           "PSU__DDRC__BG_ADDR_COUNT": {
-            "value": "2"
+            "value": "1"
           },
           "PSU__DDRC__BRC_MAPPING": {
             "value": "ROW_BANK_COL"
@@ -2740,7 +2740,7 @@
             "value": "64 Bit"
           },
           "PSU__DDRC__CL": {
-            "value": "12"
+            "value": "15"
           },
           "PSU__DDRC__CLOCK_STOP_EN": {
             "value": "0"
@@ -2770,13 +2770,13 @@
             "value": "Normal (0-85)"
           },
           "PSU__DDRC__DEVICE_CAPACITY": {
-            "value": "8192 MBits"
+            "value": "16384 MBits"
           },
           "PSU__DDRC__DM_DBI": {
             "value": "DM_NO_DBI"
           },
           "PSU__DDRC__DRAM_WIDTH": {
-            "value": "8 Bits"
+            "value": "16 Bits"
           },
           "PSU__DDRC__ECC": {
             "value": "Disabled"
@@ -2833,13 +2833,13 @@
             "value": "0"
           },
           "PSU__DDRC__ROW_ADDR_COUNT": {
-            "value": "16"
+            "value": "17"
           },
           "PSU__DDRC__SELF_REF_ABORT": {
             "value": "0"
           },
           "PSU__DDRC__SPEED_BIN": {
-            "value": "DDR4_1600L"
+            "value": "DDR4_2133P"
           },
           "PSU__DDRC__STATIC_RD_MODE": {
             "value": "0"
@@ -2857,16 +2857,16 @@
             "value": "30.0"
           },
           "PSU__DDRC__T_RAS_MIN": {
-            "value": "35"
+            "value": "33.0"
           },
           "PSU__DDRC__T_RC": {
-            "value": "50"
+            "value": "46.5"
           },
           "PSU__DDRC__T_RCD": {
-            "value": "12"
+            "value": "15"
           },
           "PSU__DDRC__T_RP": {
-            "value": "12"
+            "value": "15"
           },
           "PSU__DDRC__VIDEO_BUFFER_SIZE": {
             "value": "0"
@@ -2884,7 +2884,7 @@
             "value": "1"
           },
           "PSU__DDR__INTERFACE__FREQMHZ": {
-            "value": "400.000"
+            "value": "533.000"
           },
           "PSU__DEVICE_TYPE": {
             "value": "RFSOC"
