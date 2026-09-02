@@ -270,11 +270,11 @@ Inside the container, run ``BuildYoctoProject.sh`` pointing at the ``.xsa`` file
 SD card
 -------
 
-Once the Yocto build is complete, write the boot images to an SD card. Full instructions
-— including manual partitioning and the scripted ``CreateDiskImage.sh`` approach — are on
-the :doc:`../how-to/sd_card_imaging` page.
+Once the Yocto build is complete, write the boot images to an SD card. Full instructions,
+covering both scripted approaches and by-hand partitioning, are on the
+:doc:`../how-to/sd_card_imaging` page.
 
-The four files to copy to the SD card FAT32 boot partition are:
+The four files that have to end up on the SD card FAT32 boot partition are:
 
 .. code-block:: text
 
@@ -283,26 +283,56 @@ The four files to copy to the SD card FAT32 boot partition are:
    firmware/build/YoctoProjects/<your-target-dir>/linux/boot.scr
    firmware/build/YoctoProjects/<your-target-dir>/linux/system.bit
 
-**Manual copy recipe** (SD card FAT32 on ``/dev/sde1`` — adjust device path as needed):
+Every example below uses ``/dev/sdd`` for the card and ``/dev/sdd1`` for its boot
+partition. Substitute your own device node, and confirm it against the card's size
+and model with ``lsblk -o NAME,SIZE,MODEL,TRAN`` before writing to it.
+
+**Scripted approach** (preferred, using ``CreateDiskImage.sh`` from the platform
+submodule). This builds a fully partitioned image containing those four files, then
+writes it to the card. Run the script as a normal user: it invokes ``sudo`` itself
+for the steps that need root, and it must be executed rather than ``source``-d.
+
+.. code-block:: bash
+
+   # Build the image file
+   ./firmware/submodules/axi-soc-ultra-plus-core/scripts/CreateDiskImage.sh \
+       path_to_image_file.img \
+       firmware/targets/<your-target-dir>/images/<full-name>.linux.tar.gz
+
+   # Identify the card, then write the image to the whole disk (not a partition).
+   # Check the size and model first: dd overwrites the target with no prompt.
+   lsblk -o NAME,SIZE,MODEL,TRAN
+   sudo dd if=path_to_image_file.img of=/dev/sdd bs=1M status=progress conv=fsync
+   sudo sync
+
+The image is smaller than the card, so the application partition it contains does not
+fill the card. That is fine for a first boot; see the how-to page for the grow step.
+
+**One-pass alternative** (``FormatSdCard.sh``). If you just want this one card ready and
+do not need a reusable ``.img``, this partitions, formats and loads the card in a single
+command, with the application partition sized to the whole card from the start, so there
+is no ``dd`` and no grow step. It erases the target and refuses any device that is not
+removable media:
+
+.. code-block:: bash
+
+   ./firmware/submodules/axi-soc-ultra-plus-core/scripts/FormatSdCard.sh \
+       /dev/sdd \
+       firmware/targets/<your-target-dir>/images/<full-name>.linux.tar.gz
+
+**Manual copy recipe**, for a card that is already partitioned and formatted, with
+its FAT32 boot partition on ``/dev/sdd1``:
 
 .. code-block:: bash
 
    sudo mkdir -p boot
-   sudo mount /dev/sde1 boot
+   sudo mount /dev/sdd1 boot
    sudo cp firmware/build/YoctoProjects/<your-target-dir>/linux/system.bit boot/
    sudo cp firmware/build/YoctoProjects/<your-target-dir>/linux/BOOT.BIN   boot/
    sudo cp firmware/build/YoctoProjects/<your-target-dir>/linux/image.ub   boot/
    sudo cp firmware/build/YoctoProjects/<your-target-dir>/linux/boot.scr   boot/
    sudo sync boot/
    sudo umount boot
-
-**Scripted approach** (using ``CreateDiskImage.sh`` from the platform submodule):
-
-.. code-block:: bash
-
-   source firmware/submodules/axi-soc-ultra-plus-core/scripts/CreateDiskImage.sh \
-       path_to_image_file.img \
-       firmware/targets/<your-target-dir>/images/<full-name>.linux.tar.gz
 
 Boot
 ----
