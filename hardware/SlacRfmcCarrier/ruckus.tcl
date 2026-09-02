@@ -23,3 +23,10 @@ loadBlockDesign -path "$::DIR_PATH/bd/${bdVer}/AxiSocUltraPlusCpuCore.bd"
 
 # Load IP cores
 loadIpCore -dir "$::DIR_PATH/ip"
+
+# The DDR4 IP records its custom parts database as an absolute path, so re-point it at this
+# checkout. Without this the IP silently falls back to a 512MB AXI address space instead of 8GB.
+set_property CONFIG.C0.DDR4_CustomParts "$::DIR_PATH/ip/MigCoreCustomParts.csv" [get_ips MigCore]
+if { [get_property CONFIG.C0.DDR4_AxiAddressWidth [get_ips MigCore]] != 33 } {
+   puts "\n\nERROR: MigCore custom part MTA4ATF1G64HZ-3G2 not applied (expected a 33-bit AXI address space for 8GB)\n\n"; exit -1
+}
