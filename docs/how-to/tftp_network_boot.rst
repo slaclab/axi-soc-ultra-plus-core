@@ -390,6 +390,25 @@ Steps
    again with ``setenv serverip`` (and ``saveenv`` if you had persisted
    it).
 
+   .. warning::
+
+      ``saveenv`` costs more than it looks.  The stored environment takes
+      precedence over the one compiled into ``BOOT.BIN`` permanently, and
+      reflashing ``BOOT.BIN`` does **not** update it, because U-Boot keeps
+      the environment in a separate QSPI sector at ``0x1E00000`` that the
+      flash scripts never write.  A later build with a changed ``bootcmd``,
+      ``netboot``, or ``loadpl_net`` is then silently ignored: the board
+      keeps booting the old way after an apparently successful reflash.
+      Prefer leaving addressing volatile.  To undo a ``saveenv``, erase the
+      sector at the U-Boot prompt::
+
+         sf probe 0 0 0
+         sf erase 0x1E00000 0x80000
+
+      See :doc:`qspi_flash` for the full explanation, including why the
+      ``*** Warning - bad CRC, using default environment`` message on a
+      freshly flashed board is both expected and the safer state.
+
    To fetch the FIT directly instead — the fallback path ``netboot``
    takes when no PXE config is served — skip the ``pxe`` commands and
    fetch ``image.ub`` by name:
