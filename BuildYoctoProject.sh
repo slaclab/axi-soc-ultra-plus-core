@@ -71,6 +71,32 @@ case "$uboot_netboot_mode" in
    *) echo "Invalid -m MODE '$uboot_netboot_mode' (expected 'sd-only', 'fallback' or 'tftp-only')"; show_help;;
 esac
 
+##############################################################################
+# In 'tftp-only' mode U-Boot fetches the PL bitstream over TFTP and 'fpga load's
+# it before booting, so the copy that meta-xilinx bakes into BOOT.BIN is dead
+# weight: it makes BOOT.BIN ~34MB instead of <2MB (a large cost when flashing
+# QSPI/NAND over JTAG), and because the FSBL programs it at power-on it also
+# masks whether the network bitstream actually loaded. Dropping it is the
+# BIF_BITSTREAM_ATTR mechanism described in docs/how-to/tftp_network_boot.rst.
+#
+# 'sd-only' and 'fallback' must keep the bitstream: they can boot with no
+# network, and nothing else would program the PL.
+##############################################################################
+
+function setBitstreamAttr {
+   local localConf=$1
+   local attr="bitstream"
+   if [ "$uboot_netboot_mode" = "tftp-only" ]; then
+      attr=""
+   fi
+   if grep -q '^BIF_BITSTREAM_ATTR = ' "$localConf"; then
+      sed -i "s|^BIF_BITSTREAM_ATTR = .*|BIF_BITSTREAM_ATTR = \"${attr}\"|" "$localConf"
+   else
+      echo "BIF_BITSTREAM_ATTR = \"${attr}\"" >> "$localConf"
+   fi
+   echo "BOOT.BIN bitstream: $([ -z "$attr" ] && echo "omitted (tftp-only)" || echo "embedded")"
+}
+
 if [ -z "$name" ] || [ -z "$path" ] || [ -z "$hwType" ] || [ -z "$xsa" ] || [ -z "$projTop" ]
 then
    echo "Missing required parameter"
@@ -285,6 +311,7 @@ then
 
    # Set the shared U-Boot netboot hook's build-time mode in the local.conf
    echo "UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode}\"" >> $proj_dir/build/conf/local.conf
+   setBitstreamAttr "$proj_dir/build/conf/local.conf"
 
    # Install the samples/tests
    echo "IMAGE_INSTALL:append = \" axidmasamples\"" >> $proj_dir/build/conf/local.conf
@@ -382,6 +409,7 @@ then
    else
       echo "UBOOT_NETBOOT_MODE = \"${uboot_netboot_mode}\"" >> "$localConf"
    fi
+   setBitstreamAttr "$localConf"
    echo "U-Boot boot mode: ${uboot_netboot_mode}"
 fi
 
@@ -423,6 +451,24 @@ if [ ! -f "$deploy_dir/boot.bin" ]; then
 fi
 
 ##############################################################################
+# The bitstream only reaches the deploy dir as a xilinx-bootbin dependency:
+# that recipe builds DEPENDS from BIF_PARTITION_ATTR, mapping the 'bitstream'
+# entry to virtual/bitstream. In 'tftp-only' mode BIF_BITSTREAM_ATTR is empty
+# to keep the bitstream out of BOOT.BIN, which also drops virtual/bitstream
+# from that dependency list, so download-<machine>.bit is never built.
+#
+# system.bit is still required in that mode: it is the file the TFTP server
+# serves and U-Boot's loadpl_net fetches to program the PL. Build the provider
+# directly so the deploy dir has it regardless of the BIF. Ask for the virtual
+# target rather than a recipe name, so whichever provider the machine selects
+# is used (bitstream-extraction on this XSCT-based BSP).
+##############################################################################
+if [ ! -f "$deploy_dir/download-zynqmp-user.bit" ]; then
+    echo "download-zynqmp-user.bit not found. Running bitbake virtual/bitstream..."
+    bitbake virtual/bitstream || die "bitbake virtual/bitstream returned non-zero. Aborting."
+fi
+
+##############################################################################
 # Package all the images into a .tar.gz
 ##############################################################################
 
@@ -432,10 +478,19 @@ mkdir -p $proj_dir/linux
 # Go to deploy image dir
 cd $deploy_dir
 
-# Copy over the FSBL, U-boot and .bit files
+# Copy over the .bit, BOOT.BIN, boot.scr and FSBL files
+#
+# The FSBL is packaged as linux/zynqmp_fsbl.elf, the path that
+# program_qspi_flash.sh and program_nand_flash.sh probe when -e is not given.
+# program_flash requires -fsbl for ZynqMP and has no fallback, and the generic
+# FSBL that Vitis bundles carries a reference PS/DDR configuration, so on a
+# custom carrier it hangs with "Timed out while waiting for FSBL to complete".
+# Shipping the FSBL built from this design's .xsa is what lets JTAG flash
+# programming work without the caller locating the Yocto deploy dir by hand.
 cp -rfL download-zynqmp-user.bit $proj_dir/linux/system.bit
 cp -rfL boot.bin                 $proj_dir/linux/BOOT.BIN
 cp -rfL boot.scr                 $proj_dir/linux/boot.scr
+cp -rfL fsbl-zynqmp-user.elf     $proj_dir/linux/zynqmp_fsbl.elf
 
 # Create the image.ub
 cp -rfL Image linux.bin
@@ -449,7 +504,7 @@ cp $axi_soc_ultra_plus_core/shared/Yocto/image.its .
 mkimage -f image.its $proj_dir/linux/image.ub  > /dev/null
 
 # Default file list
-fileList="linux/system.bit linux/BOOT.BIN linux/boot.scr linux/image.ub"
+fileList="linux/system.bit linux/BOOT.BIN linux/boot.scr linux/image.ub linux/zynqmp_fsbl.elf"
 
 if [[ -v SOC_IP_STATIC ]]; then
    # File list with static IP
