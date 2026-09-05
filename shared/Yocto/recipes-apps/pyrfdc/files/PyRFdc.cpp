@@ -2990,11 +2990,11 @@ void PyRFdc::MtsSync() {
             for(i=0; i<4; i++) {
                 if((1<<i)&mtsConfig_[tileType_].Tiles) {
                     if (tileType_ == XRFDC_ADC_TILE) {
-                        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
-                        XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &mtsfactor_[tileType_][i]);
-                    } else {
                         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecimationFactor
                         XRFdc_GetDecimationFactor(RFdcInstPtr_, i, 0, &mtsfactor_[tileType_][i]);
+                    } else {
+                        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
+                        XRFdc_GetInterpolationFactor(RFdcInstPtr_, i, 0, &mtsfactor_[tileType_][i]);
                     }
                 }
             }
