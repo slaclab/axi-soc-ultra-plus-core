@@ -25,7 +25,20 @@ class LiveDisplay(PyDMFrame):
         self.color     = ["white","red", "dodgerblue","forestgreen","yellow","magenta","turquoise","deeppink","white","red", "dodgerblue","forestgreen","yellow","magenta","turquoise","deeppink"]
         self.path      = [f'{self.channel}.{self._dispType}Processor[{i}]' for i in range(self.numCh)]
         self.idx       = 0
-        self.RxEnable  = [nodeFromAddress(self.path[i]+'.RxEnable') for i in range(self.numCh)]
+
+    def setRxEnable(self, idx, value):
+        # Resolve the node on every access instead of caching it. The PyDM rogue
+        # plugin tears down the shared VirtualClient whenever a channel is
+        # disconnected, which permanently invalidates any node handle held here.
+        nodeFromAddress(f'{self.path[idx]}.RxEnable').set(value)
+
+    def showPlotCh(self):
+        # Only the selected channel's curves are visible. Curves are never removed
+        # because that disconnects their PyDM channels, which stops the
+        # VirtualClient shared by the rest of the GUI.
+        for i in range(self.numCh):
+            self.timePlot.curveAtIndex(i).setVisible(i == self.idx)
+            self.freqPlot.curveAtIndex(i).setVisible(i == self.idx)
 
     def resetScales(self):
         # Reset the auto-ranging
@@ -37,34 +50,17 @@ class LiveDisplay(PyDMFrame):
 
     def changePlotCh(self, ch):
         # Disable processing on current channel
-        self.RxEnable[self.idx].set(False)
+        self.setRxEnable(self.idx, False)
 
         # Convert float to int
         if int(ch)< self.numCh:
             self.idx = int(ch)
 
         # Enable processing on new channel
-        self.RxEnable[self.idx].set(True)
+        self.setRxEnable(self.idx, True)
 
-        # Remove curve items
-        self.timePlot.removeChannelAtIndex(0)
-        self.freqPlot.removeChannelAtIndex(0)
-
-        # Add new curve item with respect to channel select
-        self.timePlot.addChannel(
-            x_channel  = f'{self.path[self.idx]}.Time',
-            y_channel  = f'{self.path[self.idx]}.WaveformData',
-            color      = self.color[self.idx],
-            symbol     = 'o',
-            symbolSize = 3,
-        )
-        self.freqPlot.addChannel(
-            x_channel  = f'{self.path[self.idx]}.Freq',
-            y_channel  = f'{self.path[self.idx]}.Magnitude',
-            color      = self.color[self.idx],
-            symbol     = 'o',
-            symbolSize = 3,
-        )
+        # Show the curve items with respect to channel select
+        self.showPlotCh()
 
         # Reset the auto-ranging
         self.resetScales()
@@ -79,7 +75,7 @@ class LiveDisplay(PyDMFrame):
         self._node = nodeFromAddress(self.channel)
 
         # Enable processing on new channel
-        self.RxEnable[self.idx].set(True)
+        self.setRxEnable(self.idx, True)
 
         vb = QVBoxLayout()
         self.setLayout(vb)
@@ -97,14 +93,15 @@ class LiveDisplay(PyDMFrame):
 
         self.timePlot = PyDMWaveformPlot()
         self.timePlot.setLabel("bottom", text='Time (ns)')
-        self.timePlot.addChannel(
-            name       = 'Counts',
-            x_channel  = f'{self.path[self.idx]}.Time',
-            y_channel  = f'{self.path[self.idx]}.WaveformData',
-            color      = self.color[self.idx],
-            symbol     = 'o',
-            symbolSize = 3,
-        )
+        for i in range(self.numCh):
+            self.timePlot.addChannel(
+                name       = 'Counts',
+                x_channel  = f'{self.path[i]}.Time',
+                y_channel  = f'{self.path[i]}.WaveformData',
+                color      = self.color[i],
+                symbol     = 'o',
+                symbolSize = 3,
+            )
         fl.addWidget(self.timePlot)
 
         #-----------------------------------------------------------------------------
@@ -120,18 +117,22 @@ class LiveDisplay(PyDMFrame):
 
         self.freqPlot = PyDMWaveformPlot()
         self.freqPlot.setLabel("bottom", text='Frequency (MHz)')
-        self.freqPlot.addChannel(
-            name       = 'Amplitude (dBFS)',
-            x_channel  = f'{self.path[self.idx]}.Freq',
-            y_channel  = f'{self.path[self.idx]}.Magnitude',
-            color      = self.color[self.idx],
-            symbol     = 'o',
-            symbolSize = 3,
-        )
+        for i in range(self.numCh):
+            self.freqPlot.addChannel(
+                name       = 'Amplitude (dBFS)',
+                x_channel  = f'{self.path[i]}.Freq',
+                y_channel  = f'{self.path[i]}.Magnitude',
+                color      = self.color[i],
+                symbol     = 'o',
+                symbolSize = 3,
+            )
         self.freqPlot.setAutoRangeY(False)
         self.freqPlot.setMinYRange(-140.0)
         self.freqPlot.setMaxYRange(0.0)
         fl.addWidget(self.freqPlot)
+
+        # Show only the selected channel's curves
+        self.showPlotCh()
 
         #-----------------------------------------------------------------------------
 
