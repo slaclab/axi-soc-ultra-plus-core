@@ -358,4 +358,26 @@ begin
 
    end generate;
 
+   GEN_DISABLED : if (not DMA_ENABLED_G) generate
+
+      -- Concurrent assignments, not port defaults: a default expression only
+      -- applies when the formal is left unassociated, so a parent that connects
+      -- these ports would otherwise see undriven (tied low) outputs and any AXI
+      -- transaction would never complete.
+      axiReadMaster   <= AXI_READ_MASTER_INIT_C;
+      axiWriteMaster  <= AXI_WRITE_MASTER_INIT_C;
+
+      usrReadSlave    <= AXI_READ_SLAVE_FORCE_C;
+      usrWriteSlave   <= AXI_WRITE_SLAVE_FORCE_C;
+
+      axilReadSlaves  <= (others => AXI_LITE_READ_SLAVE_EMPTY_OK_C);
+      axilWriteSlaves <= (others => AXI_LITE_WRITE_SLAVE_EMPTY_OK_C);
+
+      dmaIrq          <= '0';
+      dmaBuffGrpPause <= (others => '0');
+      dmaObMasters    <= (others => AXI_STREAM_MASTER_INIT_C);
+      dmaIbSlaves     <= (others => AXI_STREAM_SLAVE_FORCE_C);
+
+   end generate;
+
 end mapping;
