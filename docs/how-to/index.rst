@@ -13,3 +13,4 @@ Step-by-step recipes for common operational tasks.
    tftp_network_boot
    xsct_boot_mode
    qspi_flash
+   nand_flash

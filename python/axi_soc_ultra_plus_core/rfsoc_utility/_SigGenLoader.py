@@ -45,6 +45,13 @@ class SigGenLoader(pr.Device):
         self._smplRate    = sampleRate
         self._timeBin     = (1.0/sampleRate)
 
+        # Per-channel bookkeeping. BufferLength is a single register shared by
+        # every channel, so loading channels at different frequencies has to
+        # keep it a whole number of periods for all of them.
+        self._freqHz     = {} # Tone frequency currently loaded, in Hz
+        self._wordLength = {} # Shortest whole-period length, in samples
+        self._fillLength = {} # Samples actually written to the channel
+
         self.add(pr.LocalVariable(
             name    = 'Frequency',
             typeStr = 'Float[np]',
@@ -72,55 +79,116 @@ class SigGenLoader(pr.Device):
 
         @self.command()
         def LoadSingleTones():
-            click.secho(f'{self.path}.LoadSingleTones(freq={self.Frequency.value()})', fg='green')
+            self._loadAllTones()
 
-            # Calculate the frequency ratio
-            freqRatio = (self._smplRate/self.Frequency.value())
+    def _toneWordLength(self, freqHz):
+        # Calculate the frequency ratio
+        freqRatio = (self._smplRate/freqHz)
 
-            # Calculate the common integers
-            commonInt = common_integer(freqRatio,self.smplPerCycle)
+        # Calculate the common integers
+        commonInt = common_integer(freqRatio,self.smplPerCycle)
 
-            # Find an integer multiple of unit interval with respect to # of sample per clock cycle
-            wordLength = -1
-            for x in commonInt:
-                value = float(x)*freqRatio
-                # Check for zero remainer and multiple of samples per cycle
-                if (np.mod(value, 1) == 0) and (np.mod(value, self.smplPerCycle) == 0):
-                    wordLength = int(value)
-                    break
+        # Find an integer multiple of unit interval with respect to # of sample per clock cycle
+        for x in commonInt:
+            value = float(x)*freqRatio
+            # Check for zero remainer and multiple of samples per cycle
+            if (np.mod(value, 1) == 0) and (np.mod(value, self.smplPerCycle) == 0):
+                return int(value)
 
-            ## Check if couldn't find integer multiple
-            if wordLength < 0:
-                click.secho('Unable to find an integer multiple of unit interval with respect to # of sample per clock cycle', fg='red')
-                return
+        return -1
 
-            ## Check if couldn't find integer multiple
-            if wordLength >= self.ramDepth:
-                click.secho('waveform length longer than buffering', fg='red')
-                return
+    def _loadTone(self, ch, freqHz, wordLength):
+        # Calculate angular frequency & phase
+        w   = 2.0*np.pi*freqHz
+        phi = self.Phase[ch].value()*np.pi/180.0
 
-            # Loop through the channels
-            for ch in range(self.numCh):
+        # Load the waveforms data
+        for t in range(wordLength):
 
-                # Calculate angular frequency & phase
-                w   = 2.0*np.pi*self.Frequency.value()
-                phi = self.Phase[ch].value()*np.pi/180.0
+            # Calculate the value
+            timeStep = float(t)*self._timeBin
+            value    = float(self.Amplitude[ch].value())*np.sin(w*timeStep + phi)
 
-                # Load the waveforms data
-                for t in range(wordLength):
+            # Update only the shadow variable value (write performance reasons)
+            self.DacSigGen.Waveform[ch].set(value=int(value),index=t,write=False)
 
-                    # Calculate the value
-                    timeStep = float(t)*self._timeBin
-                    value    = float(self.Amplitude[ch].value())*np.sin(w*timeStep + phi)
+        # Push all shadow variables to hardware
+        self.DacSigGen.Waveform[ch].write()
 
-                    # Update only the shadow variable value (write performance reasons)
-                    self.DacSigGen.Waveform[ch].set(value=int(value),index=t,write=False)
+        # Track how much of the channel is actually filled
+        self._fillLength[ch] = wordLength
 
-                # Push all shadow variables to hardware
-                self.DacSigGen.Waveform[ch].write()
+    def LoadSingleTone(self, index, freq):
+        # Load a single tone on one channel. index selects the channel and freq
+        # sets its tone in units of MHz. Use the LoadSingleTones() command to
+        # drive every channel from the Frequency variable instead.
+        ch = int(index)
+        if (ch < 0) or (ch >= self.numCh):
+            click.secho(f'{self.path}.LoadSingleTone(): index={ch} outside of 0:{self.numCh-1}', fg='red')
+            return
 
-            # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
-            self.DacSigGen.BufferLength.set((wordLength//self.smplPerCycle)-1)
+        freqHz = float(freq)*1.0E+6
+        click.secho(f'{self.path}.LoadSingleTone(index={ch}, freq={freq} MHz)', fg='green')
 
-            # Toggle flags (if flags already active)
-            self.DacSigGen.RefreshDacFsm()
+        wordLength = self._toneWordLength(freqHz)
+
+        ## Check if couldn't find integer multiple
+        if wordLength < 0:
+            click.secho('Unable to find an integer multiple of unit interval with respect to # of sample per clock cycle', fg='red')
+            return
+
+        # BufferLength is shared by every channel, so use the least common
+        # multiple of the loaded channels. Nothing is committed until the
+        # common length is known to fit.
+        wordLengths     = dict(self._wordLength)
+        wordLengths[ch] = wordLength
+        bufLength       = reduce(lcm, wordLengths.values())
+
+        ## Check if couldn't find integer multiple
+        if bufLength >= self.ramDepth:
+            click.secho(f'waveform length longer than buffering ({bufLength} >= {self.ramDepth})', fg='red')
+            return
+
+        self._wordLength = wordLengths
+        self._freqHz[ch] = freqHz
+
+        # Reload the requested channel, plus any channel that no longer spans
+        # the common buffer length
+        for c in sorted(self._freqHz):
+            if (c == ch) or (self._fillLength.get(c) != bufLength):
+                self._loadTone(c, self._freqHz[c], bufLength)
+
+        # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
+        self.DacSigGen.BufferLength.set((bufLength//self.smplPerCycle)-1)
+
+        # Toggle flags (if flags already active)
+        self.DacSigGen.RefreshDacFsm()
+
+    def _loadAllTones(self):
+        click.secho(f'{self.path}.LoadSingleTones(freq={self.Frequency.value()})', fg='green')
+
+        freqHz     = self.Frequency.value()
+        wordLength = self._toneWordLength(freqHz)
+
+        ## Check if couldn't find integer multiple
+        if wordLength < 0:
+            click.secho('Unable to find an integer multiple of unit interval with respect to # of sample per clock cycle', fg='red')
+            return
+
+        ## Check if couldn't find integer multiple
+        if wordLength >= self.ramDepth:
+            click.secho('waveform length longer than buffering', fg='red')
+            return
+
+        # Loop through the channels
+        for ch in range(self.numCh):
+            self._loadTone(ch, freqHz, wordLength)
+
+        self._freqHz     = {ch : freqHz     for ch in range(self.numCh)}
+        self._wordLength = {ch : wordLength for ch in range(self.numCh)}
+
+        # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
+        self.DacSigGen.BufferLength.set((wordLength//self.smplPerCycle)-1)
+
+        # Toggle flags (if flags already active)
+        self.DacSigGen.RefreshDacFsm()

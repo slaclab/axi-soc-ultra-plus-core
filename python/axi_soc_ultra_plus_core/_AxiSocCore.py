@@ -47,6 +47,7 @@ class AxiSocCore(pr.Device):
             name        = 'SysMonLvAuxDet',
             offset      = 0x1_1000,
             expand      = False,
+            hidden      = True, # typically not need unless space application and using LVAUX on XQ part for SEU detection
         ))
 
         # DMA AXI Stream Inbound Monitor

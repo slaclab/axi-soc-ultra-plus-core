@@ -47,7 +47,7 @@ entity MigCoreWrapper is
       ddrDq          : inout slv(63 downto 0);
       ddrA           : out   slv(16 downto 0);
       ddrBa          : out   slv(1 downto 0);
-      ddrBg          : out   slv(1 downto 0);
+      ddrBg          : out   slv(0 downto 0);
       ddrCsL         : out   slv(0 downto 0);
       ddrOdt         : out   slv(0 downto 0);
       ddrCke         : out   slv(0 downto 0);
@@ -74,7 +74,7 @@ architecture mapping of MigCoreWrapper is
          c0_ddr4_dqs_c           : inout std_logic_vector(7 downto 0);
          c0_ddr4_dqs_t           : inout std_logic_vector(7 downto 0);
          c0_ddr4_odt             : out   std_logic_vector(0 downto 0);
-         c0_ddr4_bg              : out   std_logic_vector(1 downto 0);
+         c0_ddr4_bg              : out   std_logic_vector(0 downto 0);
          c0_ddr4_reset_n         : out   std_logic;
          c0_ddr4_act_n           : out   std_logic;
          c0_ddr4_ck_c            : out   std_logic_vector(0 downto 0);
