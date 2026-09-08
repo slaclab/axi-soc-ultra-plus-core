@@ -58,10 +58,10 @@ entity AxiSocUltraPlusDma is
       usrWriteSlave  : out AxiWriteSlaveType  := AXI_WRITE_SLAVE_FORCE_C;
 
       -- AXI4-Lite Interfaces (axiClk domain)
-      axilReadMasters  : in  AxiLiteReadMasterArray(2 downto 0)  := (others => AXI_LITE_READ_MASTER_INIT_C);
-      axilReadSlaves   : out AxiLiteReadSlaveArray(2 downto 0)   := (others => AXI_LITE_READ_SLAVE_EMPTY_DECERR_C);
-      axilWriteMasters : in  AxiLiteWriteMasterArray(2 downto 0) := (others => AXI_LITE_WRITE_MASTER_INIT_C);
-      axilWriteSlaves  : out AxiLiteWriteSlaveArray(2 downto 0)  := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
+      axilReadMasters  : in  AxiLiteReadMasterArray(2 downto 0);
+      axilReadSlaves   : out AxiLiteReadSlaveArray(2 downto 0);
+      axilWriteMasters : in  AxiLiteWriteMasterArray(2 downto 0);
+      axilWriteSlaves  : out AxiLiteWriteSlaveArray(2 downto 0);
 
       -- DMA Interfaces (axiClk domain)
       dmaIrq          : out sl                                          := '0';
@@ -360,18 +360,57 @@ begin
 
    GEN_DISABLED : if (not DMA_ENABLED_G) generate
 
+      -- connectivity = 0x0000 means no slave slot is ever granted this master
+      -- slot, so every transaction is answered from the crossbar's own
+      -- S_DEC_ERR_S state using DEC_ERROR_RESP_G. The master slot exists only
+      -- because NUM_MASTER_SLOTS_G has a minimum of 1.
+      constant TERM_CONFIG_C : AxiLiteCrossbarMasterConfigArray(0 downto 0) := (
+         0               => (
+            baseAddr     => x"0000_0000",
+            addrBits     => 12,
+            connectivity => x"0000"));
+
+      -- Dangling master slot. Unreachable per the comment above, so these keep
+      -- their idle init value and are never read.
+      signal termReadSlaves  : AxiLiteReadSlaveArray(0 downto 0)  := (others => AXI_LITE_READ_SLAVE_INIT_C);
+      signal termWriteSlaves : AxiLiteWriteSlaveArray(0 downto 0) := (others => AXI_LITE_WRITE_SLAVE_INIT_C);
+
+   begin
+
       -- Concurrent assignments, not port defaults: a default expression only
       -- applies when the formal is left unassociated, so a parent that connects
       -- these ports would otherwise see undriven (tied low) outputs and any AXI
       -- transaction would never complete.
-      axiReadMaster   <= AXI_READ_MASTER_INIT_C;
-      axiWriteMaster  <= AXI_WRITE_MASTER_INIT_C;
+      axiReadMaster  <= AXI_READ_MASTER_INIT_C;
+      axiWriteMaster <= AXI_WRITE_MASTER_INIT_C;
 
-      usrReadSlave    <= AXI_READ_SLAVE_FORCE_C;
-      usrWriteSlave   <= AXI_WRITE_SLAVE_FORCE_C;
+      usrReadSlave  <= AXI_READ_SLAVE_FORCE_C;
+      usrWriteSlave <= AXI_WRITE_SLAVE_FORCE_C;
 
-      axilReadSlaves  <= (others => AXI_LITE_READ_SLAVE_EMPTY_OK_C);
-      axilWriteSlaves <= (others => AXI_LITE_WRITE_SLAVE_EMPTY_OK_C);
+      -- FSM-based termination. The PS AXI4 to AXI4-Lite protocol converter
+      -- requires a real VALID/READY handshake: a constant-driven record such as
+      -- AXI_LITE_READ_SLAVE_EMPTY_OK_C holds RVALID/BVALID asserted with no
+      -- outstanding request, which desynchronizes the converter and hangs the
+      -- next transaction. Respond OKAY rather than DECERR so a driver that
+      -- probes these registers reads zeros instead of taking a bus fault.
+      U_TermBus : entity surf.AxiLiteCrossbar
+         generic map (
+            TPD_G              => TPD_G,
+            NUM_SLAVE_SLOTS_G  => 3,
+            NUM_MASTER_SLOTS_G => 1,
+            DEC_ERROR_RESP_G   => AXI_RESP_OK_C,
+            MASTERS_CONFIG_G   => TERM_CONFIG_C)
+         port map (
+            axiClk           => axiClk,
+            axiClkRst        => axiRst,
+            sAxiWriteMasters => axilWriteMasters,
+            sAxiWriteSlaves  => axilWriteSlaves,
+            sAxiReadMasters  => axilReadMasters,
+            sAxiReadSlaves   => axilReadSlaves,
+            mAxiWriteMasters => open,
+            mAxiWriteSlaves  => termWriteSlaves,
+            mAxiReadMasters  => open,
+            mAxiReadSlaves   => termReadSlaves);
 
       dmaIrq          <= '0';
       dmaBuffGrpPause <= (others => '0');
