@@ -72,10 +72,31 @@ package HardwareTypePkg is
 
    constant XBAR_I2C_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, MUX_I2C_ADDR_C, 20, 16);
 
-   constant DDR_DEVICE_MAP_C : I2cAxiLiteDevArray(0 to 0) := (
+   -- Every entry below has addrSize => 8, so maxAddrSize(DDR_DEVICE_MAP_C) is 8 and
+   -- I2cRegMasterAxiBridge's I2C_REG_ADDR_SIZE_C is 8. With four entries the device-select
+   -- field is araddr(11 downto 10), so device i occupies the 0x400-byte window starting at
+   -- i*0x400: SPD 0x000-0x3FC, SPA0 0x400, SPA1 0x800, TSE2004av 0xC00. dataSize => 16 on the
+   -- TSE2004av entry does not shift the device-select field, because maxAddrSize folds only
+   -- over addrSize, never dataSize.
+   constant DDR_DEVICE_MAP_C : I2cAxiLiteDevArray(0 to 3) := (
       0             => MakeI2cAxiLiteDevType(
          i2cAddress => "1010000",  -- SRD Memory (1010) (Lookup tool at www.micron.com/spd)
          dataSize   => 8,               -- in units of bits
+         addrSize   => 8,               -- in units of bits
+         endianness => '1'),            -- Big endian
+      1             => MakeI2cAxiLiteDevType(
+         i2cAddress => "0110110",  -- SPA0 (0x36): DDR4 SPD set-page-address-0 command slave
+         dataSize   => 8,               -- in units of bits
+         addrSize   => 8,               -- in units of bits
+         endianness => '1'),            -- Big endian
+      2             => MakeI2cAxiLiteDevType(
+         i2cAddress => "0110111",  -- SPA1 (0x37): DDR4 SPD set-page-address-1 command slave
+         dataSize   => 8,               -- in units of bits
+         addrSize   => 8,               -- in units of bits
+         endianness => '1'),            -- Big endian
+      3             => MakeI2cAxiLiteDevType(
+         i2cAddress => "0011000",  -- TSE2004av (0x18): on-DIMM temperature sensor
+         dataSize   => 16,              -- in units of bits
          addrSize   => 8,               -- in units of bits
          endianness => '1'));           -- Big endian
 
