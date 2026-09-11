@@ -77,6 +77,18 @@ class SigGenLoader(pr.Device):
                 value   = phase[i],
             ))
 
+            # Seeded to 0.0 Hz, never a valid loaded tone, so a channel that
+            # has never been loaded cannot report a plausible frequency.
+            # Read only so a configuration restore cannot write a stale
+            # frequency back over one that was actually loaded.
+            self.add(pr.LocalVariable(
+                name    = f'LoadedFrequency[{i}]',
+                typeStr = 'Float[np]',
+                units   = 'Hz',
+                mode    = 'RO',
+                value   = 0.0,
+            ))
+
         @self.command()
         def LoadSingleTones():
             self._loadAllTones()
@@ -151,6 +163,7 @@ class SigGenLoader(pr.Device):
 
         self._wordLength = wordLengths
         self._freqHz[ch] = freqHz
+        self.LoadedFrequency[ch].set(freqHz)
 
         # Reload the requested channel, plus any channel that no longer spans
         # the common buffer length
@@ -186,6 +199,9 @@ class SigGenLoader(pr.Device):
 
         self._freqHz     = {ch : freqHz     for ch in range(self.numCh)}
         self._wordLength = {ch : wordLength for ch in range(self.numCh)}
+
+        for ch in range(self.numCh):
+            self.LoadedFrequency[ch].set(freqHz)
 
         # Update the BufferLength register to be normalized to smplPerCycle (zero inclusive)
         self.DacSigGen.BufferLength.set((wordLength//self.smplPerCycle)-1)
