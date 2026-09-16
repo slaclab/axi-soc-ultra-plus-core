@@ -326,6 +326,31 @@ then
    # Add the shared netboot-hooks BitBake layer (u-boot-xlnx netboot env override)
    bitbake-layers add-layer "$axi_soc_ultra_plus_core/shared/Yocto"
 
+   ##############################################################################
+   # Add BitBake layers provided by sibling submodules
+   ##############################################################################
+
+   # Lets a submodule ship its own layer, typically a .bbappend overriding one
+   # of the shared recipes symlinked above, without every consuming project
+   # having to carry a copy or a symlink of the same file. Every other layer
+   # hook is rooted in the project ($projTop/shared/Yocto/meta-* and
+   # $projTop/targets/$Name/meta-*), so until now a submodule had no way to
+   # contribute to the Yocto build at all.
+   #
+   # The parent of this submodule is the submodules directory, so this globs
+   # the siblings. realpath keeps a '..' out of the recorded BBLAYERS entry.
+   # The -d test makes it a no-op both for submodules that ship no layer and
+   # for the unexpanded glob when none of them do.
+   submodules_dir=$(realpath $axi_soc_ultra_plus_core/..)
+   for d in "$submodules_dir"/*/Yocto/meta-*
+   do
+      if [ -d "$d" ]
+      then
+         echo "Adding submodule layer $d"
+         bitbake-layers add-layer "$d"
+      fi
+   done
+
    # Update Application with user configuration
    echo "DMA_NUM_LANES = \"${numLane}\"" >> $proj_dir/build/conf/local.conf
    echo "DMA_NUM_DEST  = \"${numDest}\"" >> $proj_dir/build/conf/local.conf
