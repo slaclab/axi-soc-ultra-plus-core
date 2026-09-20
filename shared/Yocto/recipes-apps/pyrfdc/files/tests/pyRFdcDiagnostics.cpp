@@ -2057,6 +2057,155 @@ void checkIgnoreMetalErrorStillClearsAnUnprotectedError() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* A driver return that is neither success nor the one failure value.        */
+/*                                                                           */
+/* Every guard in PyRFdc.cpp that tested a driver return used to ask whether */
+/* the return was not the single failure value. XRFDC_SUCCESS is 0 and       */
+/* XRFDC_FAILURE is 1, and the driver API is not documented to return only   */
+/* those two, so any other value was read as a success and the guarded code  */
+/* ran on it. The three claims below drive one representative site in the    */
+/* constructor and one in the global reset sweep with each of the three      */
+/* kinds of return, and assert on the recorded driver call list rather than  */
+/* on a message, because what is at stake is whether the guarded code ran at */
+/* all and a message would not distinguish that from a message that merely   */
+/* differs.                                                                  */
+/*                                                                           */
+/* Only the first of the three is new behavior. The other two describe the   */
+/* two cases the conversion did not change, and they are kept because a      */
+/* conversion that also moved either of them would be a different change     */
+/* from the one this work intends.                                           */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A return value that is neither XRFDC_SUCCESS nor XRFDC_FAILURE.
+ *
+ * Not taken from the driver headers, which name no third value: it stands
+ * for the whole class of returns outside the documented pair, which is
+ * exactly the class the old guard admitted and the new guard refuses.
+ */
+const int kThirdReturnValue = 2;
+
+/*
+ * The representative constructor site is XRFdc_CheckTileEnabled, whose
+ * branch wraps the three default-configuration getters. The representative
+ * reset sweep site is XRFdc_CheckBlockEnabled, whose branch wraps the
+ * quadrature and mixer restore for that block. Both are chosen because the
+ * code inside their branches makes further recorded driver calls, so
+ * "the guarded code ran" is a fact the recorded call list carries.
+ */
+const char *const kConstructorGuardCall = "XRFdc_CheckTileEnabled";
+const char *const kConstructorGuardedCall = "XRFdc_GetClockSource";
+const char *const kSweepGuardCall = "XRFdc_CheckBlockEnabled";
+const char *const kSweepGuardedCall = "XRFdc_SetQMCSettings";
+
+//! How many times the constructor reached the code inside the guard at the
+//! representative constructor site, with that site scripted to return
+//! status.
+size_t constructorGuardedCallsFor(int status) {
+    gScript.reset();
+    gScript.scriptFailure(kConstructorGuardCall, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, status);
+
+    PyRFdcPtr device = PyRFdc::create();
+    (void)device;
+
+    return gScript.countCalls(kConstructorGuardedCall);
+}
+
+//! How many times a global ADC reset reached the code inside the guard at
+//! the representative sweep site, with that site scripted to return status.
+//! The device is constructed clean and the failure scripted afterwards, so
+//! the count belongs to the sweep and not to the construction.
+size_t sweepGuardedCallsFor(int status) {
+    gScript.reset();
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.scriptFailure(kSweepGuardCall, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, status);
+
+    driveWrite(device, kResetAllAdc, 1);
+
+    return gScript.countCalls(kSweepGuardedCall);
+}
+
+/*
+ * A third return value stops the call instead of being read as success.
+ *
+ * This is the behavior change. Before it, a driver call answering anything
+ * other than XRFDC_FAILURE was treated as though it had answered
+ * XRFDC_SUCCESS, so a tile that reported an enabled check with some other
+ * status had its clock source, PLL, quadrature and mixer settings read or
+ * written anyway.
+ */
+void checkThirdReturnValueStopsTheCall() {
+    const size_t ctorCalls = constructorGuardedCallsFor(kThirdReturnValue);
+    const size_t sweepCalls = sweepGuardedCallsFor(kThirdReturnValue);
+
+    bool ok = (ctorCalls == 0);
+    if (ok) ok = (sweepCalls == 0);
+
+    if (!ok) {
+        fprintf(stderr,
+                "third return value: %zu %s call(s) after a constructor guard returned %d, "
+                "%zu %s call(s) after a sweep guard returned %d\n",
+                ctorCalls, kConstructorGuardedCall, kThirdReturnValue, sweepCalls,
+                kSweepGuardedCall, kThirdReturnValue);
+    }
+
+    runCheck("a third return value now stops the call", ok);
+}
+
+/*
+ * The case that already worked still works.
+ *
+ * Green before and after by design. A conversion that made the guard
+ * stricter than intended, for instance by testing the wrong constant, would
+ * turn this red rather than leaving the mistake to be found on a board.
+ */
+void checkSuccessStillProceeds() {
+    const size_t ctorCalls = constructorGuardedCallsFor(XRFDC_SUCCESS);
+    const size_t sweepCalls = sweepGuardedCallsFor(XRFDC_SUCCESS);
+
+    bool ok = (ctorCalls > 0);
+    if (ok) ok = (sweepCalls > 0);
+
+    if (!ok) {
+        fprintf(stderr,
+                "success proceeds: %zu %s call(s) in the constructor, %zu %s call(s) in "
+                "the sweep\n",
+                ctorCalls, kConstructorGuardedCall, sweepCalls, kSweepGuardedCall);
+    }
+
+    runCheck("success still proceeds", ok);
+}
+
+/*
+ * The failure value still stops the call.
+ *
+ * Also green before and after. It is the other half of the pin: the
+ * conversion is required to leave the behavior of the documented failure
+ * value exactly where it was, so only the undocumented returns move.
+ */
+void checkFailureConstantStillStopsTheCall() {
+    const size_t ctorCalls = constructorGuardedCallsFor(XRFDC_FAILURE);
+    const size_t sweepCalls = sweepGuardedCallsFor(XRFDC_FAILURE);
+
+    bool ok = (ctorCalls == 0);
+    if (ok) ok = (sweepCalls == 0);
+
+    if (!ok) {
+        fprintf(stderr,
+                "failure constant stops: %zu %s call(s) in the constructor, %zu %s call(s) "
+                "in the sweep\n",
+                ctorCalls, kConstructorGuardedCall, sweepCalls, kSweepGuardedCall);
+    }
+
+    runCheck("the failure constant still stops the call", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -2145,7 +2294,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 47;
+const int kClaimsBeforeCountCheck = 50;
 
 /*
  * Every claim this file defines actually ran.
@@ -2218,6 +2367,10 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     checkIgnoreMetalErrorCannotClearAResetDiagnostic();
     checkIgnoreMetalErrorStillClearsAnUnprotectedError();
+
+    checkThirdReturnValueStopsTheCall();
+    checkSuccessStillProceeds();
+    checkFailureConstantStillStopsTheCall();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
