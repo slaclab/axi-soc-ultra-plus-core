@@ -314,15 +314,15 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
             mtsfactor_[i][j] = 0;
 
             // Check if tile is enabled
-            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) == XRFDC_SUCCESS) {
 
                 // Get the default Clock source
-                if (XRFdc_GetClockSource(RFdcInstPtr_, i, j, &clkSrcDefault_[i][j]) != XRFDC_FAILURE) {
+                if (XRFdc_GetClockSource(RFdcInstPtr_, i, j, &clkSrcDefault_[i][j]) == XRFDC_SUCCESS) {
                     clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
                 }
 
                 // Get the default PLL configuration
-                if (XRFdc_GetPLLConfig(RFdcInstPtr_, i, j, &pllDefault_[i][j]) != XRFDC_FAILURE) {
+                if (XRFdc_GetPLLConfig(RFdcInstPtr_, i, j, &pllDefault_[i][j]) == XRFDC_SUCCESS) {
                     pllDefault_[i][j].SampleRate = 1000.0*pllDefault_[i][j].SampleRate; // Convert from GSPS to MSPS
                     pllConfig_[i][j] = pllDefault_[i][j];
                     // Set the default PLL configuration (required for intializing the mixer's Sampling rate when doing XRFdc_GetMixerSettings)
@@ -333,18 +333,18 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                 for(k=0; k<4; k++) {
 
                     // Check if block enabled
-                    if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                    if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) == XRFDC_SUCCESS) {
 
-                        if (XRFdc_GetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
+                        if (XRFdc_GetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) == XRFDC_SUCCESS) {
                             qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
                         }
 
                         // Get the default Mixer configuration
-                        if ((XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) && (RFdcInstPtr_->UpdateMixerScale<=0x1U)) {
+                        if ((XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) == XRFDC_SUCCESS) && (RFdcInstPtr_->UpdateMixerScale<=0x1U)) {
                             // Check for ADC tile or DAC DUC not bypassed
                             if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
                                 // Get the mixer setting
-                                if ( XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
+                                if ( XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) == XRFDC_SUCCESS) {
                                     mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
                                 }
                             }
@@ -473,7 +473,7 @@ void PyRFdc::Reset(int Tile_Id) {
                 mtsfactor_[i][j] = 0;
 
                 // Check if tile is enabled
-                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) == XRFDC_SUCCESS) {
 
                     // Reset all the Tiles that have their PLL's enabled
                     if (pllDefault_[i][j].Enabled > 0) {
@@ -495,22 +495,21 @@ void PyRFdc::Reset(int Tile_Id) {
                     for(k=0; k<4; k++) {
 
                         // Check if block enabled
-                        if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                        if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) == XRFDC_SUCCESS) {
 
-                            // The guard below stays != XRFDC_FAILURE, which
-                            // is the control flow this sweep has always
-                            // had. What is new is that a status which is
-                            // neither success nor failure, and a plain
-                            // failure alike, is now recorded against the
-                            // tile instead of only deciding whether the
-                            // event update runs. Recorded before the event
-                            // update, so the earlier of the two calls is
-                            // the one the tile's step names.
+                            // The settings status is recorded against the
+                            // tile before the guard below, so the earlier
+                            // of the two calls is the one the tile's step
+                            // names. The guard itself now admits only a
+                            // success. It previously admitted every status
+                            // except the one failure value, which meant a
+                            // status that was neither ran the event update
+                            // on settings that may never have been applied.
                             uint32_t qmcStatus = XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]);
                             if (qmcStatus != XRFDC_SUCCESS) {
                                 recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_SetQMCSettings");
                             }
-                            if (qmcStatus != XRFDC_FAILURE) {
+                            if (qmcStatus == XRFDC_SUCCESS) {
                                 uint32_t qmcEventStatus = XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
                                 if (qmcEventStatus != XRFDC_SUCCESS) {
                                     recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_UpdateEvent");
@@ -519,22 +518,23 @@ void PyRFdc::Reset(int Tile_Id) {
                             qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
 
                             // Get the default Mixer configuration
-                            if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                            if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) == XRFDC_SUCCESS) {
                                 // Check for ADC tile or DAC DUC not bypassed
                                 if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
                                     // Same shape as the quadrature pair
                                     // above, and for the same reason. The
-                                    // event update remains nested in the
-                                    // settings call's non-failure branch,
-                                    // so a settings call that failed still
-                                    // skips its event update exactly as it
-                                    // did before; the difference is that
-                                    // the skip is no longer silent.
+                                    // event update stays nested in the
+                                    // settings status, and that status now
+                                    // has to be a success for it to run,
+                                    // so a settings call answering outside
+                                    // the documented pair no longer raises
+                                    // an event for settings it may not
+                                    // have applied.
                                     uint32_t mixerStatus = XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
                                     if (mixerStatus != XRFDC_SUCCESS) {
                                         recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_SetMixerSettings");
                                     }
-                                    if (mixerStatus != XRFDC_FAILURE) {
+                                    if (mixerStatus == XRFDC_SUCCESS) {
                                         uint32_t mixerEventStatus = XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
                                         if (mixerEventStatus != XRFDC_SUCCESS) {
                                             recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_UpdateEvent");
@@ -553,7 +553,7 @@ void PyRFdc::Reset(int Tile_Id) {
             for(j=0; j<4; j++) {
 
                 // Check if tile is enabled
-                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) == XRFDC_SUCCESS) {
 
                     // Execute reset again after restoring the settings
                     uint32_t tileStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
@@ -944,7 +944,7 @@ void PyRFdc::MixerSettings(uint8_t index) {
                 if ((tileType_==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(tileType_, tileId_, blockId_), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
                     // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetMixerSettings
                     status = XRFdc_SetMixerSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &mixerConfig_[tileType_][tileId_][blockId_]);
-                    if (status != XRFDC_FAILURE) {
+                    if (status == XRFDC_SUCCESS) {
                         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_UpdateEvent
                         status = XRFdc_UpdateEvent(RFdcInstPtr_, tileType_, tileId_, blockId_, XRFDC_EVENT_MIXER);
                     }
@@ -1030,7 +1030,7 @@ void PyRFdc::QMCSettings(uint8_t index) {
             case 7:
                 // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetQMCSettings
                 status = XRFdc_SetQMCSettings(RFdcInstPtr_, tileType_, tileId_, blockId_, &qmcConfig_[tileType_][tileId_][blockId_]);
-                if (status != XRFDC_FAILURE) {
+                if (status == XRFDC_SUCCESS) {
                     // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_UpdateEvent
                     status = XRFdc_UpdateEvent(RFdcInstPtr_, tileType_, tileId_, blockId_, XRFDC_EVENT_QMC);
                 }
@@ -3335,7 +3335,7 @@ void PyRFdc::MtsEnabled() {
             EnablePtr = 0;
 
             // Check if TILE is enabled
-            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, tileType_, i) != XRFDC_FAILURE) {
+            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, tileType_, i) == XRFDC_SUCCESS) {
                 // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMTSEnable
                 XRFdc_GetMTSEnable(RFdcInstPtr_, tileType_, i, &EnablePtr);
                 settings |= ((EnablePtr&0x1)<<i);
