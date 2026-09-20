@@ -1755,6 +1755,203 @@ void checkLiveDriverIsUnaffectedByTheGuard() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* The read-only register that reports the constructor failure reason.       */
+/*                                                                           */
+/* A refusal message reaches whoever issued the transaction that was         */
+/* refused. A register reaches anything that can read the address space,     */
+/* including a snapshot tool walking the map and a host that has not tried   */
+/* a converter command yet. The value is one word at 0x1200C, the next free  */
+/* offset after the three existing debug registers, and reading it performs  */
+/* no driver access at all, which is what lets a dead driver answer it.      */
+/* ------------------------------------------------------------------------ */
+
+//! The pre-existing offsets the new branch must not disturb, and the first
+//! address of the tile decode that the chain must still fall through to.
+const uint64_t kDoubleTestUpper = 0x13004;
+const uint64_t kFirstTileDecode = 0x0000;
+
+/*
+ * A dead driver reports which constructor step failed, as a value.
+ */
+void checkReasonRegisterReportsTheFailedStep() {
+    PyRFdcPtr device = createDeadDevice("metal_init");
+
+    rim::TransactionPtr tran = driveRead(device, kInitFailReason);
+
+    bool ok = tran->doneCalled() && !tran->errorStrCalled();
+    if (ok) ok = (tran->getWord(0) == uint32_t(PYRFDC_INIT_FAIL_METAL_INIT));
+
+    if (!ok) {
+        fprintf(stderr, "reason register dead: word=%u done=%u err=%u text '%s'\n",
+                tran->getWord(0), tran->doneCalls(), tran->errorStrCalls(),
+                tran->errorStrValue().c_str());
+    }
+
+    runCheck("reason register reports the failed step", ok);
+}
+
+/*
+ * A live driver reports the ok value, so a host reading this register on a
+ * healthy board sees a positive answer rather than an absence of one.
+ */
+void checkReasonRegisterReadsOkOnLiveDriver() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr tran = driveRead(device, kInitFailReason);
+
+    bool ok = tran->doneCalled() && !tran->errorStrCalled();
+    if (ok) ok = (tran->getWord(0) == uint32_t(PYRFDC_INIT_OK));
+
+    if (!ok) {
+        fprintf(stderr, "reason register live: word=%u done=%u err=%u text '%s'\n",
+                tran->getWord(0), tran->doneCalls(), tran->errorStrCalls(),
+                tran->errorStrValue().c_str());
+    }
+
+    runCheck("reason register reads ok on a live driver", ok);
+}
+
+/*
+ * The register is read only, and a refused write changes nothing.
+ *
+ * Driven on a live driver, where the guard returns immediately, so what
+ * refuses the write is the register body itself and not the guard. A write
+ * that was quietly accepted would let a host overwrite the one field that
+ * says whether the driver came up.
+ */
+void checkReasonRegisterIsReadOnly() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr write = driveWrite(device, kInitFailReason, 0xDEADBEEFu);
+    rim::TransactionPtr read = driveRead(device, kInitFailReason);
+
+    bool ok = write->errorStrCalled() && !write->doneCalled();
+    if (ok) ok = !write->errorStrValue().empty();
+    if (ok) ok = read->doneCalled() && !read->errorStrCalled();
+    if (ok) ok = (read->getWord(0) == uint32_t(PYRFDC_INIT_OK));
+
+    if (!ok) {
+        fprintf(stderr, "reason register read only: write err=%u done=%u, read word=%u\n",
+                write->errorStrCalls(), write->doneCalls(), read->getWord(0));
+    }
+
+    runCheck("reason register is read only", ok);
+}
+
+/*
+ * Reading the register reaches nothing in the driver.
+ *
+ * This is the property the whole register turns on: a body that touched the
+ * driver instance could not answer on the instance this register exists to
+ * describe. Asserted on the recorded driver call list on both a live and a
+ * dead instance, and paired with a clean completion, because an offset that
+ * was never decoded at all would satisfy an empty call list on its own.
+ */
+void checkReasonRegisterPerformsNoDriverAccess() {
+    gScript.reset();
+    PyRFdcPtr live = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr liveRead = driveRead(live, kInitFailReason);
+
+    bool ok = liveRead->doneCalled() && !liveRead->errorStrCalled();
+    if (ok) ok = gScript.calls.empty();
+
+    if (ok) {
+        PyRFdcPtr dead = createDeadDevice("metal_init");
+
+        rim::TransactionPtr deadRead = driveRead(dead, kInitFailReason);
+
+        ok = deadRead->doneCalled() && !deadRead->errorStrCalled();
+        if (ok) ok = gScript.calls.empty();
+    }
+
+    if (!ok) {
+        fprintf(stderr, "reason register driver access: %zu recorded call(s)\n",
+                gScript.calls.size());
+    }
+
+    runCheck("reason register performs no driver access", ok);
+}
+
+/*
+ * The new branch disturbs nothing already in the chain.
+ *
+ * Green before this task as well as after, and that is what it is for: the
+ * branch is inserted into a flat else chain whose last arm performs the
+ * tile decode for every address below 0x10000, so a branch placed after
+ * that arm would be unreachable and a range written too wide would swallow
+ * a neighbour. The five pre-existing offsets either side of the new one are
+ * re-read here, and so is the first address the tile decode owns.
+ */
+void checkReasonOffsetDoesNotCollide() {
+    const uint32_t pattern = 0x5A3CC3A5u;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    // The scratchpad still stores and returns a word of its own.
+    driveWrite(device, kScratchPad, pattern);
+    rim::TransactionPtr scratch = driveRead(device, kScratchPad);
+
+    bool ok = scratch->doneCalled() && !scratch->errorStrCalled();
+    if (ok) ok = (scratch->getWord(0) == pattern);
+
+    // The metal log level and the metal error bypass still round-trip a
+    // boolean of their own, and neither reads as the reason register.
+    if (ok) {
+        driveWrite(device, kMetalLogLevel, 1);
+        rim::TransactionPtr logLevel = driveRead(device, kMetalLogLevel);
+
+        ok = logLevel->doneCalled() && !logLevel->errorStrCalled();
+        if (ok) ok = (logLevel->getWord(0) == 1);
+    }
+    if (ok) {
+        driveWrite(device, kIgnoreMetalError, 1);
+        rim::TransactionPtr bypass = driveRead(device, kIgnoreMetalError);
+
+        ok = bypass->doneCalled() && !bypass->errorStrCalled();
+        if (ok) ok = (bypass->getWord(0) == 1);
+
+        // Put it back, so nothing after this claim inherits the bypass.
+        driveWrite(device, kIgnoreMetalError, 0);
+    }
+
+    // The double test pair still answers on both of its words.
+    if (ok) {
+        rim::TransactionPtr lower = driveRead(device, kDoubleTestLower);
+        rim::TransactionPtr upper = driveRead(device, kDoubleTestUpper);
+
+        ok = lower->doneCalled() && !lower->errorStrCalled();
+        if (ok) ok = upper->doneCalled() && !upper->errorStrCalled();
+    }
+
+    // And the chain still falls through to the tile decode: the first
+    // address below 0x10000 is ADC tile 0's startup command, whose read
+    // hands back one and executes nothing.
+    if (ok) {
+        gScript.calls.clear();
+
+        rim::TransactionPtr tile = driveRead(device, kFirstTileDecode);
+
+        ok = tile->doneCalled() && !tile->errorStrCalled();
+        if (ok) ok = (tile->getWord(0) == 1);
+        if (ok) ok = (gScript.countCalls("XRFdc_StartUp") == 0);
+    }
+
+    if (!ok) {
+        fprintf(stderr, "reason offset collision: scratchpad word=%u\n", scratch->getWord(0));
+    }
+
+    runCheck("reason offset does not collide", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -1843,7 +2040,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 40;
+const int kClaimsBeforeCountCheck = 45;
 
 /*
  * Every claim this file defines actually ran.
@@ -1907,6 +2104,12 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkRepeatedRejectionIsByteIdentical();
     checkMultiWordRejectionReachesErrorStr();
     checkLiveDriverIsUnaffectedByTheGuard();
+
+    checkReasonRegisterReportsTheFailedStep();
+    checkReasonRegisterReadsOkOnLiveDriver();
+    checkReasonRegisterIsReadOnly();
+    checkReasonRegisterPerformsNoDriverAccess();
+    checkReasonOffsetDoesNotCollide();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
