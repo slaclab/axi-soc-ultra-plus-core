@@ -7,3 +7,4 @@ Reference
    supported_boards
    pyrogue_api
    register_map
+   pyrfdc_return_codes
