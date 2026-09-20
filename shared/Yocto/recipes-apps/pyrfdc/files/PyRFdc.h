@@ -40,6 +40,29 @@
     #include <boost/python.hpp>
 #endif
 
+//! Why the PyRFdc constructor did not leave a usable driver instance behind.
+//!
+//! Deliberately outside every conditional compilation block, so all six
+//! values are defined in both build configurations and only which of them
+//! can be produced differs. Two of the constructor's early returns are
+//! build specific: the baremetal readiness check runs only under
+//! __BAREMETAL__ and the libmetal device registration only without it. Codes
+//! assigned by position would therefore mean different things in different
+//! binaries, and a host decoding one would have to know which build it was
+//! talking to. With a fixed set it does not.
+//!
+//! The values are read back over the register at offset 0x1200C and are part
+//! of this driver's address space contract, so they are assigned explicitly
+//! rather than left to declaration order.
+enum PyRFdcInitFailReason {
+    PYRFDC_INIT_OK                    = 0,  //!< Construction completed
+    PYRFDC_INIT_FAIL_NOT_COMPLETED    = 1,  //!< Neither bailed out nor completed
+    PYRFDC_INIT_FAIL_BAREMETAL_LOOKUP = 2,  //!< Baremetal readiness lookup failed
+    PYRFDC_INIT_FAIL_METAL_INIT       = 3,  //!< libmetal initialization failed
+    PYRFDC_INIT_FAIL_CONFIG_LOOKUP    = 4,  //!< Driver configuration lookup failed
+    PYRFDC_INIT_FAIL_REGISTER_METAL   = 5   //!< libmetal device registration failed
+};
+
 //! Memory interface Emlator device
 /** This memory will respond to transactions, emilator hardware by responding to read
  * and write transactions.
@@ -61,6 +84,21 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     double doubleTestReg_;
     bool metalLogLevel_;
     bool ignoreMetalError_;
+
+    //! Whether the constructor left a usable driver instance behind, and if
+    //! not, which step it died at.
+    //!
+    //! Initialized here at their declaration and nowhere else, because every
+    //! one of the constructor's early returns happens before the local
+    //! variable block further down that file, so anything initialized there
+    //! is never initialized on a construction that failed. Defaulting to not
+    //! valid and not completed makes an unanticipated path, or one added
+    //! later, dead by default rather than alive by default. The cost of a
+    //! false positive is a rejected transaction and a clear message; the
+    //! cost of a false negative is a read through a driver instance that was
+    //! never initialized.
+    bool driverValid_ = false;
+    uint32_t initFailReason_ = PYRFDC_INIT_FAIL_NOT_COMPLETED;
 
     bool rdTxn_;
     bool isADC_;
@@ -245,6 +283,15 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! Render tileDiag_ as one newline-terminated line for the caller and
     //! for the console.
     std::string buildDiagMessage(const char *entryPoint, int tileId);
+
+    //! Refuse one word of a transaction when the driver instance was never
+    //! initialized, and say which constructor step failed.
+    //!
+    //! Returns true when it rejected, in which case the caller performs no
+    //! dispatch for that word. Returns false immediately when the driver is
+    //! valid, so a live driver pays one boolean test per word and behaves
+    //! exactly as it did.
+    bool rejectIfDriverDead(uint32_t addr);
 
     void MetalLogLevel();
     void IgnoreMetalError();

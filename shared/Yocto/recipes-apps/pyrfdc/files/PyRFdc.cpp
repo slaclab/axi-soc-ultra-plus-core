@@ -128,6 +128,33 @@ static std::string HexValue(uint32_t value) {
 // see.
 static const size_t DIAG_MSG_BUDGET = 960;
 
+// The one place a constructor outcome is turned into words.
+//
+// Kept as a single mapping rather than a string at each call site, so the
+// wording of a step lives in one place and the rejection cannot describe the
+// same outcome two ways. The two lookup steps are spelled apart on purpose:
+// both call XRFdc_LookupConfig, and a reader who is told only the function
+// name cannot tell the baremetal readiness check from the configuration
+// fetch that follows libmetal.
+static const char* InitFailStepName(uint32_t reason) {
+    switch (reason) {
+        case PYRFDC_INIT_OK:
+            return "construction completed";
+        case PYRFDC_INIT_FAIL_NOT_COMPLETED:
+            return "construction did not complete";
+        case PYRFDC_INIT_FAIL_BAREMETAL_LOOKUP:
+            return "construction failed at XRFdc_LookupConfig in the baremetal readiness check";
+        case PYRFDC_INIT_FAIL_METAL_INIT:
+            return "construction failed at metal_init";
+        case PYRFDC_INIT_FAIL_CONFIG_LOOKUP:
+            return "construction failed at XRFdc_LookupConfig for the driver configuration";
+        case PYRFDC_INIT_FAIL_REGISTER_METAL:
+            return "construction failed at XRFdc_RegisterMetal";
+        default:
+            return "construction failed at an unknown step";
+    }
+}
+
 //! Create a block, class creator
 PyRFdcPtr PyRFdc::create() {
     PyRFdcPtr b = std::make_shared<PyRFdc>();
@@ -146,6 +173,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 #ifdef __BAREMETAL__
     // Ensure baremetal driver is ready
     if (XRFdc_LookupConfig(RFDC_DEVICE_ID) == NULL) {
+        initFailReason_ = PYRFDC_INIT_FAIL_BAREMETAL_LOOKUP;
         log_->error("PyRFdc: Baremetal RFdc Configuration Lookup Failed!");
         return;
     }
@@ -154,6 +182,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // Initialize libmetal (should be after ensuring baremetal is ready)
     struct metal_init_params init_param = METAL_INIT_DEFAULTS;
     if (metal_init(&init_param)) {
+        initFailReason_ = PYRFDC_INIT_FAIL_METAL_INIT;
         log_->error("PyRFdc: Failed to initialize libmetal");
         metal_finish();
         return;
@@ -162,6 +191,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // Initialize RFdc Configuration
     XRFdc_Config *ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
     if (ConfigPtr == NULL) {
+        initFailReason_ = PYRFDC_INIT_FAIL_CONFIG_LOOKUP;
         log_->error("PyRFdc: RFdc Config Failure");
         metal_finish();
         return;
@@ -170,6 +200,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 #ifndef __BAREMETAL__
     struct metal_device *deviceptr;
     if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) != XRFDC_SUCCESS) {
+        initFailReason_ = PYRFDC_INIT_FAIL_REGISTER_METAL;
         log_->error("PyRFdc: XRFdc_RegisterMetal() Failure");
         metal_device_close(deviceptr);
         metal_finish();
@@ -177,7 +208,13 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     }
 #endif
 
-    XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
+    // Bind the status rather than discard it. This is the call that copies
+    // the configuration into the driver instance and marks it ready, so a
+    // non-success return here is exactly the case where every later
+    // transaction would read through an instance that was never set up.
+    // Nothing else about this call changed: the argument list, the position
+    // in the sequence and the code that follows are all as they were.
+    uint32_t cfgStatus = XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
 
     log_->debug("PyRFdc::PyRFdc() Initialization Complete");
 
@@ -186,6 +223,21 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     for(j=0; j<4; j++) {
         RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate = 5.9;
         RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate = 10.0;
+    }
+
+    // The driver instance is usable from here and not before. This is the
+    // only place the flag is raised, and it is raised late on purpose: every
+    // path that leaves this constructor without reaching this line, the four
+    // early returns above and any added later, leaves the object carrying
+    // the declaration defaults in PyRFdc.h and therefore dead.
+    //
+    // No reason value is assigned on the failing side. Leaving the default
+    // is the point: a configuration initialize that did not succeed is a
+    // construction that neither bailed out nor completed, and reporting that
+    // is more honest than inventing a fifth named step for it.
+    if (cfgStatus == XRFDC_SUCCESS) {
+        driverValid_ = true;
+        initFailReason_ = PYRFDC_INIT_OK;
     }
 
     // Init local variables
@@ -3637,6 +3689,46 @@ double PyRFdc::RemapDoubleWithUint32(double original, uint32_t newPart, bool upp
     return newValue;
 }
 
+bool PyRFdc::rejectIfDriverDead(uint32_t addr) {
+    // A live driver leaves here having done one boolean test and nothing
+    // else, so every dispatch below behaves exactly as it did.
+    if (driverValid_) {
+        return false;
+    }
+
+    // Admitted by rule rather than by a hand-kept list: exactly the offsets
+    // whose bodies never dereference the driver instance. Those are the
+    // metal error bypass, the scratchpad and the double test pair, which
+    // read and write a member and nothing else, plus the reads of the metal
+    // log level and of the initialization failure reason.
+    //
+    // The metal log level is the one offset admitted in one direction only.
+    // Its read hands back a stored boolean, but its write calls into
+    // libmetal, which on a dead driver may never have been initialized, so
+    // the write is refused.
+    if ((addr == 0x12004) || (addr == 0x12008) ||
+        ((addr >= 0x13000) && (addr <= 0x13004))) {
+        return false;
+    }
+    if (rdTxn_ && ((addr == 0x12000) || (addr == 0x1200C))) {
+        return false;
+    }
+
+    // Rejecting here, before the dispatch chain, is what keeps
+    // readTileDiagnostics from ever running on a driver instance that was
+    // never initialized: a write to a reset offset is refused before Reset()
+    // is entered, so the sweep and the per-tile register reads it performs
+    // on a failure are both unreachable on a dead driver.
+    //
+    // Assign and return, the same shape the two terminal undefined-memory
+    // assignments use. A refused register access is an error to report back
+    // to the caller, never a reason to raise, to end the process or to take
+    // any other route out of this function.
+    errMsg_ = "PyRFdc: driver unusable, " + std::string(InitFailStepName(initFailReason_))
+            + " (" + HexValue(addr) + " rejected)\n";
+    return true;
+}
+
 //! Post a transaction. Master will call this method with the access attributes.
 void PyRFdc::doTransaction(rim::TransactionPtr tran) {
     int32_t  size = int32_t(tran->size());
@@ -3686,7 +3778,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
             ////////////////////////////////////////////////////////////////
             // 1st check for the global registers access and commands
             ////////////////////////////////////////////////////////////////
-            if (addr==0x10000) {
+            if (rejectIfDriverDead(addr)) {
+                // Refused: this word performs no dispatch at all. The guard
+                // has already assigned the error string naming the
+                // constructor step that failed.
+
+            } else if (addr==0x10000) {
                 tileType_ = XRFDC_ADC_TILE;
                 StartUp(-1);
 
