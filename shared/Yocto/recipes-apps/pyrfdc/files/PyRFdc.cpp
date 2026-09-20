@@ -338,7 +338,24 @@ void PyRFdc::StartUp(int Tile_Id) {
 
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
-        errMsg_ = "StartUp(" + std::to_string(Tile_Id) + "): failed\n";
+        // One tile per call on this path, so there is nothing to
+        // accumulate: start from empty records, record this tile, and hand
+        // the same formatter the global reset path uses a set holding one
+        // failure. The tile type is the one the dispatch set for this
+        // transaction and the tile id is this call's own argument, both
+        // passed explicitly so the helper's contract stays uniform and no
+        // caller depends on member state.
+        if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
+            clearTileDiag();
+            recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_StartUp");
+            errMsg_ = buildDiagMessage("StartUp", Tile_Id);
+
+        // The group form, one driver call covering every tile of the type.
+        // It names no tile, so there is nothing to attribute and the
+        // message it has always reported is kept.
+        } else {
+            errMsg_ = "StartUp(" + std::to_string(Tile_Id) + "): failed\n";
+        }
     }
 }
 
@@ -357,7 +374,15 @@ void PyRFdc::Shutdown(int Tile_Id) {
 
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
-        errMsg_ = "Shutdown(" + std::to_string(Tile_Id) + "): failed\n";
+        // Same shape as StartUp above, and for the same reason.
+        if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
+            clearTileDiag();
+            recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_Shutdown");
+            errMsg_ = buildDiagMessage("Shutdown", Tile_Id);
+
+        } else {
+            errMsg_ = "Shutdown(" + std::to_string(Tile_Id) + "): failed\n";
+        }
     }
 }
 
@@ -550,8 +575,20 @@ void PyRFdc::Reset(int Tile_Id) {
     // Check if not successful
     if (sweepFailed) {
         errMsg_ = buildDiagMessage("Reset", Tile_Id);
+
     } else if (status != XRFDC_SUCCESS) {
-        errMsg_ = "Reset(" + std::to_string(Tile_Id) + "): failed\n";
+        // The single-tile branch, reached at a tile-scoped address rather
+        // than by sweeping. _Rfdc.py's Init() calls this per tile after
+        // both global resets, so a failure here is reachable on the same
+        // boot as one in the sweep and was just as unattributed.
+        if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
+            clearTileDiag();
+            recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_Reset");
+            errMsg_ = buildDiagMessage("Reset", Tile_Id);
+
+        } else {
+            errMsg_ = "Reset(" + std::to_string(Tile_Id) + "): failed\n";
+        }
     }
 }
 
@@ -720,6 +757,13 @@ void PyRFdc::CustomStartUp(int Tile_Id) {
 
     // Check if read
     if (rdTxn_) {
+        // Pre-existing behavior, kept deliberately. Unlike the other
+        // command offsets, a read of this one reports a failure rather
+        // than handing back one and executing nothing. It is the only
+        // guaranteed non-success return reachable from the host with no
+        // real converter fault, which makes it the way this reporting path
+        // is exercised on a healthy board, so it is relied on elsewhere and
+        // is not converted to the harmless-read form of its neighbours.
         status = XRFDC_FAILURE;
 
     // Else write
@@ -730,7 +774,15 @@ void PyRFdc::CustomStartUp(int Tile_Id) {
 
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
-        errMsg_ = "CustomStartUp(" + std::to_string(Tile_Id) + "): failed\n";
+        // Same shape as StartUp above, and for the same reason.
+        if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
+            clearTileDiag();
+            recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_CustomStartUp");
+            errMsg_ = buildDiagMessage("CustomStartUp", Tile_Id);
+
+        } else {
+            errMsg_ = "CustomStartUp(" + std::to_string(Tile_Id) + "): failed\n";
+        }
     }
 }
 
