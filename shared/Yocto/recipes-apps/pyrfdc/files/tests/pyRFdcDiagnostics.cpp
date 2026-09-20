@@ -114,6 +114,22 @@ rim::TransactionPtr driveRead(PyRFdcPtr device, uint64_t addr) {
     return tran;
 }
 
+//! Drive one multi-word write through the real doTransaction, so a claim can
+//! observe what the single completion at the end of the word loop does with
+//! an error raised on one word out of several. Every payload word carries the
+//! same value; no claim below reads them back.
+rim::TransactionPtr driveWriteWords(PyRFdcPtr device, uint64_t addr, uint32_t words,
+                                    uint32_t value) {
+    rim::TransactionPtr tran =
+        rim::Transaction::create(addr, words * uint32_t(sizeof(uint32_t)), rim::Write);
+
+    for (uint32_t i = 0; i < words; i++) {
+        tran->setWord(i, value);
+    }
+    device->doTransaction(tran);
+    return tran;
+}
+
 //! Address of the global ADC reset, the one _Rfdc.py exposes as ResetAllAdc
 //! and the one Init() reaches first.
 const uint64_t kResetAllAdc = 0x10010;
@@ -1363,6 +1379,382 @@ void checkCustomStartUpReadStillYieldsFailure() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* A driver whose initialization failed.                                     */
+/*                                                                           */
+/* The constructor has four early returns, each of which logs a line and     */
+/* leaves the object constructed with its driver instance never initialized. */
+/* Every later transaction reads through that instance. On the bench that    */
+/* presents as a register read that never answers, and the prior measurement */
+/* on this carrier found that whether a read times out is currently a better */
+/* failure indicator than anything the registers return. The claims below    */
+/* are about replacing that silence with a sentence naming the step that     */
+/* failed, and about keeping the registers that need no driver answerable so */
+/* the host can ask over the same transport why the driver is dead.          */
+/*                                                                           */
+/* Three of the four early returns are reachable in this build. The fourth,  */
+/* the readiness check that runs before libmetal is brought up, sits inside  */
+/* a baremetal-only block and is compiled out here, so no claim can drive    */
+/* it. Its reason value exists in both build configurations all the same,    */
+/* which is the point of declaring all six unconditionally: a host decoding  */
+/* the value does not have to know which build produced the binary.          */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Construct an instance whose initialization failed at the named libmetal or
+ * driver entry point, then clear the recorded lists so what a claim observes
+ * afterwards belongs to its own transaction and not to the construction.
+ *
+ * The failure is scripted before the construction rather than after it,
+ * because the constructor is where these entry points are called. Only the
+ * recorded lists are cleared and not the whole fixture, because a full reset
+ * would drop the scripted failure and the scripted names match no call any
+ * transaction below makes.
+ */
+PyRFdcPtr createDeadDevice(const char *failingCall) {
+    gScript.reset();
+    gScript.scriptFailure(failingCall, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+    gScript.metalLogs.clear();
+    return device;
+}
+
+/*
+ * The step wording, transcribed rather than taken from the driver's own
+ * mapping. Generating these from the table under test would make the two
+ * copies one copy and the claims would assert nothing about the wording.
+ */
+const char *const kStepMetalInit = "construction failed at metal_init";
+const char *const kStepConfigLookup =
+    "construction failed at XRFdc_LookupConfig for the driver configuration";
+const char *const kStepRegisterMetal = "construction failed at XRFdc_RegisterMetal";
+const char *const kStepNotCompleted = "construction did not complete";
+
+//! The offsets whose bodies never reach the driver instance.
+const uint64_t kMetalLogLevel = 0x12000;
+const uint64_t kIgnoreMetalError = 0x12004;
+const uint64_t kScratchPad = 0x12008;
+const uint64_t kInitFailReason = 0x1200C;
+const uint64_t kDoubleTestLower = 0x13000;
+
+/*
+ * A transaction that would reach the driver instance is refused, and the
+ * refusal names the constructor step that failed.
+ *
+ * Asserted on the recorded driver call list as well as on the message,
+ * because an error string produced after the sweep had already run would be
+ * the right words for the wrong reason. The global reset path is the one
+ * this project keeps failing on, and it is also the path that reads four
+ * control and status registers per tile once it has failed, so a rejection
+ * that arrived after the dispatch began would still have driven the
+ * diagnostic helper through a driver instance that was never initialized.
+ */
+void checkDeadDriverRejectsDriverTransaction() {
+    PyRFdcPtr device = createDeadDevice("metal_init");
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = !msg.empty();
+    if (ok) ok = (msg.find(kStepMetalInit) != std::string::npos);
+    // No reset, and no diagnostic read either, which is what rejecting
+    // ahead of the dispatch chain buys.
+    if (ok) ok = (gScript.countCalls("XRFdc_Reset") == 0);
+    if (ok) ok = (gScript.countCalls("XRFdc_GetPLLLockStatus") == 0);
+    if (ok) ok = (gScript.countCalls("XRFdc_ReadReg") == 0);
+
+    if (!ok) {
+        fprintf(stderr, "dead driver reject: err=%u done=%u, %zu driver call(s), text '%s'\n",
+                tran->errorStrCalls(), tran->doneCalls(), gScript.calls.size(), msg.c_str());
+    }
+
+    runCheck("dead driver rejects a driver transaction", ok);
+}
+
+/*
+ * The registers that need no driver still answer on a dead driver.
+ *
+ * This is what makes the rejection useful rather than merely safe: a host
+ * that can still read and write the pure-state block can ask the board why
+ * the driver is dead over the same transport, instead of inferring it from a
+ * read that never returns.
+ */
+void checkDeadDriverKeepsPureStateReadable() {
+    const uint32_t pattern = 0xA5C33C5Au;
+
+    PyRFdcPtr device = createDeadDevice("metal_init");
+
+    rim::TransactionPtr write = driveWrite(device, kScratchPad, pattern);
+    rim::TransactionPtr read = driveRead(device, kScratchPad);
+    rim::TransactionPtr logLevel = driveRead(device, kMetalLogLevel);
+
+    bool ok = write->doneCalled() && !write->errorStrCalled();
+    if (ok) ok = read->doneCalled() && !read->errorStrCalled();
+    if (ok) ok = (read->getWord(0) == pattern);
+    if (ok) ok = logLevel->doneCalled() && !logLevel->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr,
+                "dead driver pure state: wrote 0x%08X read 0x%08X, write err=%u read err=%u "
+                "log level err=%u text '%s'\n",
+                pattern, read->getWord(0), write->errorStrCalls(), read->errorStrCalls(),
+                logLevel->errorStrCalls(), read->errorStrValue().c_str());
+    }
+
+    runCheck("dead driver keeps the pure-state block readable", ok);
+}
+
+/*
+ * The one offset in the pure-state block whose write is refused as well.
+ *
+ * Reading the metal log level hands back a stored boolean and touches
+ * nothing. Writing it calls into libmetal, which on a dead driver may never
+ * have been initialized at all, so the read is admitted and the write is
+ * not. Asserted on the recorded libmetal call list rather than on the
+ * message, because a body that made the call and then reported an error
+ * would satisfy a message check on its own.
+ */
+void checkDeadDriverRejectsMetalLogLevelWrite() {
+    PyRFdcPtr device = createDeadDevice("metal_init");
+
+    rim::TransactionPtr tran = driveWrite(device, kMetalLogLevel, 1);
+
+    bool ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = !tran->errorStrValue().empty();
+    if (ok) ok = (gScript.countCalls("metal_set_log_level") == 0);
+
+    if (!ok) {
+        fprintf(stderr, "metal log level write: err=%u done=%u, %zu set-log-level call(s)\n",
+                tran->errorStrCalls(), tran->doneCalls(),
+                gScript.countCalls("metal_set_log_level"));
+    }
+
+    runCheck("dead driver rejects a metal log level write", ok);
+}
+
+//! One constructor early return, with the entry point that reaches it and
+//! the step the rejection is required to name.
+struct BailOutSite {
+    const char *call;
+    const char *step;
+};
+
+/*
+ * The three early returns reachable in this build. Each is scripted on its
+ * own and the message is required to name that step and neither of the
+ * others, so a mapping that collapsed two of them into one wording, or that
+ * reported a fixed string, cannot pass.
+ */
+const BailOutSite kBailOutSites[3] = {
+    {"metal_init", kStepMetalInit},
+    {"XRFdc_LookupConfig", kStepConfigLookup},
+    {"XRFdc_RegisterMetal", kStepRegisterMetal},
+};
+
+void checkEachBailOutNamesItsOwnStep() {
+    bool ok = true;
+    std::string detail;
+
+    for (size_t s = 0; s < 3; s++) {
+        PyRFdcPtr device = createDeadDevice(kBailOutSites[s].call);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string msg = tran->errorStrValue();
+
+        bool one = tran->errorStrCalled() && !tran->doneCalled();
+        if (one) one = (msg.find(kBailOutSites[s].step) != std::string::npos);
+        // And none of the other two steps, so a message that listed every
+        // reason it knows about cannot pass either.
+        for (size_t other = 0; one && (other < 3); other++) {
+            if (other == s) continue;
+            one = (msg.find(kBailOutSites[other].step) == std::string::npos);
+        }
+
+        if (!one) {
+            ok = false;
+            detail = std::string(kBailOutSites[s].call) + ": text '" + msg + "'";
+            break;
+        }
+    }
+
+    if (!ok) fprintf(stderr, "bail-out step: %s\n", detail.c_str());
+
+    runCheck("each constructor bail-out names its own step", ok);
+}
+
+/*
+ * A construction that neither bailed out nor completed is dead, and says so.
+ *
+ * The configuration initialize call is the one step whose return value the
+ * constructor discarded outright, so a driver instance that was never
+ * configured was indistinguishable from one that was. The flag is set only
+ * when that call reported success, and the reason value it leaves behind is
+ * the one the two members carry from their declaration. That is the whole
+ * direction of the design: a construction that went wrong in a way nobody
+ * anticipated, or on a path added later, is dead by default rather than
+ * alive by default, and the absence of an explicit failure is never read as
+ * success.
+ */
+void checkNotCompletedConstructorIsDeadByDefault() {
+    PyRFdcPtr device = createDeadDevice("XRFdc_CfgInitialize");
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = (msg.find(kStepNotCompleted) != std::string::npos);
+    // Not reported as one of the named bail-outs, none of which happened.
+    if (ok) ok = (msg.find(kStepMetalInit) == std::string::npos);
+    if (ok) ok = (msg.find(kStepConfigLookup) == std::string::npos);
+    if (ok) ok = (msg.find(kStepRegisterMetal) == std::string::npos);
+    if (ok) ok = (gScript.countCalls("XRFdc_Reset") == 0);
+
+    if (!ok) {
+        fprintf(stderr, "not completed: err=%u done=%u, text '%s'\n",
+                tran->errorStrCalls(), tran->doneCalls(), msg.c_str());
+    }
+
+    runCheck("not-completed constructor is dead by default", ok);
+}
+
+/*
+ * The same rejected transaction twice reports the same bytes.
+ *
+ * The guard reads the validity flag and the reason code and nothing else,
+ * and the rejection path writes to neither, so a second attempt on a dead
+ * instance cannot report something different from the first. A guard that
+ * accumulated, counted or latched would show up here as two texts that
+ * differ, and a host retrying a register write would see the driver's state
+ * appear to change while nothing about it had.
+ */
+void checkRepeatedRejectionIsByteIdentical() {
+    PyRFdcPtr device = createDeadDevice("metal_init");
+
+    rim::TransactionPtr first = driveWrite(device, kResetAllAdc, 1);
+    const std::string firstText = first->errorStrValue();
+
+    rim::TransactionPtr second = driveWrite(device, kResetAllAdc, 1);
+    const std::string secondText = second->errorStrValue();
+
+    bool ok = !firstText.empty();
+    if (ok) ok = (firstText.find(kStepMetalInit) != std::string::npos);
+    if (ok) ok = (firstText == secondText);
+    // Both were rejected, rather than the second quietly succeeding.
+    if (ok) ok = second->errorStrCalled() && !second->doneCalled();
+
+    if (!ok) {
+        fprintf(stderr, "repeated rejection: first '%s', second '%s'\n",
+                firstText.c_str(), secondText.c_str());
+    }
+
+    runCheck("repeated rejection is byte identical", ok);
+}
+
+/*
+ * A rejection raised on one word of a multi-word transaction survives to the
+ * single completion at the end of the word loop.
+ *
+ * The error string is cleared once per transaction, before the loop, and the
+ * completion runs once after it, so a rejection on a later word has to
+ * survive every word after it to be reported at all. Driven across the
+ * double test pair, which the guard admits, and the word immediately above
+ * it, which it does not, so the transaction crosses an admitted offset and a
+ * rejected one in that order.
+ */
+void checkMultiWordRejectionReachesErrorStr() {
+    PyRFdcPtr device = createDeadDevice("metal_init");
+
+    rim::TransactionPtr tran = driveWriteWords(device, kDoubleTestLower, 3, 0);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = tran->errorStrCalled() && !tran->doneCalled();
+    // The rejection and not the undefined-memory text the same offset would
+    // have produced on a live driver.
+    if (ok) ok = (msg.find(kStepMetalInit) != std::string::npos);
+    if (ok) ok = (msg.find("0x13008") != std::string::npos);
+
+    if (!ok) {
+        fprintf(stderr, "multi-word rejection: err=%u done=%u, text '%s'\n",
+                tran->errorStrCalls(), tran->doneCalls(), msg.c_str());
+    }
+
+    runCheck("multi-word rejection reaches errorStr", ok);
+}
+
+/*
+ * A live driver behaves exactly as it did.
+ *
+ * The guard's first statement is a test of one boolean, and on a live driver
+ * it returns having done nothing else, so the dispatch chain, the driver
+ * calls it makes and the message a failure produces are all unchanged. The
+ * recorded call counts for a clean global ADC reset are written out rather
+ * than compared against another run, so a change to the sweep shows up here
+ * as a number that moved.
+ */
+void checkLiveDriverIsUnaffectedByTheGuard() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    rim::TransactionPtr clean = driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = clean->doneCalled() && !clean->errorStrCalled();
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_CheckTileEnabled", XRFDC_ADC_TILE) == 8);
+    if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_SetQMCSettings", XRFDC_ADC_TILE) == 16);
+    if (ok) ok = (countCallsForType("XRFdc_SetMixerSettings", XRFDC_ADC_TILE) == 16);
+    if (ok) ok = (countCallsForType("XRFdc_UpdateEvent", XRFDC_ADC_TILE) == 32);
+    if (ok) ok = (gScript.countCalls("XRFdc_ReadReg") == 0);
+
+    // A failing reset still reports through the diagnostic path and not
+    // through the rejection path.
+    if (ok) {
+        PyRFdcPtr failing = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveWrite(failing, kResetAllAdc, 1);
+        const std::string msg = tran->errorStrValue();
+
+        ok = tran->errorStrCalled() && !tran->doneCalled();
+        if (ok) ok = (msg.compare(0, 8, "Reset(-1") == 0);
+        if (ok) ok = (recordFor(msg, "ADC3").find("XRFdc_Reset") != std::string::npos);
+        if (ok) ok = (msg.find("driver unusable") == std::string::npos);
+    }
+
+    // And a metal log level write still reaches libmetal on a live driver.
+    if (ok) {
+        PyRFdcPtr live = PyRFdc::create();
+
+        gScript.reset();
+
+        rim::TransactionPtr tran = driveWrite(live, kMetalLogLevel, 1);
+
+        ok = tran->doneCalled() && !tran->errorStrCalled();
+        if (ok) ok = (gScript.countCalls("metal_set_log_level") == 1);
+    }
+
+    if (!ok) {
+        fprintf(stderr, "live driver: clean done=%u err=%u, ADC reset=%zu check=%zu pll=%zu\n",
+                clean->doneCalls(), clean->errorStrCalls(),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_CheckTileEnabled", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE));
+    }
+
+    runCheck("a live driver is unaffected by the guard", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -1451,7 +1843,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 32;
+const int kClaimsBeforeCountCheck = 40;
 
 /*
  * Every claim this file defines actually ran.
@@ -1506,6 +1898,15 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkStartupPathsCarryTileDiagnostics();
     checkCommandReadReturnsOneAndExecutesNothing();
     checkCustomStartUpReadStillYieldsFailure();
+
+    checkDeadDriverRejectsDriverTransaction();
+    checkDeadDriverKeepsPureStateReadable();
+    checkDeadDriverRejectsMetalLogLevelWrite();
+    checkEachBailOutNamesItsOwnStep();
+    checkNotCompletedConstructorIsDeadByDefault();
+    checkRepeatedRejectionIsByteIdentical();
+    checkMultiWordRejectionReachesErrorStr();
+    checkLiveDriverIsUnaffectedByTheGuard();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
