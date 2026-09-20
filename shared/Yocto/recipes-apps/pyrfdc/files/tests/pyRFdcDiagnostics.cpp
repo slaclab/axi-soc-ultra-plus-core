@@ -67,11 +67,23 @@
  * Compile the production source into this translation unit rather than
  * linking it as a separate object. This is deliberate, and it is the same
  * move emulator/driver/tests/prbs_cross_validate.c makes for the kernel PRBS
- * source: including it gives the harness reach into PyRFdc's private members
- * and private methods, so a later check can exercise Reset(-1) and the
- * internal state it leaves behind without adding a test-only public API to
- * PyRFdc.h. Widening the class for the benefit of a test would change the
- * shipped header; this does not change the shipped sources at all.
+ * source. What it buys is one compile and one link unit, built with exactly
+ * the shim include path and the flags below and with no second build rule
+ * to keep in step, and it puts the driver source's internal-linkage
+ * file-scope definitions, IPSM_STATE_NAMES and DIAG_MSG_BUDGET among them,
+ * in reach of a check that needs them. Those are unreachable from a
+ * separately linked object at any access level, so a check over them would
+ * otherwise need a test-only public API in PyRFdc.h, and widening the
+ * shipped header for the benefit of a test is what this avoids. It does not
+ * change the shipped sources at all.
+ *
+ * What it does NOT buy, stated because assuming otherwise decided the shape
+ * of earlier work here: it gives no access to PyRFdc's private members or
+ * private methods. The checks below are free functions in an anonymous
+ * namespace and C++ access control applies to them exactly as it would from
+ * another translation unit. Every claim in this file is therefore asserted
+ * on what a caller can observe through doTransaction, which is the right
+ * discipline anyway.
  */
 #include "../PyRFdc.cpp"  // NOLINT(build/include) -- deliberate host compile of the production driver source
 
