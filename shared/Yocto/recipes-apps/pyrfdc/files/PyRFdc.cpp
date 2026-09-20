@@ -400,11 +400,17 @@ void PyRFdc::Reset(int Tile_Id) {
 
                     // Reset all the Tiles that have their PLL's enabled
                     if (pllDefault_[i][j].Enabled > 0) {
-                        XRFdc_Reset(RFdcInstPtr_, i, j);
+                        uint32_t preResetStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
+                        if (preResetStatus != XRFDC_SUCCESS) {
+                            recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_Reset");
+                        }
                     }
 
                     // Restore default configuration
-                    XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
+                    uint32_t pllStatus = XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
+                    if (pllStatus != XRFDC_SUCCESS) {
+                        recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_DynamicPLLConfig");
+                    }
                     clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
                     pllConfig_[i][j] = pllDefault_[i][j];
 
@@ -414,8 +420,24 @@ void PyRFdc::Reset(int Tile_Id) {
                         // Check if block enabled
                         if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
 
-                            if (XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
-                                XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
+                            // The guard below stays != XRFDC_FAILURE, which
+                            // is the control flow this sweep has always
+                            // had. What is new is that a status which is
+                            // neither success nor failure, and a plain
+                            // failure alike, is now recorded against the
+                            // tile instead of only deciding whether the
+                            // event update runs. Recorded before the event
+                            // update, so the earlier of the two calls is
+                            // the one the tile's step names.
+                            uint32_t qmcStatus = XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]);
+                            if (qmcStatus != XRFDC_SUCCESS) {
+                                recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_SetQMCSettings");
+                            }
+                            if (qmcStatus != XRFDC_FAILURE) {
+                                uint32_t qmcEventStatus = XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
+                                if (qmcEventStatus != XRFDC_SUCCESS) {
+                                    recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_UpdateEvent");
+                                }
                             }
                             qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
 
@@ -423,8 +445,23 @@ void PyRFdc::Reset(int Tile_Id) {
                             if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
                                 // Check for ADC tile or DAC DUC not bypassed
                                 if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
-                                    if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
-                                        XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                                    // Same shape as the quadrature pair
+                                    // above, and for the same reason. The
+                                    // event update remains nested in the
+                                    // settings call's non-failure branch,
+                                    // so a settings call that failed still
+                                    // skips its event update exactly as it
+                                    // did before; the difference is that
+                                    // the skip is no longer silent.
+                                    uint32_t mixerStatus = XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                                    if (mixerStatus != XRFDC_SUCCESS) {
+                                        recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_SetMixerSettings");
+                                    }
+                                    if (mixerStatus != XRFDC_FAILURE) {
+                                        uint32_t mixerEventStatus = XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                                        if (mixerEventStatus != XRFDC_SUCCESS) {
+                                            recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_UpdateEvent");
+                                        }
                                     }
                                 }
                             }
@@ -442,7 +479,7 @@ void PyRFdc::Reset(int Tile_Id) {
                 if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
 
                     // Execute reset again after restoring the settings
-                    int tileStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
+                    uint32_t tileStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
 
                     // Record this tile's result in its own slot. One
                     // variable shared by the whole loop keeps only the last
@@ -450,18 +487,22 @@ void PyRFdc::Reset(int Tile_Id) {
                     // trace of which tile it was, or that it happened at all
                     // when a later tile succeeded.
                     if (tileStatus != XRFDC_SUCCESS) {
-                        tileDiag_[i][j].failed = true;
-                        tileDiag_[i][j].step = "XRFdc_Reset";
-                        sweepFailed = true;
-
-                        // Read the tile now, while it is still in the state
-                        // that failed. The host register path degrades once
-                        // a converter fails, so a value read back afterwards
-                        // is not the value that was there.
-                        readTileDiagnostics(uint32_t(i), uint8_t(j), &tileDiag_[i][j]);
+                        recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_Reset");
                     }
                 }
 
+            }
+
+            // A sweep failed when any tile recorded a failure. Derived from
+            // the records rather than tracked in parallel with them, so a
+            // call site that starts recording a failure cannot forget to
+            // tell the sweep about it and leave the report unsent.
+            for(diagType=0; diagType<2; diagType++) {
+                for(diagTile=0; diagTile<4; diagTile++) {
+                    if (tileDiag_[diagType][diagTile].failed) {
+                        sweepFailed = true;
+                    }
+                }
             }
 
             // Widen the report to every tile of both types once the sweep
@@ -551,6 +592,29 @@ void PyRFdc::readTileDiagnostics(uint32_t type, uint8_t tile, TileDiag *out) {
     out->commonStatus = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(type, tile), 0x0228);
 
     out->diagRead = true;
+}
+
+void PyRFdc::recordTileFailure(uint32_t type, uint8_t tile, const char *step) {
+    TileDiag &diag = tileDiag_[type][tile];
+
+    // Keep the first step that went wrong, not the last. A tile whose PLL
+    // reconfigure fails and whose reset then fails as well went wrong at
+    // the reconfigure; naming the reset would name the consequence and
+    // hide the cause. The opposite choice is equally defensible, which is
+    // why it is written down here rather than left to be inferred from the
+    // guard.
+    if (!diag.failed) {
+        diag.failed = true;
+        diag.step = step;
+    }
+
+    // Read the tile now, while it is still in the state that failed, and
+    // once per sweep at most. The host register path degrades once a
+    // converter fails, so a value read back after a later step is not the
+    // value that was there when the tile first went wrong.
+    if (!diag.diagRead) {
+        readTileDiagnostics(type, tile, &diag);
+    }
 }
 
 void PyRFdc::clearTileDiag() {

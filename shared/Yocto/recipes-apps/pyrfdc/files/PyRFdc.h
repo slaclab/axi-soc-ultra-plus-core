@@ -227,6 +227,17 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! helper shares no mutable state with them, so neither can happen.
     void readTileDiagnostics(uint32_t type, uint8_t tile, TileDiag *out);
 
+    //! Mark one tile as having failed at the named driver call, and capture
+    //! its control and status registers while it is still in the state that
+    //! failed.
+    //!
+    //! step is the name of the driver function that returned non-success,
+    //! always a string literal, so nothing allocates on a failure path and
+    //! the text can be grepped straight back to the call site. The first
+    //! step recorded for a tile is the one kept, and the registers are read
+    //! at most once per tile.
+    void recordTileFailure(uint32_t type, uint8_t tile, const char *step);
+
     //! Reset every tileDiag_ record. Called at the top of a global reset
     //! sweep, so a record belongs to one sweep and not to one transaction.
     void clearTileDiag();
