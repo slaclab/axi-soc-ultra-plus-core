@@ -3651,6 +3651,27 @@ void PyRFdc::ScratchPad() {
     }
 }
 
+// Why the driver instance is not usable, as one word at offset 0x1200C.
+//
+// Same shape as the two pure-state bodies above: a read hands back a member
+// and a write is refused. It names RFdcInstPtr_ nowhere, which is the whole
+// reason it exists, because the instance it is describing is the one that
+// may never have been initialized.
+//
+// Deliberately not polled from the host side. The variable that reads it in
+// python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py carries no poll
+// interval, because a polled variable adds a background transaction every
+// interval to a driver that may be dead, on a register path that has been
+// measured degrading once a converter fails. It is read when someone asks.
+void PyRFdc::InitFailReason() {
+    // Check for a write
+    if (!rdTxn_) {
+        errMsg_ = "InitFailReason(): read only\n";
+    } else {
+        data_ = initFailReason_;
+    }
+}
+
 void PyRFdc::DoubleTestReg(bool upper) {
     // Check for a write
     if (!rdTxn_) {
@@ -3940,6 +3961,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x12008) {
                 ScratchPad();
+
+            } else if (addr==0x1200C) {
+                InitFailReason();
 
             } else if ( (addr >= 0x13000) && (addr <= 0x13004) ) {
                 DoubleTestReg(bool((addr>>2)&0x1));

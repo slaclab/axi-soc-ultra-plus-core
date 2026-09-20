@@ -296,6 +296,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void MetalLogLevel();
     void IgnoreMetalError();
     void ScratchPad();
+    void InitFailReason();
     void DoubleTestReg(bool upper);
     uint32_t DoubleToUint32(double value, bool upper);
     double RemapDoubleWithUint32(double original, uint32_t newPart, bool upper);
