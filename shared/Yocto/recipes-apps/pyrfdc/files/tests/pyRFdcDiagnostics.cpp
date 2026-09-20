@@ -2086,6 +2086,15 @@ void checkIgnoreMetalErrorStillClearsAnUnprotectedError() {
 /* two cases the conversion did not change, and they are kept because a      */
 /* conversion that also moved either of them would be a different change     */
 /* from the one this work intends.                                           */
+/*                                                                           */
+/* Coverage limit, stated here rather than left to be discovered by someone  */
+/* reading a green run as more than it is: these three claims exercise two   */
+/* of the sixteen converted sites, one in the constructor and one in the     */
+/* reset sweep. The other fourteen are covered by a grep over the production */
+/* source, which proves no inequality comparison against the failure value   */
+/* survives anywhere in the file, and by no claim here. A claim computed     */
+/* over the production translation unit is not something this harness can    */
+/* express, so that grep is the whole of the coverage for those fourteen.    */
 /* ------------------------------------------------------------------------ */
 
 /*
