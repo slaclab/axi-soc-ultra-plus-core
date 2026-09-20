@@ -82,6 +82,10 @@ namespace {
 //! Count of claims that reported FAIL. main returns non-zero when non-zero.
 int gFailures = 0;
 
+//! Count of claims that reported anything at all, pass or fail. A suite that
+//! silently stopped running claims would otherwise print RESULT PASS.
+int gChecks = 0;
+
 /*
  * Print one claim verdict and keep going. An earlier failing claim must not
  * stop a later one from running, because a run that stops at the first
@@ -90,6 +94,7 @@ int gFailures = 0;
  */
 void runCheck(const char *label, bool outcome) {
     printf("  %s: %s\n", label, outcome ? "PASS" : "FAIL");
+    gChecks++;
     if (!outcome) gFailures++;
 }
 
@@ -852,6 +857,116 @@ void checkReportedLineFitsTheConsoleBuffer() {
     runCheck("the reported line fits the console buffer", ok);
 }
 
+/* ------------------------------------------------------------------------ */
+/* Meta-assertions.                                                          */
+/*                                                                           */
+/* Everything above asserts something about PyRFdc.cpp. These three assert   */
+/* something about this file, so that RESULT PASS cannot be produced by a    */
+/* suite that quietly stopped running claims, by claims driven against a     */
+/* fixture that recorded nothing, or by a fixture that carried one claim's   */
+/* scripted state into the next.                                             */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * The fixture really is emptied between claims.
+ *
+ * Every claim above opens with gScript.reset() and then scripts exactly the
+ * failures it wants. If reset left the previous claim's failure selector in
+ * place, a later claim would be driving a sweep it did not script, and the
+ * claims that assert a clean transaction would be the first to lie about
+ * it. Asserted on all four kinds of state the fixture carries: the recorded
+ * call list, the failure selector, the scripted registers and the log
+ * lines.
+ */
+void checkFixtureResetEmptiesRecordedState() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+    gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetCurrentState, 6);
+    driveWrite(device, kResetAllAdc, 1);
+
+    // Everything above is state a later claim must not inherit.
+    const bool dirty = !gScript.calls.empty() && !gScript.logErrors.empty() &&
+                       (gScript.statusFor("XRFdc_Reset", XRFDC_ADC_TILE, 3,
+                                          XRFDC_SCRIPT_ANY) != XRFDC_SUCCESS) &&
+                       (gScript.registerValue(XRFDC_ADC_TILE, 3, kOffsetCurrentState) == 6);
+
+    gScript.reset();
+
+    bool ok = dirty;
+    if (ok) ok = gScript.calls.empty();
+    if (ok) ok = gScript.logErrors.empty();
+    if (ok) {
+        ok = (gScript.statusFor("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY) ==
+              XRFDC_SUCCESS);
+    }
+    if (ok) ok = (gScript.registerValue(XRFDC_ADC_TILE, 3, kOffsetCurrentState) == 0);
+
+    if (!ok) {
+        fprintf(stderr,
+                "fixture reset: dirty before=%d, after reset calls=%zu logs=%zu "
+                "status=%d reg=%u\n",
+                static_cast<int>(dirty), gScript.calls.size(), gScript.logErrors.size(),
+                gScript.statusFor("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY),
+                gScript.registerValue(XRFDC_ADC_TILE, 3, kOffsetCurrentState));
+    }
+
+    runCheck("fixture reset empties the recorded state", ok);
+}
+
+/*
+ * The fixture records what the sweep did.
+ *
+ * Several claims above are asserted entirely on the recorded call list. If
+ * the stubs ever stopped recording, those claims would read an empty list
+ * and every count they compare against zero would pass for the wrong
+ * reason.
+ */
+void checkRecordedCallListIsNotEmpty() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = !gScript.calls.empty();
+    // And it records the sweep in particular, not merely something.
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) > 0);
+    if (ok) ok = (countCallsForType("XRFdc_CheckTileEnabled", XRFDC_ADC_TILE) > 0);
+
+    if (!ok) {
+        fprintf(stderr, "recorded call list: %zu entries\n", gScript.calls.size());
+    }
+
+    runCheck("the recorded driver call list is not empty after a sweep", ok);
+}
+
+//! Claims that run before the count check itself. Update deliberately when a
+//! claim is added or removed, so a claim that silently stops being invoked
+//! turns this one red instead of shrinking the suite unnoticed.
+const int kClaimsBeforeCountCheck = 17;
+
+/*
+ * Every claim this file defines actually ran.
+ *
+ * RESULT PASS is printed from a failure counter, so a suite that stopped
+ * invoking half its claims would still print it. The count is written out
+ * rather than derived, because deriving it from the same loop that runs the
+ * claims would make it agree with whatever the suite happened to do.
+ */
+void checkExpectedClaimCountRan() {
+    const bool ok = (gChecks == kClaimsBeforeCountCheck);
+
+    if (!ok) {
+        fprintf(stderr, "claim count: %d claims ran before this one, expected %d\n",
+                gChecks, kClaimsBeforeCountCheck);
+    }
+
+    runCheck("the expected number of claims ran", ok);
+}
+
 }  // namespace
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -874,6 +989,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkOtherTypeIsDiagnosedButNotReset();
     checkCleanSweepStillReportsNothing();
     checkReportedLineFitsTheConsoleBuffer();
+
+    checkFixtureResetEmptiesRecordedState();
+    checkRecordedCallListIsNotEmpty();
+    checkExpectedClaimCountRan();
 
     printf("RESULT %s\n", (gFailures == 0) ? "PASS" : "FAIL");
     return (gFailures == 0) ? 0 : 1;
