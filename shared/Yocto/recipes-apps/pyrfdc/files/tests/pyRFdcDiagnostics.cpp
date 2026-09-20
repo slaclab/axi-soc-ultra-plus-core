@@ -131,6 +131,21 @@ size_t countOf(const std::string &haystack, const std::string &needle) {
     return n;
 }
 
+//! How many recorded calls carry this name against this tile type, whatever
+//! the tile id and the fourth field. Asserting on the recorded list rather
+//! than on the message matters for the claim that no reset is issued against
+//! the second tile type: a message that merely omits the word reset would
+//! not prove that no reset was issued.
+size_t countCallsForType(const std::string &name, uint32_t type) {
+    const std::string prefix = name + "/" + std::to_string(type) + "/";
+    size_t n = 0;
+
+    for (size_t i = 0; i < gScript.calls.size(); i++) {
+        if (gScript.calls[i].compare(0, prefix.size(), prefix) == 0) n++;
+    }
+    return n;
+}
+
 //! The eight tile labels in the order the message is required to emit them.
 const char *const kTileLabels[8] = {"ADC0", "ADC1", "ADC2", "ADC3",
                                     "DAC0", "DAC1", "DAC2", "DAC3"};
@@ -588,6 +603,133 @@ void checkRawStateAboveFifteenIsMasked() {
     runCheck("raw state above fifteen is masked before decode", ok);
 }
 
+/* ------------------------------------------------------------------------ */
+/* Widening the report from the swept type's four tiles to all eight.        */
+/*                                                                           */
+/* _Rfdc.py's Init() calls the ADC reset and then the DAC reset. When the    */
+/* ADC call raises, the DAC reset is never reached, so DAC tile 0 is never   */
+/* examined at all. On this carrier that is the tile that matters: the IP    */
+/* configuration sets ADC3_Clock_Source to 4, which is DAC tile 0, and       */
+/* DAC0_Clock_Dist to 1, which makes DAC tile 0 the sole clock distribution  */
+/* master, and RfDataConverter.vhd wires adc0, adc1, adc2 and dac0 clock     */
+/* inputs into the IP core and leaves the fourth ADC clock input             */
+/* unconnected. The tile that hangs is the tile with no clock of its own,    */
+/* and the state of the tile it takes its clock from is not readable after   */
+/* the fact, because the host register path has already begun degrading.     */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Any global reset failure carries all eight tiles, not only the four of
+ * the type that was swept.
+ */
+void checkReportsAllEightTiles() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    size_t present = 0;
+    bool ok = labelsAreInCanonicalOrder(msg, &present);
+    if (ok) ok = (present == 8);
+    if (ok) ok = (countOf(msg, "1 failing tile(s)") == 1);
+    // Eight records, each carrying a state field, and only one of them
+    // naming a step. A widening that filled the other four with the
+    // unavailable marker would satisfy a bare label count but says nothing.
+    if (ok) ok = (countOf(msg, "state=") == 8);
+    if (ok) ok = (countOf(msg, "XRFdc_Reset") == 1);
+    if (ok) ok = (countOf(msg, "unavailable") == 0);
+
+    if (!ok) {
+        fprintf(stderr, "eight tiles: %zu label(s) present, text '%s'\n", present, msg.c_str());
+    }
+
+    runCheck("reports all eight tiles on a global reset failure", ok);
+}
+
+/*
+ * The second tile type is read and nothing more.
+ *
+ * This is the load-bearing claim of the widening. It is asserted on the
+ * recorded driver call list rather than on the message, because a message
+ * that merely omits the word reset would not prove that no reset, no PLL
+ * reconfigure and no event update was issued against the group that was not
+ * swept. Resetting the clock distribution master to find out what it was
+ * doing would destroy the thing being measured.
+ */
+void checkOtherTypeIsDiagnosedButNotReset() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 0);
+    if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_DAC_TILE) == 0);
+    if (ok) ok = (countCallsForType("XRFdc_UpdateEvent", XRFDC_DAC_TILE) == 0);
+    if (ok) ok = (countCallsForType("XRFdc_StartUp", XRFDC_DAC_TILE) == 0);
+    if (ok) ok = (countCallsForType("XRFdc_Shutdown", XRFDC_DAC_TILE) == 0);
+    // Nothing is written to the second type either, so the read cannot be a
+    // read-modify-write wearing a diagnostic's name.
+    if (ok) ok = (countCallsForType("XRFdc_WriteReg", XRFDC_DAC_TILE) == 0);
+    if (ok) ok = (countCallsForType("XRFdc_ClrSetReg", XRFDC_DAC_TILE) == 0);
+    // And it really was read: four control and status reads per DAC tile.
+    if (ok) ok = (countCallsForType("XRFdc_ReadReg", XRFDC_DAC_TILE) == 16);
+    if (ok) {
+        ok = gScript.sawCall("XRFdc_ReadReg", XRFDC_DAC_TILE, 0, kOffsetCurrentState);
+    }
+    // The sweep's own four resets against the ADC group are unchanged.
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 4);
+
+    if (!ok) {
+        fprintf(stderr,
+                "other type: DAC reset=%zu pll=%zu event=%zu write=%zu clrset=%zu read=%zu, "
+                "ADC reset=%zu\n",
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_UpdateEvent", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_WriteReg", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_ClrSetReg", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_ReadReg", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
+    }
+
+    runCheck("the other type is diagnosed but not reset", ok);
+}
+
+/*
+ * Widening the report did not turn a healthy reset into an error, and a
+ * healthy reset pays nothing for the widening.
+ */
+void checkCleanSweepStillReportsNothing() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = tran->doneCalled() && !tran->errorStrCalled();
+    if (ok) ok = tran->errorStrValue().empty();
+    // No diagnostic read at all on either type, so the extra reads are paid
+    // for only on a path that is already inside a driver error.
+    if (ok) ok = (countCallsForType("XRFdc_ReadReg", XRFDC_DAC_TILE) == 0);
+    if (ok) {
+        ok = !gScript.sawCall("XRFdc_ReadReg", XRFDC_ADC_TILE, 3, kOffsetCurrentState);
+    }
+
+    if (!ok) {
+        fprintf(stderr, "clean sweep: done=%u err=%u, DAC reads=%zu, text '%s'\n",
+                tran->doneCalls(), tran->errorStrCalls(),
+                countCallsForType("XRFdc_ReadReg", XRFDC_DAC_TILE),
+                tran->errorStrValue().c_str());
+    }
+
+    runCheck("a clean sweep on one type still reports nothing", ok);
+}
+
 }  // namespace
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -605,6 +747,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkUnreadDiagnosticsReportUnavailable();
     checkDecodedStateNamesMatchPythonTable();
     checkRawStateAboveFifteenIsMasked();
+
+    checkReportsAllEightTiles();
+    checkOtherTypeIsDiagnosedButNotReset();
+    checkCleanSweepStillReportsNothing();
 
     printf("RESULT %s\n", (gFailures == 0) ? "PASS" : "FAIL");
     return (gFailures == 0) ? 0 : 1;
