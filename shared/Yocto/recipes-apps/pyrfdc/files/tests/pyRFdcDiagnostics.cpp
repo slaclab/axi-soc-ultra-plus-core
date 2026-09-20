@@ -110,6 +110,91 @@ rim::TransactionPtr driveRead(PyRFdcPtr device, uint64_t addr) {
     return tran;
 }
 
+//! Address of the global ADC reset, the one _Rfdc.py exposes as ResetAllAdc
+//! and the one Init() reaches first.
+const uint64_t kResetAllAdc = 0x10010;
+
+//! The register offsets the diagnostic read is expected to use, taken from
+//! the four existing accessor bodies in PyRFdc.cpp rather than restated from
+//! any other source.
+const uint32_t kOffsetRestartState = XRFDC_RESTART_STATE_OFFSET;
+const uint32_t kOffsetCurrentState = 0x000C;
+
+//! How many times needle occurs in haystack. Overlaps are not counted; no
+//! needle used below can overlap itself.
+size_t countOf(const std::string &haystack, const std::string &needle) {
+    size_t n = 0;
+    size_t at = haystack.find(needle);
+    while (at != std::string::npos) {
+        n++;
+        at = haystack.find(needle, at + needle.size());
+    }
+    return n;
+}
+
+//! The eight tile labels in the order the message is required to emit them.
+const char *const kTileLabels[8] = {"ADC0", "ADC1", "ADC2", "ADC3",
+                                    "DAC0", "DAC1", "DAC2", "DAC3"};
+
+/*
+ * True when every tile label present in the message appears in the canonical
+ * ADC0..3 then DAC0..3 order, and no label appears twice. Written over
+ * whichever labels are present rather than over a fixed expected set, so the
+ * same check keeps its meaning as the report widens from the swept type's
+ * four tiles to all eight.
+ */
+bool labelsAreInCanonicalOrder(const std::string &msg, size_t *countOut) {
+    size_t previous = 0;
+    bool first = true;
+    size_t present = 0;
+
+    for (size_t i = 0; i < 8; i++) {
+        const std::string label = std::string(" ") + kTileLabels[i] + " ";
+        const size_t at = msg.find(label);
+        if (at == std::string::npos) continue;
+        if (countOf(msg, label) != 1) return false;
+        present++;
+        if (!first && at < previous) return false;
+        previous = at;
+        first = false;
+    }
+
+    if (countOut != nullptr) *countOut = present;
+    return true;
+}
+
+/*
+ * Second, independent copy of the IPSM state names, transcribed by hand from
+ * python/axi_soc_ultra_plus_core/rfsoc_utility/__init__.py, where enumState
+ * maps the same sixteen integers to the same sixteen strings and is the enum
+ * every host-side CurrentState RemoteVariable is decoded against.
+ *
+ * The point of the claim that uses it is to catch drift between the two
+ * copies: a name edited on one side and not the other turns a host-side
+ * comparison against that table into a mismatch that nothing else reports.
+ * Transcribed rather than generated from the driver's own table, because
+ * generating it from the copy under test would make the two copies one copy
+ * and the claim would assert nothing.
+ */
+const char *const kPythonEnumState[16] = {
+    "Device_Power-up_and_Configuration[0]",
+    "Device_Power-up_and_Configuration[1]",
+    "Device_Power-up_and_Configuration[2]",
+    "Power_Supply_Adjustment[0]",
+    "Power_Supply_Adjustment[1]",
+    "Power_Supply_Adjustment[2]",
+    "Clock_Configuration[0]",
+    "Clock_Configuration[1]",
+    "Clock_Configuration[2]",
+    "Clock_Configuration[3]",
+    "Clock_Configuration[4]",
+    "Converter_Calibration[0]",
+    "Converter_Calibration[1]",
+    "Converter_Calibration[2]",
+    "Wait_for_deassertion_of_AXI4-Stream_reset",
+    "Done",
+};
+
 /*
  * (a) The shim set compiles and links the production source unchanged.
  *
@@ -246,6 +331,253 @@ void checkTileTypeIndices() {
     runCheck("tile type indices match the shadow-array layout", ok);
 }
 
+/* ------------------------------------------------------------------------ */
+/* Per-tile accumulation on the global reset path.                           */
+/*                                                                           */
+/* Every claim below is asserted over what a caller can observe: the string  */
+/* handed to Transaction::errorStr, the line handed to Logging::error, and   */
+/* the recorded driver call list. None of them reaches into a member of      */
+/* PyRFdc, even though including ../PyRFdc.cpp would allow it, so a later    */
+/* rework of how the report is stored cannot break a claim that is really    */
+/* about what the report says.                                               */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Every tile the sweep failed on is named, not only the last one iterated.
+ *
+ * Today PyRFdc.cpp assigns the sweep's XRFdc_Reset return to one
+ * sweep-scoped variable inside the tile loop, so tile 3's result overwrites
+ * tile 1's and a failure on tiles 0, 1 or 2 alone leaves no trace at all.
+ * Two tiles are scripted to fail here for exactly that reason: a report that
+ * names only one of them is the defect.
+ */
+void checkAccumulatesEveryFailingTile() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 1, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = (countOf(msg, " ADC1 ") == 1) && (countOf(msg, " ADC3 ") == 1);
+    if (ok) ok = (msg.find("2 failing tile(s)") != std::string::npos);
+    if (ok) ok = (countOf(msg, " ADC0 ") == 0) && (countOf(msg, " ADC2 ") == 0);
+
+    if (!ok) {
+        fprintf(stderr, "accumulate: err=%u done=%u, text '%s'\n",
+                tran->errorStrCalls(), tran->doneCalls(), msg.c_str());
+    }
+
+    runCheck("accumulates every failing tile", ok);
+}
+
+/*
+ * The records come out in a specified order, not in the order the failures
+ * happened to be discovered or scripted.
+ *
+ * The failures are scripted tile 3 first and tile 1 second so the selector's
+ * own order disagrees with the required output order. A formatter that
+ * appended a record per failure as it found it would be stable only by
+ * accident of the loop; walking the accumulator in index order is stable by
+ * construction, and that is what this pins.
+ */
+void checkTileOrderIsAdcThenDac() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 1, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    const size_t adc1 = msg.find(" ADC1 ");
+    const size_t adc3 = msg.find(" ADC3 ");
+
+    size_t present = 0;
+    bool ok = labelsAreInCanonicalOrder(msg, &present);
+    if (ok) ok = (adc1 != std::string::npos) && (adc3 != std::string::npos) && (adc1 < adc3);
+
+    if (!ok) {
+        fprintf(stderr, "tile order: %zu label(s) present, ADC1 at %zu, ADC3 at %zu, text '%s'\n",
+                present, adc1, adc3, msg.c_str());
+    }
+
+    runCheck("tile order is ADC0..3 then DAC0..3", ok);
+}
+
+/*
+ * Two tiles that failed the same way stay two records.
+ *
+ * Identical captured state on both, so any keying of the accumulator on the
+ * captured values rather than on the tile index would collapse them into
+ * one, and a reader would conclude one tile failed when two did.
+ */
+void checkTwoIdenticalFailuresEmitTwoRecords() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    for (uint32_t tile = 1; tile <= 2; tile++) {
+        gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, tile, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCurrentState, 6);
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetRestartState, 3);
+    }
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = (countOf(msg, " ADC1 ") == 1) && (countOf(msg, " ADC2 ") == 1);
+    if (ok) ok = (countOf(msg, "state=0x00000006") == 2);
+    if (ok) ok = (countOf(msg, "restart=0x00000003") == 2);
+    if (ok) ok = (msg.find("2 failing tile(s)") != std::string::npos);
+
+    if (!ok) {
+        fprintf(stderr, "two identical failures: text '%s'\n", msg.c_str());
+    }
+
+    runCheck("two identical failures emit two records", ok);
+}
+
+/*
+ * A sweep that failed on nothing is still a clean transaction.
+ *
+ * The accumulator must not turn a healthy reset into an error, and it must
+ * not leak state from a previous reset into this one, which is why the
+ * accumulator is cleared at the top of the sweep and not only when the
+ * transaction begins.
+ */
+void checkZeroFailuresLeavesTransactionClean() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = tran->doneCalled() && !tran->errorStrCalled();
+    if (ok) ok = tran->errorStrValue().empty();
+    if (ok) ok = gScript.logErrors.empty();
+
+    if (!ok) {
+        fprintf(stderr, "zero failures: done=%u err=%u, text '%s'\n",
+                tran->doneCalls(), tran->errorStrCalls(), tran->errorStrValue().c_str());
+    }
+
+    runCheck("zero failures leaves the transaction clean", ok);
+}
+
+/*
+ * A tile whose diagnostic read did not run says so, and prints no value.
+ *
+ * XRFdc_ReadReg hands back a word with no way to report that it could not
+ * service the read, so the diagnostic helper gates on the one status-bearing
+ * call in the sequence and reports the whole tile as unavailable when the
+ * driver refuses it. An earlier register capture taken on this carrier right
+ * after a real converter failure read state 0 on all eight tiles, while the
+ * PS UART console had named one of them at a different state thirty seconds
+ * before, and nothing in the capture told a register that read zero apart
+ * from one that was never read at all. A zero printed here must never be
+ * able to mean that again.
+ */
+void checkUnreadDiagnosticsReportUnavailable() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+    gScript.scriptFailure("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = (countOf(msg, " ADC3 ") == 1);
+    if (ok) ok = (msg.find("unavailable") != std::string::npos);
+    if (ok) ok = (countOf(msg, "state=") == 0);
+    if (ok) ok = (countOf(msg, "clkdet=") == 0);
+    // The refused tile performs no control and status reads at all, so an
+    // unavailable record cannot be one that read and then discarded.
+    if (ok) {
+        ok = !gScript.sawCall("XRFdc_ReadReg", XRFDC_ADC_TILE, 3, kOffsetCurrentState);
+    }
+
+    if (!ok) {
+        fprintf(stderr, "unavailable: text '%s'\n", msg.c_str());
+    }
+
+    runCheck("unread diagnostics report unavailable", ok);
+}
+
+/*
+ * All sixteen decoded names are byte-identical to the Python enumState
+ * values, checked one scripted read at a time through the real message path
+ * rather than by reaching into the driver's table.
+ */
+void checkDecodedStateNamesMatchPythonTable() {
+    bool ok = true;
+    uint32_t firstBad = 0;
+    std::string badText;
+
+    for (uint32_t value = 0; value < 16; value++) {
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+        gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetCurrentState, value);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string msg = tran->errorStrValue();
+        const std::string want = std::string("(") + kPythonEnumState[value] + ")";
+
+        if (countOf(msg, want) != 1) {
+            ok = false;
+            firstBad = value;
+            badText = msg;
+            break;
+        }
+    }
+
+    if (!ok) {
+        fprintf(stderr, "decode table: state %u expected '%s', text '%s'\n",
+                firstBad, kPythonEnumState[firstBad], badText.c_str());
+    }
+
+    runCheck("decoded state names match the python table", ok);
+}
+
+/*
+ * A raw current-state read with bits above bit 3 set is masked to four bits
+ * before it indexes the decode table, and the unmasked value is still
+ * printed.
+ *
+ * The host side declares CurrentState as four bits (_RfdcTile.py), but the
+ * read in PyRFdc.cpp is of the whole word, so an out-of-range value would
+ * index past a sixteen-entry table. Printing the raw value alongside the
+ * name keeps the number readable when the two tables ever disagree.
+ */
+void checkRawStateAboveFifteenIsMasked() {
+    const uint32_t raw = 0x26;
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+    gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetCurrentState, raw);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = (msg.find("state=0x00000026") != std::string::npos);
+    if (ok) ok = (countOf(msg, std::string("(") + kPythonEnumState[6] + ")") == 1);
+
+    if (!ok) {
+        fprintf(stderr, "masked decode: text '%s'\n", msg.c_str());
+    }
+
+    runCheck("raw state above fifteen is masked before decode", ok);
+}
+
 }  // namespace
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -255,6 +587,14 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkScratchpadRoundTrip();
     checkPreChangeGlobalResetMessage();
     checkTileTypeIndices();
+
+    checkAccumulatesEveryFailingTile();
+    checkTileOrderIsAdcThenDac();
+    checkTwoIdenticalFailuresEmitTwoRecords();
+    checkZeroFailuresLeavesTransactionClean();
+    checkUnreadDiagnosticsReportUnavailable();
+    checkDecodedStateNamesMatchPythonTable();
+    checkRawStateAboveFifteenIsMasked();
 
     printf("RESULT %s\n", (gFailures == 0) ? "PASS" : "FAIL");
     return (gFailures == 0) ? 0 : 1;
