@@ -80,6 +80,13 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
 
     //! Local variables
     std::string errMsg_;
+
+    //! Whether errMsg_ currently holds a diagnostic that the metal error
+    //! bypass must not discard. Set together with the message by
+    //! setDiagError and cleared where errMsg_ is cleared, once per
+    //! transaction, so the two cannot drift apart.
+    bool errMsgProtected_ = false;
+
     uint32_t scratchPad_;
     double doubleTestReg_;
     bool metalLogLevel_;
@@ -283,6 +290,16 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! Render tileDiag_ as one newline-terminated line for the caller and
     //! for the console.
     std::string buildDiagMessage(const char *entryPoint, int tileId);
+
+    //! Assign a diagnostic error message and mark it protected, in one call.
+    //!
+    //! Every message this driver builds from a tile record or from a
+    //! constructor outcome goes through here. The alternative is an
+    //! assignment and a flag set side by side at each site, which is a pair
+    //! that can drift, and a site that set the message and forgot the flag
+    //! would have its diagnostic silently discarded by the metal error
+    //! bypass with nothing to show that it had been.
+    void setDiagError(const std::string &msg);
 
     //! Refuse one word of a transaction when the driver instance was never
     //! initialized, and say which constructor step failed.

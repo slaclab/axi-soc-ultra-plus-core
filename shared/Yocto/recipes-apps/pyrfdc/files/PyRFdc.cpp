@@ -400,7 +400,7 @@ void PyRFdc::StartUp(int Tile_Id) {
         if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
             clearTileDiag();
             recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_StartUp");
-            errMsg_ = buildDiagMessage("StartUp", Tile_Id);
+            setDiagError(buildDiagMessage("StartUp", Tile_Id));
 
         // The group form, one driver call covering every tile of the type.
         // It names no tile, so there is nothing to attribute and the
@@ -430,7 +430,7 @@ void PyRFdc::Shutdown(int Tile_Id) {
         if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
             clearTileDiag();
             recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_Shutdown");
-            errMsg_ = buildDiagMessage("Shutdown", Tile_Id);
+            setDiagError(buildDiagMessage("Shutdown", Tile_Id));
 
         } else {
             errMsg_ = "Shutdown(" + std::to_string(Tile_Id) + "): failed\n";
@@ -626,7 +626,7 @@ void PyRFdc::Reset(int Tile_Id) {
 
     // Check if not successful
     if (sweepFailed) {
-        errMsg_ = buildDiagMessage("Reset", Tile_Id);
+        setDiagError(buildDiagMessage("Reset", Tile_Id));
 
     } else if (status != XRFDC_SUCCESS) {
         // The single-tile branch, reached at a tile-scoped address rather
@@ -636,7 +636,7 @@ void PyRFdc::Reset(int Tile_Id) {
         if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
             clearTileDiag();
             recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_Reset");
-            errMsg_ = buildDiagMessage("Reset", Tile_Id);
+            setDiagError(buildDiagMessage("Reset", Tile_Id));
 
         } else {
             errMsg_ = "Reset(" + std::to_string(Tile_Id) + "): failed\n";
@@ -830,7 +830,7 @@ void PyRFdc::CustomStartUp(int Tile_Id) {
         if ((Tile_Id >= 0) && (Tile_Id <= 3)) {
             clearTileDiag();
             recordTileFailure(tileType_, uint8_t(Tile_Id), "XRFdc_CustomStartUp");
-            errMsg_ = buildDiagMessage("CustomStartUp", Tile_Id);
+            setDiagError(buildDiagMessage("CustomStartUp", Tile_Id));
 
         } else {
             errMsg_ = "CustomStartUp(" + std::to_string(Tile_Id) + "): failed\n";
@@ -3710,6 +3710,11 @@ double PyRFdc::RemapDoubleWithUint32(double original, uint32_t newPart, bool upp
     return newValue;
 }
 
+void PyRFdc::setDiagError(const std::string &msg) {
+    errMsg_ = msg;
+    errMsgProtected_ = true;
+}
+
 bool PyRFdc::rejectIfDriverDead(uint32_t addr) {
     // A live driver leaves here having done one boolean test and nothing
     // else, so every dispatch below behaves exactly as it did.
@@ -3745,8 +3750,8 @@ bool PyRFdc::rejectIfDriverDead(uint32_t addr) {
     // assignments use. A refused register access is an error to report back
     // to the caller, never a reason to raise, to end the process or to take
     // any other route out of this function.
-    errMsg_ = "PyRFdc: driver unusable, " + std::string(InitFailStepName(initFailReason_))
-            + " (" + HexValue(addr) + " rejected)\n";
+    setDiagError("PyRFdc: driver unusable, " + std::string(InitFailStepName(initFailReason_))
+                 + " (" + HexValue(addr) + " rejected)\n");
     return true;
 }
 
@@ -3762,6 +3767,10 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
      // Initialize as an empty string
      errMsg_.clear();
+
+     // Cleared here and nowhere else, alongside the message it describes, so
+     // the flag belongs to one transaction exactly as the message does.
+     errMsgProtected_ = false;
 
     rim::TransactionLockPtr tlock = tran->lock();
     {
@@ -4260,7 +4269,25 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                 memcpy(ptr+wrdIdx, &data_, sizeof(uint32_t));
             }
 
-            if (ignoreMetalError_) {
+            // The bypass exists for the metal-layer noise its name
+            // describes. Left clearing unconditionally it would also discard
+            // the tile reports and the driver-unusable refusals, which would
+            // make setting one published register a way to turn a board that
+            // is failing into a board that reports nothing.
+            //
+            // Asymmetry worth stating rather than leaving to be discovered:
+            // this clear runs once per word while both the message and the
+            // protection flag are reset once per transaction, so inside one
+            // multi-word transaction a protected message set on an early
+            // word stays protected for every word after it. That is the safe
+            // direction, because over-protecting can only ever preserve a
+            // real diagnostic, and the reset paths this reporting covers are
+            // single-word transactions in any case.
+            //
+            // Blast radius: the register defaults to off and nothing in this
+            // repository sets it, so this narrows an escape hatch that is
+            // inert today rather than changing any observed behavior.
+            if (ignoreMetalError_ && !errMsgProtected_) {
                 errMsg_.clear();
             }
 

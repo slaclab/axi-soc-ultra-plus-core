@@ -1952,6 +1952,111 @@ void checkReasonOffsetDoesNotCollide() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* The metal error bypass, narrowed.                                         */
+/*                                                                           */
+/* The bypass at 0x12004 cleared the error string unconditionally, inside    */
+/* the per-word loop and therefore before the emptiness test that decides    */
+/* between a clean completion and an error. Left as it stood, setting one    */
+/* published register would have discarded every tile report and every       */
+/* driver-unusable refusal, which is a way to make a board that is failing   */
+/* report that it is fine. The register is kept and its offset is            */
+/* unchanged, because it is published on the host side with an offset in     */
+/* the register map, and removing it would be an interface break.            */
+/*                                                                           */
+/* Two claims, and the second earns its keep as much as the first: a         */
+/* narrowing that cleared nothing at all would have removed the register's   */
+/* function rather than narrowed it.                                         */
+/* ------------------------------------------------------------------------ */
+
+//! An address inside the global block that no branch decodes, so the chain
+//! reaches its terminal undefined-memory assignment. That message is not a
+//! diagnostic this work protects, which is what makes it the right input
+//! for the claim that the bypass still clears what it legitimately should.
+const uint64_t kUndecodedGlobal = 0x12010;
+
+/*
+ * With the bypass set, a failing global reset still reports its tiles.
+ */
+void checkIgnoreMetalErrorCannotClearAResetDiagnostic() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    rim::TransactionPtr bypass = driveWrite(device, kIgnoreMetalError, 1);
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = bypass->doneCalled() && !bypass->errorStrCalled();
+    if (ok) ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = (msg.compare(0, 8, "Reset(-1") == 0);
+    if (ok) ok = (recordFor(msg, "ADC3").find("XRFdc_Reset") != std::string::npos);
+    // And the console copy survived too, which is the half a python
+    // traceback does not carry.
+    if (ok) ok = (gScript.logErrors.size() == 1) && (gScript.logErrors[0] == msg);
+
+    // The refusal a dead driver reports is protected by the same route.
+    if (ok) {
+        PyRFdcPtr dead = createDeadDevice("metal_init");
+
+        driveWrite(dead, kIgnoreMetalError, 1);
+
+        rim::TransactionPtr refused = driveWrite(dead, kResetAllAdc, 1);
+
+        ok = refused->errorStrCalled() && !refused->doneCalled();
+        if (ok) {
+            ok = (refused->errorStrValue().find(kStepMetalInit) != std::string::npos);
+        }
+    }
+
+    if (!ok) {
+        fprintf(stderr, "bypass vs reset diagnostic: err=%u done=%u, text '%s'\n",
+                tran->errorStrCalls(), tran->doneCalls(), msg.c_str());
+    }
+
+    runCheck("ignore-metal-error cannot clear a reset diagnostic", ok);
+}
+
+/*
+ * With the bypass set, an error that is not one of this driver's diagnostics
+ * is still cleared, so the register still does the job it exists for.
+ */
+void checkIgnoreMetalErrorStillClearsAnUnprotectedError() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    // First establish that the same access does report an error with the
+    // bypass off, so the pass below cannot come from an address that never
+    // produced one.
+    rim::TransactionPtr before = driveWrite(device, kUndecodedGlobal, 0);
+
+    bool ok = before->errorStrCalled() && !before->doneCalled();
+
+    if (ok) {
+        driveWrite(device, kIgnoreMetalError, 1);
+
+        // The line the access above logged belongs to the bypass-off case.
+        gScript.logErrors.clear();
+
+        rim::TransactionPtr after = driveWrite(device, kUndecodedGlobal, 0);
+
+        ok = after->doneCalled() && !after->errorStrCalled();
+        if (ok) ok = after->errorStrValue().empty();
+        if (ok) ok = gScript.logErrors.empty();
+    }
+
+    if (!ok) {
+        fprintf(stderr, "bypass vs unprotected error: before err=%u, %zu log line(s)\n",
+                before->errorStrCalls(), gScript.logErrors.size());
+    }
+
+    runCheck("ignore-metal-error still clears an unprotected error", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -2040,7 +2145,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 45;
+const int kClaimsBeforeCountCheck = 47;
 
 /*
  * Every claim this file defines actually ran.
@@ -2110,6 +2215,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkReasonRegisterIsReadOnly();
     checkReasonRegisterPerformsNoDriverAccess();
     checkReasonOffsetDoesNotCollide();
+
+    checkIgnoreMetalErrorCannotClearAResetDiagnostic();
+    checkIgnoreMetalErrorStillClearsAnUnprotectedError();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
