@@ -1459,9 +1459,12 @@ const int kClaimsBeforeCountCheck = 32;
  * RESULT PASS is printed from a failure counter, so a suite that stopped
  * invoking half its claims would still print it. The count is written out
  * rather than derived, because deriving it from the same loop that runs the
- * claims would make it agree with whatever the suite happened to do.
+ * claims would make it agree with whatever the suite happened to do. An
+ * earlier bench tool in this project had a whole section that existed in
+ * the source and was never called from the entry point, so it never ran and
+ * nothing said so.
  */
-void checkExpectedClaimCountRan() {
+void checkClaimCountMatchesExpectedTotal() {
     const bool ok = (gChecks == kClaimsBeforeCountCheck);
 
     if (!ok) {
@@ -1469,7 +1472,7 @@ void checkExpectedClaimCountRan() {
                 gChecks, kClaimsBeforeCountCheck);
     }
 
-    runCheck("the expected number of claims ran", ok);
+    runCheck("claim count matches the expected total", ok);
 }
 
 }  // namespace
@@ -1506,7 +1509,7 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
-    checkExpectedClaimCountRan();
+    checkClaimCountMatchesExpectedTotal();
 
     printf("RESULT %s\n", (gFailures == 0) ? "PASS" : "FAIL");
     return (gFailures == 0) ? 0 : 1;
