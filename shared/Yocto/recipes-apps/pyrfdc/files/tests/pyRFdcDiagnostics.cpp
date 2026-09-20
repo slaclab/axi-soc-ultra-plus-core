@@ -23,10 +23,9 @@
  *       per-word loop and the real completion epilogue, rather than through
  *       a reimplementation of any of them
  *
- *   (c) the message a failing global ADC reset reports today is exactly the
- *       bare prefix, with no failing-tile detail in it. This pins current
- *       behavior so that a later change to that message is a visible diff in
- *       a running test rather than an assertion in prose
+ *   (c) the message a failing global ADC reset reports is exactly one line,
+ *       pinned byte for byte, so any later change to that message is a
+ *       visible diff in a running test rather than an assertion in prose
  *
  *   (d) the two tile-type constants that the [2][4] shadow arrays in
  *       PyRFdc.h are indexed by hold the values that layout assumes. The
@@ -249,26 +248,30 @@ void checkScratchpadRoundTrip() {
 }
 
 /*
- * (c) A failing global ADC reset reports the bare prefix and nothing else.
+ * (c) A failing global ADC reset reports one exact line, byte for byte.
  *
- * The expected text is what PyRFdc.cpp line 372 produces for Tile_Id of -1:
- * the literal "Reset(", the tile id, "): failed" and a newline. It is
- * written out here rather than recomputed, so that a change to that line has
- * to change this literal too and cannot slip through as a test that quietly
- * tracks whatever the code now says.
- *
- * This check pins today's behavior on purpose. The gap it makes visible is
- * that the driver names neither the failing tile nor the reason, even though
- * the reset sweep visited four tiles and only one of them failed.
+ * The expected text is written out in full rather than recomputed, so a
+ * change to the message has to change this literal too and cannot slip
+ * through as a test that quietly tracks whatever the code now says. This is
+ * the same pin this file opened with, carried forward onto the message the
+ * driver reports now. Its earlier form asserted the bare prefix
+ * "Reset(-1): failed\n", which named neither the failing tile nor the
+ * reason. Both halves of the report are asserted separately, the string the
+ * caller sees and the single line the console sees, because they reach
+ * different readers and only one of them survives into a python traceback.
  *
  * XRFdc_Reset is scripted to fail for ADC tile 3 alone, so a message naming
- * no tile is the interesting outcome rather than the only possible one. The
- * recorded call list is checked as well, because an error string produced
- * without the sweep ever reaching tile 3 would be the right text for the
- * wrong reason.
+ * the wrong tile is the interesting outcome rather than the only possible
+ * one. The recorded call list is checked as well, because an error string
+ * produced without the sweep ever reaching tile 3 would be the right text
+ * for the wrong reason.
  */
-void checkPreChangeGlobalResetMessage() {
-    const std::string expected = "Reset(-1): failed\n";
+void checkGlobalResetMessageIsPinnedByteForByte() {
+    const std::string expected =
+        "Reset(-1): failed, 1 failing tile(s):"
+        " ADC3 XRFdc_Reset state=0x00000006(Clock_Configuration[0])"
+        " restart=0x00000003 clkdet=0x00000000 common=0x00000000 plllock=0x00000000;"
+        "\n";
 
     PyRFdcPtr device = PyRFdc::create();
 
@@ -277,7 +280,14 @@ void checkPreChangeGlobalResetMessage() {
     gScript.reset();
     gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
 
-    rim::TransactionPtr tran = driveWrite(device, 0x10010, 1);
+    // Two scripted readings so the pinned line is not a wall of zeros that
+    // an all-zero record of any other tile would satisfy just as well: the
+    // failing tile sits at the clock-configuration state this project keeps
+    // seeing on the console, mid-restart.
+    gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetCurrentState, 6);
+    gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetRestartState, 3);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
 
     bool sweptEveryTile = true;
     for (uint32_t tile = 0; tile < 4; tile++) {
@@ -299,7 +309,7 @@ void checkPreChangeGlobalResetMessage() {
                 tran->errorStrValue().c_str(), gScript.logErrors.size());
     }
 
-    runCheck("pre-change global reset message is the bare prefix", ok);
+    runCheck("global reset message is pinned byte for byte", ok);
 }
 
 /*
@@ -585,7 +595,7 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     checkShimCompilesPyRFdc();
     checkScratchpadRoundTrip();
-    checkPreChangeGlobalResetMessage();
+    checkGlobalResetMessageIsPinnedByteForByte();
     checkTileTypeIndices();
 
     checkAccumulatesEveryFailingTile();

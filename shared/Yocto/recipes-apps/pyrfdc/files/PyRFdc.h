@@ -84,6 +84,33 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     XRFdc_Mixer_Settings mixerDefault_[2][4][4];
     XRFdc_Mixer_Settings mixerConfig_[2][4][4];
 
+    //! What one tile of a global reset did, and what its control and status
+    //! registers said at the moment it did it.
+    //!
+    //! Plain old data on purpose. The global reset path fills one of these
+    //! per tile while the driver is already reporting an error, so nothing
+    //! here allocates: step points at a string literal rather than owning a
+    //! copy, and the whole set lives in a fixed member array.
+    //!
+    //! diagRead is the difference between a register that read zero and a
+    //! register that was never read. Both are absent from a struct of plain
+    //! zeros, and reporting the second as the first is how a snapshot comes
+    //! to say every tile is in state 0 when the console says otherwise.
+    struct TileDiag {
+        bool failed;          //!< This tile returned non-success during the sweep
+        const char *step;     //!< Driver function that returned non-success, a literal
+        bool diagRead;        //!< The reads below actually ran and their values mean something
+        uint32_t restartState;
+        uint32_t currentState;
+        uint32_t clockDetector;
+        uint32_t commonStatus;
+        uint32_t pllLock;
+    };
+
+    //! One record per tile, indexed by tile type then tile id, the same way
+    //! every shadow array above is indexed.
+    TileDiag tileDiag_[2][4];
+
     //! Application functions
     void StartUp(int Tile_Id);
     void Shutdown(int Tile_Id);
@@ -187,6 +214,26 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void ClockDetector();
     void TileCommonStatus();
     void TileCurrentState();
+
+    //! Read one tile's control and status registers into out.
+    //!
+    //! Takes the tile type and tile id as arguments and writes only through
+    //! its out parameter. The five bodies above are transaction bodies, not
+    //! value-returning functions: each writes into data_ and reads tileType_
+    //! and tileId_, which doTransaction sets per word. Calling one of them
+    //! from a failure path would overwrite the word the in-flight
+    //! transaction is about to hand back, and would read whichever tile that
+    //! transaction addressed rather than the tile being diagnosed. This
+    //! helper shares no mutable state with them, so neither can happen.
+    void readTileDiagnostics(uint32_t type, uint8_t tile, TileDiag *out);
+
+    //! Reset every tileDiag_ record. Called at the top of a global reset
+    //! sweep, so a record belongs to one sweep and not to one transaction.
+    void clearTileDiag();
+
+    //! Render tileDiag_ as one newline-terminated line for the caller and
+    //! for the console.
+    std::string buildDiagMessage(const char *entryPoint, int tileId);
 
     void MetalLogLevel();
     void IgnoreMetalError();

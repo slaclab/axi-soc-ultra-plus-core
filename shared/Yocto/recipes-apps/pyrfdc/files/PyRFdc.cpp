@@ -60,6 +60,48 @@ static_assert(XRFDC_ADC_TILE == 0 && XRFDC_DAC_TILE == 1,
               "PyRFdc.h indexes its [2][4] shadow arrays by tile type: "
               "XRFDC_ADC_TILE must be 0 and XRFDC_DAC_TILE must be 1");
 
+// Names of the sixteen states of the tile IPSM, indexed by the low four bits
+// of the current state register at offset 0x000C.
+// https://docs.amd.com/r/en-US/pg269-rf-data-converter/Current-State-Register-0x000C
+//
+// These strings are a second copy. The first lives in enumState in
+// python/axi_soc_ultra_plus_core/rfsoc_utility/__init__.py, which is what
+// every host-side CurrentState RemoteVariable is decoded against, so an edit
+// on one side and not the other makes a host comparison against that table
+// miss. The raw value is printed alongside the name below for exactly that
+// reason: the number survives any drift between the two copies.
+static const char* const IPSM_STATE_NAMES[16] = {
+    "Device_Power-up_and_Configuration[0]",
+    "Device_Power-up_and_Configuration[1]",
+    "Device_Power-up_and_Configuration[2]",
+    "Power_Supply_Adjustment[0]",
+    "Power_Supply_Adjustment[1]",
+    "Power_Supply_Adjustment[2]",
+    "Clock_Configuration[0]",
+    "Clock_Configuration[1]",
+    "Clock_Configuration[2]",
+    "Clock_Configuration[3]",
+    "Clock_Configuration[4]",
+    "Converter_Calibration[0]",
+    "Converter_Calibration[1]",
+    "Converter_Calibration[2]",
+    "Wait_for_deassertion_of_AXI4-Stream_reset",
+    "Done",
+};
+
+// Eight hex digits with a 0x prefix, built without <iomanip> or snprintf so
+// the result is the same under the Yocto build and a host build and contains
+// nothing but ASCII.
+static std::string HexWord(uint32_t value) {
+    static const char* const digits = "0123456789ABCDEF";
+    std::string out = "0x00000000";
+
+    for (int i = 0; i < 8; i++) {
+        out[9 - i] = digits[(value >> (4 * i)) & 0xF];
+    }
+    return out;
+}
+
 //! Create a block, class creator
 PyRFdcPtr PyRFdc::create() {
     PyRFdcPtr b = std::make_shared<PyRFdc>();
@@ -70,6 +112,10 @@ PyRFdcPtr PyRFdc::create() {
 PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     int i, j, k;
     log_ = rogue::Logging::create("PyRFdc");
+
+    // Every early return below leaves the object constructed, so the
+    // per-tile records are put in a defined state before the first of them.
+    clearTileDiag();
 
 #ifdef __BAREMETAL__
     // Ensure baremetal driver is ready
@@ -292,6 +338,7 @@ void PyRFdc::Shutdown(int Tile_Id) {
 void PyRFdc::Reset(int Tile_Id) {
     int status = XRFDC_SUCCESS;
     int i, j, k;
+    bool sweepFailed = false;
 
     // Check if read
     if (rdTxn_) {
@@ -302,6 +349,12 @@ void PyRFdc::Reset(int Tile_Id) {
 
         // Check for global TYPE reset
         if (Tile_Id<0) {
+            // Start this sweep with an empty set of per-tile records. Scoped
+            // to the sweep and not to doTransaction, because one sweep walks
+            // four tiles and every one of their results has to survive to
+            // the end of it.
+            clearTileDiag();
+
             // Init the i variable
             i = tileType_;
 
@@ -362,7 +415,24 @@ void PyRFdc::Reset(int Tile_Id) {
                 if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
 
                     // Execute reset again after restoring the settings
-                    status = XRFdc_Reset(RFdcInstPtr_, i, j);
+                    int tileStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
+
+                    // Record this tile's result in its own slot. One
+                    // variable shared by the whole loop keeps only the last
+                    // tile iterated, so a failure on tile 0, 1 or 2 left no
+                    // trace of which tile it was, or that it happened at all
+                    // when a later tile succeeded.
+                    if (tileStatus != XRFDC_SUCCESS) {
+                        tileDiag_[i][j].failed = true;
+                        tileDiag_[i][j].step = "XRFdc_Reset";
+                        sweepFailed = true;
+
+                        // Read the tile now, while it is still in the state
+                        // that failed. The host register path degrades once
+                        // a converter fails, so a value read back afterwards
+                        // is not the value that was there.
+                        readTileDiagnostics(uint32_t(i), uint8_t(j), &tileDiag_[i][j]);
+                    }
                 }
 
             }
@@ -375,9 +445,128 @@ void PyRFdc::Reset(int Tile_Id) {
     }
 
     // Check if not successful
-    if (status != XRFDC_SUCCESS) {
+    if (sweepFailed) {
+        errMsg_ = buildDiagMessage("Reset", Tile_Id);
+    } else if (status != XRFDC_SUCCESS) {
         errMsg_ = "Reset(" + std::to_string(Tile_Id) + "): failed\n";
     }
+}
+
+void PyRFdc::readTileDiagnostics(uint32_t type, uint8_t tile, TileDiag *out) {
+    uint32_t lockStatus = 0;
+
+    if (out == nullptr) {
+        return;
+    }
+
+    // Gate the whole read on the one call in this sequence that can report a
+    // refusal. XRFdc_ReadReg hands back a word and has no way to say it could
+    // not service the read, so a tile that is not answering would otherwise
+    // fill this record with zeros that look exactly like a tile sitting in
+    // state 0. Done first, so a refused tile performs no reads at all and
+    // diagRead stays false for the message to report.
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPLLLockStatus
+    if (XRFdc_GetPLLLockStatus(RFdcInstPtr_, type, tile, &lockStatus) != XRFDC_SUCCESS) {
+        return;
+    }
+
+    // Raw, unlike the PLLLockStatus transaction body, which adds one so the
+    // host can tell an unread RemoteVariable from a read one. Nothing here is
+    // a RemoteVariable, and a diagnostic that silently offsets a register
+    // value is worse than no diagnostic.
+    out->pllLock = lockStatus;
+
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Restart-State-Register-0x0008
+    out->restartState = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(type, tile), XRFDC_RESTART_STATE_OFFSET);
+
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Current-State-Register-0x000C
+    out->currentState = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(type, tile), 0x000C);
+
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Clock-Detector-Register-0x0084-Gen-3/DFE
+    out->clockDetector = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(type, tile), 0x0084);
+
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/RF-DAC/RF-ADC-Tile-n-Common-Status-Register-0x0228
+    out->commonStatus = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(type, tile), 0x0228);
+
+    out->diagRead = true;
+}
+
+void PyRFdc::clearTileDiag() {
+    int t, i;
+
+    for (t=0; t<2; t++) {
+        for (i=0; i<4; i++) {
+            tileDiag_[t][i].failed        = false;
+            tileDiag_[t][i].step          = "";
+            tileDiag_[t][i].diagRead      = false;
+            tileDiag_[t][i].restartState  = 0;
+            tileDiag_[t][i].currentState  = 0;
+            tileDiag_[t][i].clockDetector = 0;
+            tileDiag_[t][i].commonStatus  = 0;
+            tileDiag_[t][i].pllLock       = 0;
+        }
+    }
+}
+
+std::string PyRFdc::buildDiagMessage(const char *entryPoint, int tileId) {
+    // Indexed by tile type, the same way tileDiag_ is.
+    static const char* const typeName[2] = {"ADC", "DAC"};
+    int failing = 0;
+    int t, i;
+    std::string msg;
+
+    for (t=0; t<2; t++) {
+        for (i=0; i<4; i++) {
+            if (tileDiag_[t][i].failed) {
+                failing++;
+            }
+        }
+    }
+
+    // Opens with the same entry-point form the single-tile path uses, so a
+    // reader and any log grep still find Reset(-1): failed at the front.
+    msg = std::string(entryPoint) + "(" + std::to_string(tileId) + "): failed, "
+        + std::to_string(failing) + " failing tile(s):";
+
+    // Walk the records in index order, ADC 0 to 3 then DAC 0 to 3, rather
+    // than in the order the failures were found. Discovery order is stable
+    // only by accident of how the sweep loops; this order is specified, so
+    // two runs that failed on the same tiles read the same way.
+    for (t=0; t<2; t++) {
+        for (i=0; i<4; i++) {
+            const TileDiag &diag = tileDiag_[t][i];
+
+            // A tile that neither failed nor was read has nothing to say.
+            if (!diag.failed && !diag.diagRead) {
+                continue;
+            }
+
+            msg += " " + std::string(typeName[t]) + std::to_string(i) + " ";
+            msg += diag.failed ? diag.step : "ok";
+
+            // No state fields at all when the read did not run. A zero here
+            // would be indistinguishable from a tile genuinely reading zero,
+            // which is the reading that made an earlier register snapshot
+            // impossible to interpret.
+            if (!diag.diagRead) {
+                msg += " diagnostics unavailable;";
+                continue;
+            }
+
+            // Mask to four bits before indexing. The host side declares this
+            // field as four bits wide, but the read above is of the whole
+            // word, so an out of range value would index past the table.
+            msg += " state=" + HexWord(diag.currentState)
+                 + "(" + IPSM_STATE_NAMES[diag.currentState & 0x0F] + ")"
+                 + " restart=" + HexWord(diag.restartState)
+                 + " clkdet=" + HexWord(diag.clockDetector)
+                 + " common=" + HexWord(diag.commonStatus)
+                 + " plllock=" + HexWord(diag.pllLock) + ";";
+        }
+    }
+
+    msg += "\n";
+    return msg;
 }
 
 void PyRFdc::CustomStartUp(int Tile_Id) {
