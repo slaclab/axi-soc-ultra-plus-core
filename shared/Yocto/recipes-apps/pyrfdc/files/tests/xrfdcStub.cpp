@@ -261,10 +261,17 @@ u32 XRFdc_SetCoarseDelaySettings(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 
     return rec("XRFdc_SetCoarseDelaySettings", Type, Tile_Id, Block_Id);
 }
 
+//! The event is passed to the selector but deliberately not added to the
+//! recorded form. The reset sweep reaches this entry point twice per block
+//! with the same type, tile and block, once for the quadrature event and
+//! once for the mixer event, so a selector that could not tell them apart
+//! would make the two call sites indistinguishable to any claim about
+//! either. Widening the recorded string instead would change what every
+//! check already written against name/type/tile/block matches.
 u32 XRFdc_UpdateEvent(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id, u32 Event) {
     (void)InstancePtr;
-    (void)Event;
-    return rec("XRFdc_UpdateEvent", Type, Tile_Id, Block_Id);
+    return static_cast<u32>(
+        gScript.callDetail("XRFdc_UpdateEvent", Type, Tile_Id, Block_Id, Event));
 }
 
 /* ------------------------------------------------------------------------ */
@@ -578,6 +585,11 @@ u32 XRFdc_GetClockSource(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 *ClockSo
 u32 XRFdc_GetPLLConfig(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, XRFdc_PLL_Settings *Settings) {
     (void)InstancePtr;
     zero(Settings);
+    // The one field of this structure the production code branches on. The
+    // reset sweep performs its first XRFdc_Reset of a tile only when this
+    // is non-zero, so a zero-filled structure leaves that call site
+    // unreachable and any claim about it unprovable.
+    if (Settings != nullptr) Settings->Enabled = gScript.pllEnabled;
     return rec("XRFdc_GetPLLConfig", Type, Tile_Id, ANY);
 }
 

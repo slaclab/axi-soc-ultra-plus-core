@@ -858,6 +858,329 @@ void checkReportedLineFitsTheConsoleBuffer() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* Attributing a sweep failure to the call that produced it.                 */
+/*                                                                           */
+/* Naming the tile says which converter went wrong. It does not say where    */
+/* in the sequence it went wrong, and the sweep performs five distinct       */
+/* driver calls per tile before the reset whose return the report has        */
+/* carried so far. One of them, the per-tile PLL reconfigure, is the call    */
+/* the root-cause hypothesis blames, and its return value was discarded      */
+/* outright, so a failure there reported nothing at all on any board.        */
+/* ------------------------------------------------------------------------ */
+
+//! Position of the first recorded call with this exact name and index
+//! tuple, or the length of the list when it was never recorded. The length
+//! rather than a sentinel, so a call that never happened sorts after every
+//! call that did and an ordering comparison stays honest without a second
+//! presence test beside it.
+size_t firstCallAt(const char *name, uint32_t type, uint32_t tile, uint32_t block) {
+    const std::string want = XRFdcScript::describe(name, type, tile, block);
+
+    for (size_t i = 0; i < gScript.calls.size(); i++) {
+        if (gScript.calls[i] == want) return i;
+    }
+    return gScript.calls.size();
+}
+
+//! The tile the step-attribution sub-checks script their failure on.
+//! Deliberately not tile 3, the tile this project keeps seeing fail on the
+//! carrier, so none of them can pass because of something done for that
+//! tile in particular.
+const uint32_t kStepTile = 2;
+
+//! The label of the tile record kStepTile produces on the ADC group.
+const char *const kStepLabel = "ADC2";
+
+/*
+ * One printed line per call site, all sharing a prefix so the six can be
+ * counted as a group. One aggregate verdict over all six would go red for a
+ * single unattributed site and say nothing about which, and the whole point
+ * of this claim is that each site is attributed on its own.
+ */
+void runStepCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("every sweep step is attributed by name [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * Each of the six driver calls the sweep makes before its final reset is
+ * attributed to its own name when it is the call that failed.
+ *
+ * Two pairs of these sites are the same driver function reached twice, and
+ * each pair needs a discriminator or a claim about one member would be
+ * satisfied by the other:
+ *
+ *   the two XRFdc_Reset sites take identical arguments, so no selector can
+ *   separate them and the recorded order is the only discriminator there
+ *   is: the first runs before the tile's PLL reconfigure and the second
+ *   runs after every block of every tile has been visited
+ *
+ *   the two XRFdc_UpdateEvent sites differ only in the event they raise,
+ *   which the fixture's detail selector can key on, so each is scripted to
+ *   fail on its own event and the recorded order is asserted as well
+ */
+void checkSweepStepsAreAttributedByName() {
+    /* Site 1: the first XRFdc_Reset, guarded on the tile's PLL being
+     * enabled, which is why this one sub-check has to script that field
+     * before the device is constructed. */
+    {
+        gScript.reset();
+        gScript.pllEnabled = 1;
+        PyRFdcPtr device = PyRFdc::create();
+
+        // Only the recorded and scripted state is cleared here, not
+        // pllEnabled, which the constructor above has already consumed.
+        gScript.calls.clear();
+        gScript.logErrors.clear();
+        gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, kStepTile, XRFDC_SCRIPT_ANY,
+                              XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string record = recordFor(tran->errorStrValue(), kStepLabel);
+
+        bool ok = (record.find("XRFdc_Reset") != std::string::npos);
+        // Attributed at this site and not only at the later one: the tile's
+        // diagnostics were taken before its PLL reconfigure ran.
+        if (ok) {
+            ok = firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
+                             XRFDC_SCRIPT_ANY) <
+                 firstCallAt("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, kStepTile,
+                             XRFDC_SCRIPT_ANY);
+        }
+
+        if (!ok) {
+            fprintf(stderr, "step site 1: record '%s', diag at %zu, reconfigure at %zu\n",
+                    record.c_str(),
+                    firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
+                                XRFDC_SCRIPT_ANY),
+                    firstCallAt("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, kStepTile,
+                                XRFDC_SCRIPT_ANY));
+        }
+
+        runStepCheck("XRFdc_Reset before the PLL reconfigure", ok);
+    }
+
+    /* Site 2: the per-tile PLL reconfigure. */
+    {
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailure("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, kStepTile,
+                              XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string record = recordFor(tran->errorStrValue(), kStepLabel);
+
+        const bool ok = (record.find("XRFdc_DynamicPLLConfig") != std::string::npos);
+
+        if (!ok) fprintf(stderr, "step site 2: record '%s'\n", record.c_str());
+
+        runStepCheck("XRFdc_DynamicPLLConfig", ok);
+    }
+
+    /* Site 3: the quadrature settings write. */
+    {
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailure("XRFdc_SetQMCSettings", XRFDC_ADC_TILE, kStepTile,
+                              XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string record = recordFor(tran->errorStrValue(), kStepLabel);
+
+        const bool ok = (record.find("XRFdc_SetQMCSettings") != std::string::npos);
+
+        if (!ok) fprintf(stderr, "step site 3: record '%s'\n", record.c_str());
+
+        runStepCheck("XRFdc_SetQMCSettings", ok);
+    }
+
+    /* Site 4: the event update that follows the quadrature write. Scripted
+     * on the quadrature event alone, so the mixer event site below cannot
+     * be what produced the attribution. */
+    {
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailureDetail("XRFdc_UpdateEvent", XRFDC_ADC_TILE, kStepTile,
+                                    XRFDC_SCRIPT_ANY, XRFDC_EVENT_QMC, XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string record = recordFor(tran->errorStrValue(), kStepLabel);
+
+        bool ok = (record.find("XRFdc_UpdateEvent") != std::string::npos);
+        // Taken before the tile's first mixer settings write, which is
+        // where the other event site could only have been reached from.
+        if (ok) {
+            ok = firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
+                             XRFDC_SCRIPT_ANY) <
+                 firstCallAt("XRFdc_SetMixerSettings", XRFDC_ADC_TILE, kStepTile, 0);
+        }
+
+        if (!ok) fprintf(stderr, "step site 4: record '%s'\n", record.c_str());
+
+        runStepCheck("XRFdc_UpdateEvent for the quadrature event", ok);
+    }
+
+    /* Site 5: the mixer settings write. */
+    {
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailure("XRFdc_SetMixerSettings", XRFDC_ADC_TILE, kStepTile,
+                              XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string record = recordFor(tran->errorStrValue(), kStepLabel);
+
+        const bool ok = (record.find("XRFdc_SetMixerSettings") != std::string::npos);
+
+        if (!ok) fprintf(stderr, "step site 5: record '%s'\n", record.c_str());
+
+        runStepCheck("XRFdc_SetMixerSettings", ok);
+    }
+
+    /* Site 6: the event update that follows the mixer write. Scripted on
+     * the mixer event alone, and required to have been attributed after the
+     * mixer settings write, so the quadrature event site cannot be what
+     * produced it. */
+    {
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailureDetail("XRFdc_UpdateEvent", XRFDC_ADC_TILE, kStepTile,
+                                    XRFDC_SCRIPT_ANY, XRFDC_EVENT_MIXER, XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+        const std::string record = recordFor(tran->errorStrValue(), kStepLabel);
+
+        bool ok = (record.find("XRFdc_UpdateEvent") != std::string::npos);
+        if (ok) {
+            ok = firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
+                             XRFDC_SCRIPT_ANY) >
+                 firstCallAt("XRFdc_SetMixerSettings", XRFDC_ADC_TILE, kStepTile, 0);
+        }
+
+        if (!ok) fprintf(stderr, "step site 6: record '%s'\n", record.c_str());
+
+        runStepCheck("XRFdc_UpdateEvent for the mixer event", ok);
+    }
+}
+
+/*
+ * A failure of the per-tile PLL reconfigure reaches the report.
+ *
+ * Asserted apart from the loop above because this is the site the next
+ * phase's hypothesis turns on: XRFdc_DynamicPLLConfig is called once per
+ * tile with the tile's own default clock source, reference frequency and
+ * sample rate, and its return value was thrown away, so a failure there was
+ * invisible on every board running this driver rather than only on a board
+ * with clock distribution.
+ */
+void checkDiscardedPllReconfigureFailureIsReported() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = !msg.empty();
+    if (ok) ok = (countOf(msg, "1 failing tile(s)") == 1);
+    if (ok) ok = (recordFor(msg, "ADC3").find("XRFdc_DynamicPLLConfig") != std::string::npos);
+    // And the call really was made against that tile, so the text cannot be
+    // the right text for the wrong reason.
+    if (ok) ok = gScript.sawCall("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY);
+
+    if (!ok) {
+        fprintf(stderr, "pll reconfigure: err=%u done=%u, text '%s'\n",
+                tran->errorStrCalls(), tran->doneCalls(), msg.c_str());
+    }
+
+    runCheck("a discarded pll reconfigure failure is now reported", ok);
+}
+
+/*
+ * The step recorded for a failing tile is the driver function that returned
+ * non-success, not the entry point that called it.
+ *
+ * The entry point's name is already in the message, at the front, where the
+ * host has always seen it. Repeating it per tile would cost a field and add
+ * nothing: every record would carry the same word and a reader would still
+ * not know where in the sequence the tile died.
+ */
+void checkStepNameIsDriverFunctionNotEntryPoint() {
+    const std::string expected = std::string(" ADC3 XRFdc_DynamicPLLConfig ");
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+    const std::string record = recordFor(msg, "ADC3");
+
+    // The step is the token immediately after the tile label, so a record
+    // that carried the entry point there instead cannot satisfy this.
+    bool ok = (record.compare(0, expected.size(), expected) == 0);
+    // The entry point is Reset, and the message opens with it. It must not
+    // appear inside any tile record.
+    if (ok) ok = (record.find("Reset") == std::string::npos);
+    if (ok) ok = (msg.compare(0, 8, "Reset(-1") == 0);
+
+    if (!ok) {
+        fprintf(stderr, "step vs entry point: record '%s', text '%s'\n",
+                record.c_str(), msg.c_str());
+    }
+
+    runCheck("the step name is the driver function not the entry point", ok);
+}
+
+/*
+ * A step that failed on one tile does not stop the sweep visiting the rest.
+ *
+ * This one is green before the change as well as after, and it is here for
+ * that reason: it is the guard on a change this work must not make. Whether
+ * the other three ADC tiles fail alongside the one that is always named is
+ * the question the prior phase could not answer, and a sweep that aborted
+ * on the first failure would make it permanently unanswerable. It also
+ * keeps the sequencing identical to what every prior measurement on this
+ * carrier was taken against.
+ */
+void checkFailingStepStillVisitsRemainingTiles() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 0, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = tran->errorStrCalled();
+    for (uint32_t tile = 1; tile < 4; tile++) {
+        if (!ok) break;
+        ok = gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, tile, XRFDC_SCRIPT_ANY) &&
+             gScript.sawCall("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, tile,
+                             XRFDC_SCRIPT_ANY) &&
+             gScript.sawCall("XRFdc_SetQMCSettings", XRFDC_ADC_TILE, tile, 0);
+    }
+
+    if (!ok) {
+        fprintf(stderr, "remaining tiles: %zu recorded call(s), err=%u\n",
+                gScript.calls.size(), tran->errorStrCalls());
+    }
+
+    runCheck("a failing sweep step still visits the remaining tiles", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -946,7 +1269,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 17;
+const int kClaimsBeforeCountCheck = 26;
 
 /*
  * Every claim this file defines actually ran.
@@ -989,6 +1312,11 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkOtherTypeIsDiagnosedButNotReset();
     checkCleanSweepStillReportsNothing();
     checkReportedLineFitsTheConsoleBuffer();
+
+    checkSweepStepsAreAttributedByName();
+    checkDiscardedPllReconfigureFailureIsReported();
+    checkStepNameIsDriverFunctionNotEntryPoint();
+    checkFailingStepStillVisitsRemainingTiles();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();

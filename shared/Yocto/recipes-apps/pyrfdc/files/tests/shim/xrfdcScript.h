@@ -14,21 +14,27 @@
  * object that every stub consults keeps the scripted failure, the recorded
  * call list and the register contents consistent by construction.
  *
- * It carries four things:
+ * It carries five things:
  *
  *   calls        an ordered record of every driver call, each formatted as
  *                name/type/tile/block, so a check can assert the sequence a
  *                body performed and not only its return value
  *   failures     a scripted-failure selector keyed on driver function name
- *                plus tile type, tile id and block id, any field wildcarded
- *                with XRFDC_SCRIPT_ANY, so one entry can fail one tile or
- *                every tile
+ *                plus tile type, tile id, block id and one optional extra
+ *                distinguishing argument, any field wildcarded with
+ *                XRFDC_SCRIPT_ANY, so one entry can fail one tile or every
+ *                tile
  *   registers    scripted register contents keyed on type, tile and offset,
  *                consulted by the XRFdc_ReadReg stub, so a diagnostic read
  *                can be made to return a chosen value
  *   logErrors    the strings the Logging shim was asked to print, kept
  *                beside the transaction record so the console line and the
  *                caller-visible error can be asserted separately
+ *   pllEnabled   the Enabled field XRFdc_GetPLLConfig hands back, which
+ *                decides whether the reset sweep performs its first
+ *                XRFdc_Reset per tile at all. Zero by default, matching the
+ *                zero-filled output every other getter stub produces, so a
+ *                claim that wants that call site reached has to say so.
  *
  * Test-build only. See shim/rogue/Directives.h for why files/tests/ cannot
  * reach the Yocto image build.
@@ -59,11 +65,23 @@
 
 //! One scripted failure. An entry matches a call when the name matches and
 //! every non-wildcard index field matches.
+//!
+//! detail is a fifth selector field for a call that carries one more
+//! distinguishing argument than the four the recorded form names. The two
+//! XRFdc_UpdateEvent call sites inside the reset sweep are the reason it
+//! exists: they pass the same type, tile and block and differ only in the
+//! event, so without it no scripted failure can reach one of them without
+//! also reaching the other, and a claim about one site would be satisfied by
+//! the other. An entry created by scriptFailure leaves it wildcarded, so
+//! every selector written before this field existed matches exactly as it
+//! did. A detail-qualified entry matches only a call that supplies that
+//! detail, never one that carries none.
 struct XRFdcScriptFailure {
     std::string name;
     uint32_t type;
     uint32_t tile;
     uint32_t block;
+    uint32_t detail;
     int status;
 };
 
@@ -94,6 +112,12 @@ class XRFdcScript {
     //! rogue log lines because they reach different places on the target.
     std::vector<std::string> metalLogs;
 
+    //! The Enabled field XRFdc_GetPLLConfig reports. Read by the production
+    //! constructor into pllDefault_, which the reset sweep then tests before
+    //! it performs its first XRFdc_Reset of each tile. Set it before
+    //! PyRFdc::create(), because the constructor is where it is consulted.
+    uint32_t pllEnabled = 0;
+
     //! Clear every recorded and scripted item. Called between claims so one
     //! claim cannot pass on state another claim left behind.
     void reset() {
@@ -104,6 +128,7 @@ class XRFdcScript {
         metalLogs.clear();
         failures_.clear();
         registers_.clear();
+        pllEnabled = 0;
     }
 
     //! Script a non-success return for the matching calls. A field left at
@@ -113,11 +138,24 @@ class XRFdcScript {
                        uint32_t tile,
                        uint32_t block,
                        int status) {
+        scriptFailureDetail(name, type, tile, block, XRFDC_SCRIPT_ANY, status);
+    }
+
+    //! Script a non-success return for the matching calls, narrowed further
+    //! by the one extra distinguishing argument the call carries. Only a
+    //! call that supplies that argument can match.
+    void scriptFailureDetail(const std::string &name,
+                             uint32_t type,
+                             uint32_t tile,
+                             uint32_t block,
+                             uint32_t detail,
+                             int status) {
         XRFdcScriptFailure entry;
         entry.name = name;
         entry.type = type;
         entry.tile = tile;
         entry.block = block;
+        entry.detail = detail;
         entry.status = status;
         failures_.push_back(entry);
     }
@@ -132,18 +170,35 @@ class XRFdcScript {
     //! Both halves live in one method so a stub body cannot record a call it
     //! then fails to consult the selector for, or the reverse.
     int call(const char *name, uint32_t type, uint32_t tile, uint32_t block) {
+        return callDetail(name, type, tile, block, XRFDC_SCRIPT_ANY);
+    }
+
+    //! Record one call that carries an extra distinguishing argument and
+    //! return the status it should produce. The recorded form is unchanged,
+    //! so a check written against the four-field record keeps its meaning;
+    //! only the selector sees the fifth field.
+    int callDetail(const char *name, uint32_t type, uint32_t tile, uint32_t block,
+                   uint32_t detail) {
         calls.push_back(describe(name, type, tile, block));
-        return statusFor(name, type, tile, block);
+        return statusFor(name, type, tile, block, detail);
     }
 
     //! The status the selector produces for this call, without recording it.
     int statusFor(const char *name, uint32_t type, uint32_t tile, uint32_t block) const {
+        return statusFor(name, type, tile, block, XRFDC_SCRIPT_ANY);
+    }
+
+    //! The status the selector produces for a call carrying an extra
+    //! distinguishing argument, without recording it.
+    int statusFor(const char *name, uint32_t type, uint32_t tile, uint32_t block,
+                  uint32_t detail) const {
         for (size_t i = 0; i < failures_.size(); i++) {
             const XRFdcScriptFailure &entry = failures_[i];
             if (entry.name != name) continue;
             if (entry.type != XRFDC_SCRIPT_ANY && entry.type != type) continue;
             if (entry.tile != XRFDC_SCRIPT_ANY && entry.tile != tile) continue;
             if (entry.block != XRFDC_SCRIPT_ANY && entry.block != block) continue;
+            if (entry.detail != XRFDC_SCRIPT_ANY && entry.detail != detail) continue;
             return entry.status;
         }
         return 0;  // XRFDC_SUCCESS. Spelled numerically so this header does
