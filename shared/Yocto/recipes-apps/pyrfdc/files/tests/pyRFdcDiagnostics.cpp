@@ -1181,6 +1181,188 @@ void checkFailingStepStillVisitsRemainingTiles() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* The per-tile entry points.                                                */
+/*                                                                           */
+/* StartUp, Shutdown, CustomStartUp and the single-tile branch of Reset all  */
+/* carry the bare message the global reset path carried before this work.    */
+/* They have no accumulation problem, one tile per call, so what they are    */
+/* missing is the diagnostic detail and nothing else. _Rfdc.py's Init()      */
+/* calls AdcTile[i].Reset() per tile after the two global resets, so a       */
+/* failure on that path is reachable on the same boot as the one this        */
+/* project keeps seeing.                                                     */
+/* ------------------------------------------------------------------------ */
+
+//! Transaction address of ADC tile 3's tile-only register block. Bit 15
+//! clear selects the ADC group, bits 14:13 carry the tile id and bit 12
+//! clear selects the tile-only decode, which is the layout doTransaction
+//! applies to every address below 0x10000.
+const uint64_t kTileAdc3Base = 0x6000;
+
+//! One per-tile command offset within that block, with the driver call it
+//! reaches and the identifier its message has always opened with.
+struct TileCommandSite {
+    const char *site;
+    uint64_t addr;
+    const char *driver;
+    const char *entryPoint;
+};
+
+const TileCommandSite kTileCommandSites[4] = {
+    {"StartUp", kTileAdc3Base + 0x000, "XRFdc_StartUp", "StartUp"},
+    {"Shutdown", kTileAdc3Base + 0x004, "XRFdc_Shutdown", "Shutdown"},
+    {"Reset", kTileAdc3Base + 0x008, "XRFdc_Reset", "Reset"},
+    {"CustomStartUp", kTileAdc3Base + 0x00C, "XRFdc_CustomStartUp", "CustomStartUp"},
+};
+
+//! One printed line per entry point, sharing a prefix so the four can be
+//! counted as a group, for the same reason the step sub-checks above do.
+void runStartupCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("startup paths carry tile diagnostics [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * A failing startup, shutdown, custom startup or single-tile reset names
+ * the tile and what its registers said, through the same formatter the
+ * global path uses.
+ *
+ * The scripted state is the one the console keeps naming on this carrier,
+ * mid clock configuration, with the clock detector asserted, so a record
+ * of zeros cannot satisfy the claim.
+ */
+void checkStartupPathsCarryTileDiagnostics() {
+    for (size_t s = 0; s < 4; s++) {
+        const TileCommandSite &site = kTileCommandSites[s];
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        gScript.scriptFailure(site.driver, XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+        gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetCurrentState, 6);
+        gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetClockDetector, 1);
+
+        rim::TransactionPtr tran = driveWrite(device, site.addr, 1);
+        const std::string msg = tran->errorStrValue();
+        const std::string record = recordFor(msg, "ADC3");
+        const std::string opener = std::string(site.entryPoint) + "(3): failed";
+
+        bool ok = tran->errorStrCalled() && !tran->doneCalled();
+        // The identifier and the argument the host already sees are still
+        // at the front, and the line still ends where it always did.
+        if (ok) ok = (msg.compare(0, opener.size(), opener) == 0);
+        if (ok) ok = (!msg.empty() && msg[msg.size() - 1] == '\n');
+        // One tile record, this tile's, naming the driver call that failed.
+        if (ok) ok = (countOf(msg, " ADC3 ") == 1);
+        if (ok) ok = (record.find(site.driver) != std::string::npos);
+        // Raw and decoded state, and the clock detector reading.
+        if (ok) ok = (record.find("state=0x6(Clock_Configuration[0])") != std::string::npos);
+        if (ok) ok = (record.find("clkdet=0x1") != std::string::npos);
+        // A per-tile entry point diagnoses its own tile and no other.
+        if (ok) ok = (countOf(msg, "1 failing tile(s)") == 1);
+        // And it really read that tile rather than printing a remembered
+        // record from an earlier transaction.
+        if (ok) ok = gScript.sawCall("XRFdc_ReadReg", XRFDC_ADC_TILE, 3, kOffsetCurrentState);
+        // The console copy is the same string, as on the global path.
+        if (ok) ok = (gScript.logErrors.size() == 1) && (gScript.logErrors[0] == msg);
+
+        if (!ok) {
+            fprintf(stderr, "%s path: err=%u done=%u, text '%s'\n",
+                    site.site, tran->errorStrCalls(), tran->doneCalls(), msg.c_str());
+        }
+
+        runStartupCheck(site.site, ok);
+    }
+}
+
+/*
+ * Reading a command offset still hands back one and still executes nothing.
+ *
+ * This is what keeps a read-only register snapshot safe to take against a
+ * board that is already misbehaving: a tool that walks the tile register
+ * block must not start converters or reset them on the way past. Asserted
+ * on the recorded driver call list as well as on the returned word, because
+ * a body that executed the command and then returned one anyway would
+ * satisfy the value check on its own.
+ *
+ * CustomStartUp is deliberately not in this set. It is the one command
+ * offset whose read reports a failure, which is pre-existing behavior and
+ * has its own claim below.
+ */
+void checkCommandReadReturnsOneAndExecutesNothing() {
+    bool ok = true;
+    std::string detail;
+
+    for (size_t s = 0; s < 3; s++) {
+        const TileCommandSite &site = kTileCommandSites[s];
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        gScript.reset();
+        // Scripted to fail, so a body that did execute the command would
+        // also produce an error string and could not pass quietly.
+        gScript.scriptFailure(site.driver, XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        rim::TransactionPtr tran = driveRead(device, site.addr);
+
+        bool one = tran->doneCalled() && !tran->errorStrCalled();
+        if (one) one = tran->errorStrValue().empty();
+        if (one) one = (tran->getWord(0) == 1);
+        // No call to the command's own driver function, and no diagnostic
+        // read of the tile either.
+        if (one) one = (gScript.countCalls(site.driver) == 0);
+        if (one) one = !gScript.sawCall("XRFdc_ReadReg", XRFDC_ADC_TILE, 3, kOffsetCurrentState);
+
+        if (!one) {
+            ok = false;
+            detail = std::string(site.site) + ": word=" + std::to_string(tran->getWord(0)) +
+                     " done=" + std::to_string(tran->doneCalls()) +
+                     " err=" + std::to_string(tran->errorStrCalls()) +
+                     " driver calls=" + std::to_string(gScript.countCalls(site.driver));
+            break;
+        }
+    }
+
+    if (!ok) fprintf(stderr, "command read: %s\n", detail.c_str());
+
+    runCheck("a command read still returns one and executes nothing", ok);
+}
+
+/*
+ * Reading the custom startup offset still reports a failure.
+ *
+ * That body sets a failure status on a read rather than handing back one
+ * like the other three. It is the only guaranteed non-success return
+ * reachable from the host with no real converter fault, so it is the
+ * mechanism a later plan uses to induce this reporting path on hardware
+ * deliberately. Pinned here so a tidy-up that made it look like its three
+ * neighbours would be a visible test diff rather than a silent loss.
+ */
+void checkCustomStartUpReadStillYieldsFailure() {
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+
+    rim::TransactionPtr tran = driveRead(device, kTileAdc3Base + 0x00C);
+    const std::string msg = tran->errorStrValue();
+
+    bool ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = !msg.empty();
+    if (ok) ok = (msg.compare(0, 20, "CustomStartUp(3): fa") == 0);
+    // Nothing was started: the failure comes from the read branch itself,
+    // not from a converter command the read issued.
+    if (ok) ok = (gScript.countCalls("XRFdc_CustomStartUp") == 0);
+
+    if (!ok) {
+        fprintf(stderr, "custom startup read: err=%u done=%u, text '%s'\n",
+                tran->errorStrCalls(), tran->doneCalls(), msg.c_str());
+    }
+
+    runCheck("a custom startup read still yields a failure status", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -1269,7 +1451,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 26;
+const int kClaimsBeforeCountCheck = 32;
 
 /*
  * Every claim this file defines actually ran.
@@ -1317,6 +1499,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkDiscardedPllReconfigureFailureIsReported();
     checkStepNameIsDriverFunctionNotEntryPoint();
     checkFailingStepStillVisitsRemainingTiles();
+
+    checkStartupPathsCarryTileDiagnostics();
+    checkCommandReadReturnsOneAndExecutesNothing();
+    checkCustomStartUpReadStillYieldsFailure();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
