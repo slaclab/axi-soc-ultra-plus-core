@@ -1,0 +1,199 @@
+/**
+ * ----------------------------------------------------------------------------
+ * Company    : SLAC National Accelerator Laboratory
+ * ----------------------------------------------------------------------------
+ * Description: The single configurable fixture behind the host build of
+ * PyRFdc.cpp under files/tests/. Every shim collaborator, the driver stubs
+ * in xrfdcStub.cpp and the Logging shim alike, records into and reads from
+ * the one extern instance gScript declared at the bottom of this file.
+ *
+ * One configurable fixture, not one fake per collaborator. The reason is the
+ * one recorded in software/scripts/probeRfdcInit.py at the _standInRoot
+ * docstring: separate fakes drift, and once they have drifted a test is
+ * asserting about the fake rather than about the code under test. A single
+ * object that every stub consults keeps the scripted failure, the recorded
+ * call list and the register contents consistent by construction.
+ *
+ * It carries four things:
+ *
+ *   calls        an ordered record of every driver call, each formatted as
+ *                name/type/tile/block, so a check can assert the sequence a
+ *                body performed and not only its return value
+ *   failures     a scripted-failure selector keyed on driver function name
+ *                plus tile type, tile id and block id, any field wildcarded
+ *                with XRFDC_SCRIPT_ANY, so one entry can fail one tile or
+ *                every tile
+ *   registers    scripted register contents keyed on type, tile and offset,
+ *                consulted by the XRFdc_ReadReg stub, so a diagnostic read
+ *                can be made to return a chosen value
+ *   logErrors    the strings the Logging shim was asked to print, kept
+ *                beside the transaction record so the console line and the
+ *                caller-visible error can be asserted separately
+ *
+ * Test-build only. See shim/rogue/Directives.h for why files/tests/ cannot
+ * reach the Yocto image build.
+ * ----------------------------------------------------------------------------
+ * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
+ * the license terms in the LICENSE.txt file found in the top-level directory
+ * of this distribution and at:
+ *    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
+ * No part of the 'axi-soc-ultra-plus-core', including this file, may be
+ * copied, modified, propagated, or distributed except according to the terms
+ * contained in the LICENSE.txt file.
+ * ----------------------------------------------------------------------------
+ **/
+
+#ifndef __XRFDC_SCRIPT_H__
+#define __XRFDC_SCRIPT_H__
+
+#include <stdint.h>
+
+#include <map>
+#include <string>
+#include <vector>
+
+//! Wildcard for any of the tile type, tile id or block id selector fields.
+//! Chosen well outside the 0 to 3 range every real index occupies, so it can
+//! never collide with a value a driver call actually passes.
+#define XRFDC_SCRIPT_ANY 0xFFFFFFFFu
+
+//! One scripted failure. An entry matches a call when the name matches and
+//! every non-wildcard index field matches.
+struct XRFdcScriptFailure {
+    std::string name;
+    uint32_t type;
+    uint32_t tile;
+    uint32_t block;
+    int status;
+};
+
+//! Key for a scripted register value.
+struct XRFdcScriptRegKey {
+    uint32_t type;
+    uint32_t tile;
+    uint32_t offset;
+
+    bool operator<(const XRFdcScriptRegKey &other) const {
+        if (type != other.type) return type < other.type;
+        if (tile != other.tile) return tile < other.tile;
+        return offset < other.offset;
+    }
+};
+
+class XRFdcScript {
+  public:
+    //! Ordered record of every driver call, each as name/type/tile/block.
+    std::vector<std::string> calls;
+
+    //! Strings the Logging shim was asked to print.
+    std::vector<std::string> logErrors;
+    std::vector<std::string> logWarnings;
+    std::vector<std::string> logDebugs;
+
+    //! Text the libmetal log stub was asked to print, kept apart from the
+    //! rogue log lines because they reach different places on the target.
+    std::vector<std::string> metalLogs;
+
+    //! Clear every recorded and scripted item. Called between claims so one
+    //! claim cannot pass on state another claim left behind.
+    void reset() {
+        calls.clear();
+        logErrors.clear();
+        logWarnings.clear();
+        logDebugs.clear();
+        metalLogs.clear();
+        failures_.clear();
+        registers_.clear();
+    }
+
+    //! Script a non-success return for the matching calls. A field left at
+    //! XRFDC_SCRIPT_ANY matches every value of that field.
+    void scriptFailure(const std::string &name,
+                       uint32_t type,
+                       uint32_t tile,
+                       uint32_t block,
+                       int status) {
+        XRFdcScriptFailure entry;
+        entry.name = name;
+        entry.type = type;
+        entry.tile = tile;
+        entry.block = block;
+        entry.status = status;
+        failures_.push_back(entry);
+    }
+
+    //! Script the value an XRFdc_ReadReg of this base and offset returns.
+    void scriptRegister(uint32_t type, uint32_t tile, uint32_t offset, uint32_t value) {
+        XRFdcScriptRegKey key = {type, tile, offset};
+        registers_[key] = value;
+    }
+
+    //! Record one driver call and return the status it should produce.
+    //! Both halves live in one method so a stub body cannot record a call it
+    //! then fails to consult the selector for, or the reverse.
+    int call(const char *name, uint32_t type, uint32_t tile, uint32_t block) {
+        calls.push_back(describe(name, type, tile, block));
+        return statusFor(name, type, tile, block);
+    }
+
+    //! The status the selector produces for this call, without recording it.
+    int statusFor(const char *name, uint32_t type, uint32_t tile, uint32_t block) const {
+        for (size_t i = 0; i < failures_.size(); i++) {
+            const XRFdcScriptFailure &entry = failures_[i];
+            if (entry.name != name) continue;
+            if (entry.type != XRFDC_SCRIPT_ANY && entry.type != type) continue;
+            if (entry.tile != XRFDC_SCRIPT_ANY && entry.tile != tile) continue;
+            if (entry.block != XRFDC_SCRIPT_ANY && entry.block != block) continue;
+            return entry.status;
+        }
+        return 0;  // XRFDC_SUCCESS. Spelled numerically so this header does
+                   // not have to include the driver shim it is consulted by.
+    }
+
+    //! The scripted contents of a register, or 0 when nothing scripted it.
+    uint32_t registerValue(uint32_t type, uint32_t tile, uint32_t offset) const {
+        XRFdcScriptRegKey key = {type, tile, offset};
+        std::map<XRFdcScriptRegKey, uint32_t>::const_iterator it = registers_.find(key);
+        if (it == registers_.end()) return 0;
+        return it->second;
+    }
+
+    //! How many recorded calls carry this exact name, whatever their indices.
+    size_t countCalls(const std::string &name) const {
+        size_t n = 0;
+        for (size_t i = 0; i < calls.size(); i++) {
+            if (calls[i].compare(0, name.size() + 1, name + "/") == 0) n++;
+        }
+        return n;
+    }
+
+    //! Whether this exact name and index tuple was recorded.
+    bool sawCall(const char *name, uint32_t type, uint32_t tile, uint32_t block) const {
+        std::string want = describe(name, type, tile, block);
+        for (size_t i = 0; i < calls.size(); i++) {
+            if (calls[i] == want) return true;
+        }
+        return false;
+    }
+
+    //! The recorded form of one call. A wildcard field prints as a dash, so
+    //! a call that never carried a block id cannot be confused with one that
+    //! carried block 0.
+    static std::string describe(const char *name, uint32_t type, uint32_t tile, uint32_t block) {
+        return std::string(name) + "/" + field(type) + "/" + field(tile) + "/" + field(block);
+    }
+
+  private:
+    static std::string field(uint32_t value) {
+        if (value == XRFDC_SCRIPT_ANY) return "-";
+        return std::to_string(value);
+    }
+
+    std::vector<XRFdcScriptFailure> failures_;
+    std::map<XRFdcScriptRegKey, uint32_t> registers_;
+};
+
+//! The one fixture instance. Defined in xrfdcStub.cpp.
+extern XRFdcScript gScript;
+
+#endif  /* __XRFDC_SCRIPT_H__ */
