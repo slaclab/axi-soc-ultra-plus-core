@@ -118,6 +118,7 @@ const uint64_t kResetAllAdc = 0x10010;
 //! any other source.
 const uint32_t kOffsetRestartState = XRFDC_RESTART_STATE_OFFSET;
 const uint32_t kOffsetCurrentState = 0x000C;
+const uint32_t kOffsetClockDetector = 0x0084;
 
 //! How many times needle occurs in haystack. Overlaps are not counted; no
 //! needle used below can overlap itself.
@@ -144,6 +145,27 @@ size_t countCallsForType(const std::string &name, uint32_t type) {
         if (gScript.calls[i].compare(0, prefix.size(), prefix) == 0) n++;
     }
     return n;
+}
+
+/*
+ * One tile's record, from its label up to the semicolon that closes it, or
+ * the empty string when the message carries no record for that tile.
+ *
+ * Claims about one tile are asserted over its own record rather than over
+ * the whole message. A claim that counted a field across the whole line
+ * would mean one thing while the message carried the swept type's four
+ * tiles and something else once it carried all eight, and the two mutation
+ * runs below need claims whose meaning does not move with the width of the
+ * report.
+ */
+std::string recordFor(const std::string &msg, const char *label) {
+    const std::string opener = std::string(" ") + label + " ";
+    const size_t at = msg.find(opener);
+    if (at == std::string::npos) return "";
+
+    const size_t end = msg.find(';', at);
+    if (end == std::string::npos) return msg.substr(at);
+    return msg.substr(at, end - at);
 }
 
 //! The eight tile labels in the order the message is required to emit them.
@@ -282,10 +304,21 @@ void checkScratchpadRoundTrip() {
  * for the wrong reason.
  */
 void checkGlobalResetMessageIsPinnedByteForByte() {
+    const std::string zeros =
+        " ok state=0x0(Device_Power-up_and_Configuration[0])"
+        " restart=0x0 clkdet=0x0 common=0x0 plllock=0x0;";
     const std::string expected =
         "Reset(-1): failed, 1 failing tile(s):"
-        " ADC3 XRFdc_Reset state=0x00000006(Clock_Configuration[0])"
-        " restart=0x00000003 clkdet=0x00000000 common=0x00000000 plllock=0x00000000;"
+        " ADC0" + zeros +
+        " ADC1" + zeros +
+        " ADC2" + zeros +
+        " ADC3 XRFdc_Reset state=0x6(Clock_Configuration[0])"
+        " restart=0x3 clkdet=0x0 common=0x0 plllock=0x0;"
+        " DAC0 ok state=0xF(Done)"
+        " restart=0x0 clkdet=0x4 common=0x0 plllock=0x0;"
+        " DAC1" + zeros +
+        " DAC2" + zeros +
+        " DAC3" + zeros +
         "\n";
 
     PyRFdcPtr device = PyRFdc::create();
@@ -295,12 +328,16 @@ void checkGlobalResetMessageIsPinnedByteForByte() {
     gScript.reset();
     gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
 
-    // Two scripted readings so the pinned line is not a wall of zeros that
-    // an all-zero record of any other tile would satisfy just as well: the
+    // Scripted readings so the pinned line is not a wall of zeros that an
+    // all-zero record of any other tile would satisfy just as well. The
     // failing tile sits at the clock-configuration state this project keeps
-    // seeing on the console, mid-restart.
+    // seeing on the console, mid-restart, and the tile it takes its clock
+    // from is somewhere else entirely, which is the whole reason the report
+    // carries both groups.
     gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetCurrentState, 6);
     gScript.scriptRegister(XRFDC_ADC_TILE, 3, kOffsetRestartState, 3);
+    gScript.scriptRegister(XRFDC_DAC_TILE, 0, kOffsetCurrentState, 15);
+    gScript.scriptRegister(XRFDC_DAC_TILE, 0, kOffsetClockDetector, 4);
 
     rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
 
@@ -387,9 +424,16 @@ void checkAccumulatesEveryFailingTile() {
     const std::string msg = tran->errorStrValue();
 
     bool ok = tran->errorStrCalled() && !tran->doneCalled();
-    if (ok) ok = (countOf(msg, " ADC1 ") == 1) && (countOf(msg, " ADC3 ") == 1);
     if (ok) ok = (msg.find("2 failing tile(s)") != std::string::npos);
-    if (ok) ok = (countOf(msg, " ADC0 ") == 0) && (countOf(msg, " ADC2 ") == 0);
+    // Both failing tiles carry a record, and each names the driver call
+    // that returned non-success rather than being listed as merely seen.
+    if (ok) ok = (recordFor(msg, "ADC1").find("XRFdc_Reset") != std::string::npos);
+    if (ok) ok = (recordFor(msg, "ADC3").find("XRFdc_Reset") != std::string::npos);
+    // The tiles that did not fail are not reported as having failed.
+    // Whether they appear at all is a separate claim; this one is only
+    // about which tiles the sweep blamed.
+    if (ok) ok = (countOf(msg, " ADC0 XRFdc_Reset") == 0);
+    if (ok) ok = (countOf(msg, " ADC2 XRFdc_Reset") == 0);
 
     if (!ok) {
         fprintf(stderr, "accumulate: err=%u done=%u, text '%s'\n",
@@ -455,8 +499,8 @@ void checkTwoIdenticalFailuresEmitTwoRecords() {
     const std::string msg = tran->errorStrValue();
 
     bool ok = (countOf(msg, " ADC1 ") == 1) && (countOf(msg, " ADC2 ") == 1);
-    if (ok) ok = (countOf(msg, "state=0x00000006") == 2);
-    if (ok) ok = (countOf(msg, "restart=0x00000003") == 2);
+    if (ok) ok = (countOf(msg, "state=0x6(") == 2);
+    if (ok) ok = (countOf(msg, "restart=0x3 ") == 2);
     if (ok) ok = (msg.find("2 failing tile(s)") != std::string::npos);
 
     if (!ok) {
@@ -517,10 +561,13 @@ void checkUnreadDiagnosticsReportUnavailable() {
     rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
     const std::string msg = tran->errorStrValue();
 
+    const std::string record = recordFor(msg, "ADC3");
+
     bool ok = (countOf(msg, " ADC3 ") == 1);
-    if (ok) ok = (msg.find("unavailable") != std::string::npos);
-    if (ok) ok = (countOf(msg, "state=") == 0);
-    if (ok) ok = (countOf(msg, "clkdet=") == 0);
+    if (ok) ok = (record.find("unavailable") != std::string::npos);
+    if (ok) ok = (record.find("state=") == std::string::npos);
+    if (ok) ok = (record.find("clkdet=") == std::string::npos);
+    if (ok) ok = (record.find("plllock=") == std::string::npos);
     // The refused tile performs no control and status reads at all, so an
     // unavailable record cannot be one that read and then discarded.
     if (ok) {
@@ -553,9 +600,13 @@ void checkDecodedStateNamesMatchPythonTable() {
 
         rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
         const std::string msg = tran->errorStrValue();
+        const std::string record = recordFor(msg, "ADC3");
         const std::string want = std::string("(") + kPythonEnumState[value] + ")";
 
-        if (countOf(msg, want) != 1) {
+        // Asserted over the scripted tile's own record, because the other
+        // tiles read zero and would otherwise satisfy the state-0 pass on
+        // their own.
+        if (countOf(record, want) != 1) {
             ok = false;
             firstBad = value;
             badText = msg;
@@ -593,8 +644,10 @@ void checkRawStateAboveFifteenIsMasked() {
     rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
     const std::string msg = tran->errorStrValue();
 
-    bool ok = (msg.find("state=0x00000026") != std::string::npos);
-    if (ok) ok = (countOf(msg, std::string("(") + kPythonEnumState[6] + ")") == 1);
+    const std::string record = recordFor(msg, "ADC3");
+
+    bool ok = (record.find("state=0x26(") != std::string::npos);
+    if (ok) ok = (countOf(record, std::string("(") + kPythonEnumState[6] + ")") == 1);
 
     if (!ok) {
         fprintf(stderr, "masked decode: text '%s'\n", msg.c_str());
@@ -730,6 +783,75 @@ void checkCleanSweepStillReportsNothing() {
     runCheck("a clean sweep on one type still reports nothing", ok);
 }
 
+/*
+ * The reported line never exceeds what the console can print, and says so
+ * when it runs out of room.
+ *
+ * The completion epilogue hands the same string to Transaction::errorStr,
+ * where a std::string of any length survives, and to Logging::error, where
+ * it does not: rogue v6.15.0's Logging::intLog formats into a stack buffer
+ * with vsnprintf and a size argument of 1000, so anything past 999
+ * characters never reaches the PS UART. That is the console this project
+ * reads the bare-metal converter diagnostics off, so a report that silently
+ * loses its tail there loses exactly the thing this work exists to make
+ * visible.
+ *
+ * Driven at the widest the message can get: every tile scripted into the
+ * longest-named state with every readable register at all ones, and all
+ * four tiles of the swept type failing, so the step name is the long one
+ * too. The omission marker is reached on this input, which is the point.
+ * A run that never reached it would leave that branch unexercised.
+ */
+void checkReportedLineFitsTheConsoleBuffer() {
+    // The one the real console truncates at, minus the terminator.
+    const size_t consoleLimit = 999;
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.reset();
+    for (uint32_t type = 0; type < 2; type++) {
+        for (uint32_t tile = 0; tile < 4; tile++) {
+            // Low four bits 0xE select the longest name in the table, and
+            // the high bits keep the printed raw value at its full width.
+            gScript.scriptRegister(type, tile, kOffsetCurrentState, 0xFFFFFFFEu);
+            gScript.scriptRegister(type, tile, kOffsetRestartState, 0xFFFFFFFFu);
+            gScript.scriptRegister(type, tile, kOffsetClockDetector, 0xFFFFFFFFu);
+            gScript.scriptRegister(type, tile, 0x0228, 0xFFFFFFFFu);
+        }
+    }
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    size_t present = 0;
+    bool ok = labelsAreInCanonicalOrder(msg, &present);
+    if (ok) ok = (msg.size() <= consoleLimit);
+    // Nothing is dropped without saying so: what was printed plus what the
+    // marker admits to omitting has to account for all eight tiles.
+    if (ok) {
+        const size_t omitted = 8 - present;
+        const std::string marker =
+            " +" + std::to_string(omitted) + " tile(s) omitted, line budget reached;";
+        ok = (omitted == 0) ? (countOf(msg, "omitted") == 0)
+                            : (countOf(msg, marker) == 1);
+    }
+    // The console's own copy is the one at risk, and it is the same string.
+    if (ok) ok = (gScript.logErrors.size() == 1) && (gScript.logErrors[0] == msg);
+    // Whatever else was dropped, the four tiles that actually failed are
+    // first in index order and survive.
+    if (ok) ok = (countOf(msg, "4 failing tile(s)") == 1);
+    if (ok) ok = (countOf(msg, "XRFdc_Reset") == 4);
+
+    if (!ok) {
+        fprintf(stderr, "console budget: %zu chars, %zu label(s) present, text '%s'\n",
+                msg.size(), present, msg.c_str());
+    }
+
+    runCheck("the reported line fits the console buffer", ok);
+}
+
 }  // namespace
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -751,6 +873,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkReportsAllEightTiles();
     checkOtherTypeIsDiagnosedButNotReset();
     checkCleanSweepStillReportsNothing();
+    checkReportedLineFitsTheConsoleBuffer();
 
     printf("RESULT %s\n", (gFailures == 0) ? "PASS" : "FAIL");
     return (gFailures == 0) ? 0 : 1;

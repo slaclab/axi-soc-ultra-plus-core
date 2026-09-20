@@ -89,18 +89,44 @@ static const char* const IPSM_STATE_NAMES[16] = {
     "Done",
 };
 
-// Eight hex digits with a 0x prefix, built without <iomanip> or snprintf so
-// the result is the same under the Yocto build and a host build and contains
-// nothing but ASCII.
-static std::string HexWord(uint32_t value) {
+// A 0x prefix and as many hex digits as the value needs, built without
+// <iomanip> or snprintf so the result is the same under the Yocto build and
+// a host build and contains nothing but ASCII. Leading zeros are dropped
+// because eight of these appear per tile and the whole line has a hard
+// length budget, see DIAG_MSG_BUDGET below.
+static std::string HexValue(uint32_t value) {
     static const char* const digits = "0123456789ABCDEF";
-    std::string out = "0x00000000";
+    char buf[8];
+    int n = 0;
 
-    for (int i = 0; i < 8; i++) {
-        out[9 - i] = digits[(value >> (4 * i)) & 0xF];
+    do {
+        buf[n++] = digits[value & 0xF];
+        value >>= 4;
+    } while (value != 0);
+
+    std::string out = "0x";
+    while (n > 0) {
+        out += buf[--n];
     }
     return out;
 }
+
+// Longest report this code will build, in characters, excluding the trailing
+// newline.
+//
+// The completion epilogue hands the same string to two places: the caller,
+// through Transaction::errorStr, where a std::string of any length survives;
+// and the console, through Logging::error, where it does not. Measured in
+// rogue v6.15.0, rogue::Logging::intLog formats into a stack buffer with
+// vsnprintf and a size argument of 1000, so anything past 999 characters
+// never reaches the PS UART at all. Eight tile records at full width came to
+// 1105, which would have dropped the last two tiles off the console silently
+// while the exception text kept them.
+//
+// Held below that with room for the omission marker, so the code can say it
+// ran out of line rather than being cut off mid word by something it cannot
+// see.
+static const size_t DIAG_MSG_BUDGET = 960;
 
 //! Create a block, class creator
 PyRFdcPtr PyRFdc::create() {
@@ -338,6 +364,7 @@ void PyRFdc::Shutdown(int Tile_Id) {
 void PyRFdc::Reset(int Tile_Id) {
     int status = XRFDC_SUCCESS;
     int i, j, k;
+    int diagType, diagTile;
     bool sweepFailed = false;
 
     // Check if read
@@ -437,6 +464,41 @@ void PyRFdc::Reset(int Tile_Id) {
 
             }
 
+            // Widen the report to every tile of both types once the sweep
+            // has failed. ResetAllAdc is called before ResetAllDac, so an
+            // ADC reset that reports an error means the DAC reset never
+            // runs and the DAC tiles are never looked at, even though the
+            // ADC tile that fails on this carrier takes its clock from DAC
+            // tile 0. Reading them afterwards from the host is not an
+            // option: the register path degrades once a converter fails.
+            //
+            // This is a read and nothing else. It issues no reset, no PLL
+            // reconfigure and no event update against the other type, and
+            // it does not touch the sweep's own driver calls above. The
+            // tiles it fills keep failed false, so the message tells a tile
+            // that failed apart from a tile that was merely observed.
+            //
+            // Only on the failing path, so a healthy reset performs no
+            // extra reads at all.
+            if (sweepFailed) {
+                for(diagType=0; diagType<2; diagType++) {
+                    for(diagTile=0; diagTile<4; diagTile++) {
+
+                        // Never read a tile twice. A tile that failed was
+                        // already read at the instant it failed, and that
+                        // reading is the one worth keeping; reading it
+                        // again here would overwrite it with the state the
+                        // tile settled into afterwards.
+                        if (tileDiag_[diagType][diagTile].diagRead) {
+                            continue;
+                        }
+
+                        readTileDiagnostics(uint32_t(diagType), uint8_t(diagTile),
+                                            &tileDiag_[diagType][diagTile]);
+                    }
+                }
+            }
+
         // Else not a global reset
         } else {
             // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
@@ -512,6 +574,7 @@ std::string PyRFdc::buildDiagMessage(const char *entryPoint, int tileId) {
     // Indexed by tile type, the same way tileDiag_ is.
     static const char* const typeName[2] = {"ADC", "DAC"};
     int failing = 0;
+    int omitted = 0;
     int t, i;
     std::string msg;
 
@@ -535,34 +598,51 @@ std::string PyRFdc::buildDiagMessage(const char *entryPoint, int tileId) {
     for (t=0; t<2; t++) {
         for (i=0; i<4; i++) {
             const TileDiag &diag = tileDiag_[t][i];
+            std::string record;
 
             // A tile that neither failed nor was read has nothing to say.
             if (!diag.failed && !diag.diagRead) {
                 continue;
             }
 
-            msg += " " + std::string(typeName[t]) + std::to_string(i) + " ";
-            msg += diag.failed ? diag.step : "ok";
+            record = " " + std::string(typeName[t]) + std::to_string(i) + " ";
+            record += diag.failed ? diag.step : "ok";
 
             // No state fields at all when the read did not run. A zero here
             // would be indistinguishable from a tile genuinely reading zero,
             // which is the reading that made an earlier register snapshot
             // impossible to interpret.
             if (!diag.diagRead) {
-                msg += " diagnostics unavailable;";
+                record += " diagnostics unavailable;";
+
+            } else {
+                // Mask to four bits before indexing. The host side declares
+                // this field as four bits wide, but the read above is of the
+                // whole word, so an out of range value would index past the
+                // table.
+                record += " state=" + HexValue(diag.currentState)
+                        + "(" + IPSM_STATE_NAMES[diag.currentState & 0x0F] + ")"
+                        + " restart=" + HexValue(diag.restartState)
+                        + " clkdet=" + HexValue(diag.clockDetector)
+                        + " common=" + HexValue(diag.commonStatus)
+                        + " plllock=" + HexValue(diag.pllLock) + ";";
+            }
+
+            // Stop at the budget rather than let the console cut the line
+            // off wherever it happens to run out. Counting what was left out
+            // keeps the report honest: a reader can tell a short line that
+            // said everything from one that did not.
+            if ((msg.size() + record.size()) > DIAG_MSG_BUDGET) {
+                omitted++;
                 continue;
             }
 
-            // Mask to four bits before indexing. The host side declares this
-            // field as four bits wide, but the read above is of the whole
-            // word, so an out of range value would index past the table.
-            msg += " state=" + HexWord(diag.currentState)
-                 + "(" + IPSM_STATE_NAMES[diag.currentState & 0x0F] + ")"
-                 + " restart=" + HexWord(diag.restartState)
-                 + " clkdet=" + HexWord(diag.clockDetector)
-                 + " common=" + HexWord(diag.commonStatus)
-                 + " plllock=" + HexWord(diag.pllLock) + ";";
+            msg += record;
         }
+    }
+
+    if (omitted > 0) {
+        msg += " +" + std::to_string(omitted) + " tile(s) omitted, line budget reached;";
     }
 
     msg += "\n";
