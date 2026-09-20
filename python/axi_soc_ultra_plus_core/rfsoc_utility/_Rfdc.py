@@ -603,6 +603,29 @@ class Rfdc(pr.Device):
             hidden       = True,
         ))
 
+        # No poll interval on purpose. A polled variable adds a background
+        # transaction every interval to a driver that may be dead, on a register
+        # path that has been measured degrading once a converter fails. The
+        # matching driver body is PyRFdc::InitFailReason(), which reads a member
+        # and never touches the driver instance, so this register still answers
+        # when every other one is being refused. It is read when someone asks.
+        self.add(pr.RemoteVariable(
+            name         = 'InitFailureReason',
+            description  = 'Reports which driver initialization step failed. A non-zero value means the driver instance was never initialized, so register access is refused',
+            offset       = 0x1200C,
+            bitSize      = 32,
+            mode         = 'RO',
+            enum         = {
+                0 : "PYRFDC_INIT_OK",
+                1 : "PYRFDC_INIT_FAIL_NOT_COMPLETED",
+                2 : "PYRFDC_INIT_FAIL_BAREMETAL_LOOKUP",
+                3 : "PYRFDC_INIT_FAIL_METAL_INIT",
+                4 : "PYRFDC_INIT_FAIL_CONFIG_LOOKUP",
+                5 : "PYRFDC_INIT_FAIL_REGISTER_METAL",
+            },
+            hidden       = True,
+        ))
+
         self.add(pr.RemoteVariable(
             name         = 'DoubleTestReg',
             description  = 'Test register (no impact to RFDC module)',
