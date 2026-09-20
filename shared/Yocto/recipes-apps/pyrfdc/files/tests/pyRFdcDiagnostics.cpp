@@ -28,6 +28,12 @@
  *       behavior so that a later change to that message is a visible diff in
  *       a running test rather than an assertion in prose
  *
+ *   (d) the two tile-type constants that the [2][4] shadow arrays in
+ *       PyRFdc.h are indexed by hold the values that layout assumes. The
+ *       same pair is pinned at compile time by the static_assert in
+ *       PyRFdc.cpp, which compiles in the Yocto build as well, so the real
+ *       xrfdc.h is held to the same two values by the same line
+ *
  * Run it with:
  *
  *   make -C shared/Yocto/recipes-apps/pyrfdc/files/tests test
@@ -211,6 +217,35 @@ void checkPreChangeGlobalResetMessage() {
     runCheck("pre-change global reset message is the bare prefix", ok);
 }
 
+/*
+ * (d) The tile-type constants match what the shadow arrays assume.
+ *
+ * PyRFdc.cpp assigns tileType_ from these two constants at line 3281, and
+ * PyRFdc.h lines 72 to 85 index its [2][4] and [2][4][4] shadow arrays with
+ * that value, so the ADC constant must be 0 and the DAC constant must be 1
+ * or the two groups are silently swapped. A swap does not crash and does not
+ * error: it returns one converter's settings under the other's name, which
+ * is why this is worth a check of its own.
+ *
+ * The values are read here rather than restated, so this check follows the
+ * shim if the shim changes. The compile-time half of the pin lives in
+ * PyRFdc.cpp and is the half that also holds the real xrfdc.h; this half
+ * puts the result in the harness output, where a reader sees it, instead of
+ * only in a build that did not fail.
+ */
+void checkTileTypeIndices() {
+    const u32 adc = XRFDC_ADC_TILE;
+    const u32 dac = XRFDC_DAC_TILE;
+
+    bool ok = (adc == 0u) && (dac == 1u);
+
+    if (!ok) {
+        fprintf(stderr, "tile type indices: ADC=%u DAC=%u, expected 0 and 1\n", adc, dac);
+    }
+
+    runCheck("tile type indices match the shadow-array layout", ok);
+}
+
 }  // namespace
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -219,6 +254,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkShimCompilesPyRFdc();
     checkScratchpadRoundTrip();
     checkPreChangeGlobalResetMessage();
+    checkTileTypeIndices();
 
     printf("RESULT %s\n", (gFailures == 0) ? "PASS" : "FAIL");
     return (gFailures == 0) ? 0 : 1;

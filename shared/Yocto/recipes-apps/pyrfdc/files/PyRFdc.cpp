@@ -53,6 +53,13 @@ namespace bp = boost::python;
 #define printf xil_printf
 #endif
 
+// doTransaction assigns tileType_ from these two constants, and the [2][4]
+// and [2][4][4] shadow arrays in PyRFdc.h are indexed by that value, so any
+// other pair silently swaps the ADC and DAC groups rather than failing.
+static_assert(XRFDC_ADC_TILE == 0 && XRFDC_DAC_TILE == 1,
+              "PyRFdc.h indexes its [2][4] shadow arrays by tile type: "
+              "XRFDC_ADC_TILE must be 0 and XRFDC_DAC_TILE must be 1");
+
 //! Create a block, class creator
 PyRFdcPtr PyRFdc::create() {
     PyRFdcPtr b = std::make_shared<PyRFdc>();
