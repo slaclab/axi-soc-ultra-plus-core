@@ -816,6 +816,28 @@ void PyRFdc::Reset(int Tile_Id) {
                 }
             }
 
+            // Say which tiles of this call's own type it left alone.
+            //
+            // A global reset that legitimately passes over one of its own
+            // tiles has to say so. On this carrier the ADC entry point
+            // covers three of four ADC tiles, and a board owner reading a
+            // log that shows an ADC reset quietly skipping a tile sees
+            // something indistinguishable from the fault this driver is
+            // being changed to prevent.
+            //
+            // log_->warning and not setDiagError. A deferral is a correct
+            // outcome and the transaction still completes, so routing it
+            // through the diagnostic error path would report a healthy
+            // reset as a failure on every boot of every board that has a
+            // distribution at all.
+            //
+            // The line is emitted only when something was deferred, so a
+            // board with no distribution gains no per reset log output.
+            const std::string deferral = buildDeferralMessage(uint32_t(entryType));
+            if (!deferral.empty()) {
+                log_->warning(deferral.c_str());
+            }
+
         // Else not a global reset
         } else {
             // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
@@ -4192,6 +4214,60 @@ uint32_t PyRFdc::buildOwnedTileWalk(uint32_t type, uint32_t *walk) const {
     }
 
     return count;
+}
+
+// The tiles this call passed over, named with the tile that took them.
+//
+// Length. The opening clause is under a hundred characters and each tile
+// adds about twenty, and at most four tiles of one type can be deferred, so
+// the worst case is under two hundred against the 960 character budget the
+// console imposes. The budget is not at risk here and no omission counter
+// is needed, which is worth saying because the failure report further up
+// does need one: that line can carry eight tiles of register values.
+//
+// Built with std::string concatenation, matching the constraint the rest of
+// the message assembly in this file works under. No <iomanip> and no
+// snprintf, so the text is the same under the Yocto build and a host build
+// and contains nothing but ASCII. No hex field appears because nothing on
+// this line is a register value.
+std::string PyRFdc::buildDeferralMessage(uint32_t type) const {
+    // The same two names and the same tile numbering the failure report
+    // uses, so a reader comparing the two lines is reading one vocabulary.
+    static const char* const typeName[2] = {"ADC", "DAC"};
+    std::string tiles;
+    uint32_t deferred = 0;
+    uint32_t idx;
+
+    if (type > XRFDC_DAC_TILE) {
+        return std::string();
+    }
+
+    for (idx = 0; idx < 8; idx++) {
+        const TileClkDist &tile = clkDist_[idx >> 2][idx & 0x3];
+
+        if (((idx >> 2) != type) || tileIsOwnedBy(type, idx)) {
+            continue;
+        }
+
+        deferred++;
+
+        // The master pair is masked before it indexes the name table. A
+        // deferred tile is in a group, so both fields carry a real tile
+        // and neither decode can write one out of range, but the table has
+        // two entries and the mask is what keeps that true of the index as
+        // well as of the value.
+        tiles += " " + std::string(typeName[idx >> 2]) + std::to_string(idx & 0x3)
+               + " to master " + std::string(typeName[tile.masterType & 0x1])
+               + std::to_string(tile.masterTile & 0x3) + ";";
+    }
+
+    if (deferred == 0) {
+        return std::string();
+    }
+
+    return std::string(typeName[type]) + " global reset deferred "
+         + std::to_string(deferred)
+         + " tile(s) to a group mastered by the other tile type:" + tiles + "\n";
 }
 
 // Where the cached topology came from, which IP generation the driver

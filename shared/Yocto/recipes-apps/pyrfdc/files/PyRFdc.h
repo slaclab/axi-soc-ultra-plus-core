@@ -493,6 +493,21 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! on a path the driver may already be reporting an error from.
     uint32_t buildOwnedTileWalk(uint32_t type, uint32_t *walk) const;
 
+    //! Render the tiles of this tile type that the global reset of this
+    //! tile type left to the other entry point, as one line, or the empty
+    //! string when it left none.
+    //!
+    //! A tile of a call's own type that the call does not own is exactly a
+    //! tile it deferred to a group mastered by the other type, so this and
+    //! tileIsOwnedBy above are one statement read two ways rather than two
+    //! rules that can drift apart.
+    //!
+    //! The empty string is the common answer. Every board with no clock
+    //! distribution, and every board whose distributions are mastered
+    //! inside their own tile type, defers nothing and gains no per reset
+    //! log output at all.
+    std::string buildDeferralMessage(uint32_t type) const;
+
     void MetalLogLevel();
     void IgnoreMetalError();
     void ScratchPad();
