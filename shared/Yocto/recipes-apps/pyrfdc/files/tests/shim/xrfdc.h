@@ -199,7 +199,12 @@ typedef struct {
     XRFdc_Tile_Config DACTile_Config[4];
 } XRFdc_Config;
 
-typedef struct {
+/* Tagged rather than anonymous, so xrfdcScript.h can forward declare it and
+ * hold a pointer to it without including this header. This header already
+ * includes xrfdcScript.h, so an include in the other direction would be a
+ * cycle whose outcome depended on which of the two a translation unit named
+ * first. Nothing else about the type changes. */
+typedef struct XRFdc {
     XRFdc_Config RFdc_Config;
     u32 UpdateMixerScale;
 } XRFdc;

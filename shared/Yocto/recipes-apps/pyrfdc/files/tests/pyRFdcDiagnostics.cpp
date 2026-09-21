@@ -1690,6 +1690,86 @@ void checkFailedCfgInitializeStopsTheConstructor() {
 }
 
 /*
+ * The rule form of the claim above: nothing at all runs after the declined
+ * configuration initialize.
+ *
+ * The claim above names three driver functions, so a tenth call added to the
+ * constructor later would slip past it. This one asserts position in the
+ * ordered call list instead, so any call added after the bail-out fails it
+ * whatever the call is named.
+ *
+ * The list is read while the instance is still alive. The destructor calls
+ * into the driver and into libmetal and appends entries of its own, so a
+ * claim that read the list after the instance went out of scope would be
+ * asserting about teardown rather than about construction.
+ *
+ * Matched on the name and the field separator rather than against a whole
+ * formatted entry, so the claim survives a change to the index fields the
+ * stub passes.
+ */
+void checkNoDriverCallFollowsAFailedCfgInitialize() {
+    PyRFdcPtr device = createDeadDeviceKeepingCalls("XRFdc_CfgInitialize");
+
+    const std::string wantPrefix = "XRFdc_CfgInitialize/";
+
+    bool ok = !gScript.calls.empty();
+    if (ok) {
+        const std::string &last = gScript.calls.back();
+        ok = (last.compare(0, wantPrefix.size(), wantPrefix) == 0);
+    }
+
+    if (!ok) {
+        fprintf(stderr, "no call after cfg initialize: %zu recorded call(s), last '%s'\n",
+                gScript.calls.size(),
+                gScript.calls.empty() ? "" : gScript.calls.back().c_str());
+    }
+
+    runCheck("the constructor makes no driver call after a failed configuration initialize", ok);
+}
+
+/*
+ * The one write the recorded call list is structurally blind to.
+ *
+ * The sample rate workaround loop assigns two struct fields of the driver
+ * instance per tile and makes no call at all, so nothing in the ordered list
+ * moves whether it ran or not. The production member holding the instance is
+ * private and these are free functions, so the only handle on it is the
+ * pointer the configuration initialize stub was handed.
+ *
+ * The two expected values were read from the workaround loop in PyRFdc.cpp
+ * and compared by exact equality, because the property is that the
+ * assignment did not happen at all. A tolerance comparison would pass for a
+ * value that merely came close to it.
+ */
+void checkFailedCfgInitializeLeavesSampleRateUnwritten() {
+    //! Read from the workaround loop in PyRFdc.cpp, which assigns 5.9 to
+    //! every ADC tile and 10.0 to every DAC tile.
+    const double kWorkaroundAdcRate = 5.9;
+    const double kWorkaroundDacRate = 10.0;
+
+    PyRFdcPtr device = createDeadDeviceKeepingCalls("XRFdc_CfgInitialize");
+
+    // A null here would let a claim that read nothing report success.
+    bool ok = (gScript.cfgInstance != nullptr);
+
+    double adcRate = 0.0;
+    double dacRate = 0.0;
+    if (ok) {
+        adcRate = gScript.cfgInstance->RFdc_Config.ADCTile_Config[0].MaxSampleRate;
+        dacRate = gScript.cfgInstance->RFdc_Config.DACTile_Config[0].MaxSampleRate;
+        ok = (adcRate != kWorkaroundAdcRate);
+    }
+    if (ok) ok = (dacRate != kWorkaroundDacRate);
+
+    if (!ok) {
+        fprintf(stderr, "sample rate workaround: instance=%p ADC0=%f DAC0=%f\n",
+                static_cast<const void *>(gScript.cfgInstance), adcRate, dacRate);
+    }
+
+    runCheck("a failed configuration initialize leaves the sample rate workaround unwritten", ok);
+}
+
+/*
  * The same rejected transaction twice reports the same bytes.
  *
  * The guard reads the validity flag and the reason code and nothing else,
@@ -2370,7 +2450,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 51;
+const int kClaimsBeforeCountCheck = 53;
 
 /*
  * Every claim this file defines actually ran.
@@ -2432,6 +2512,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkEachBailOutNamesItsOwnStep();
     checkNotCompletedConstructorIsDeadByDefault();
     checkFailedCfgInitializeStopsTheConstructor();
+    checkNoDriverCallFollowsAFailedCfgInitialize();
+    checkFailedCfgInitializeLeavesSampleRateUnwritten();
     checkRepeatedRejectionIsByteIdentical();
     checkMultiWordRejectionReachesErrorStr();
     checkLiveDriverIsUnaffectedByTheGuard();

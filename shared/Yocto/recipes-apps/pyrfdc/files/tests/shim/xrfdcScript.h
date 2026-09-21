@@ -14,7 +14,7 @@
  * object that every stub consults keeps the scripted failure, the recorded
  * call list and the register contents consistent by construction.
  *
- * It carries five things:
+ * It carries six things:
  *
  *   calls        an ordered record of every driver call, each formatted as
  *                name/type/tile/block, so a check can assert the sequence a
@@ -35,6 +35,14 @@
  *                XRFdc_Reset per tile at all. Zero by default, matching the
  *                zero-filled output every other getter stub produces, so a
  *                claim that wants that call site reached has to say so.
+ *   cfgInstance  the driver instance pointer XRFdc_CfgInitialize was handed.
+ *                Recorded because the constructor writes two fields of that
+ *                instance per tile directly rather than through a call, so
+ *                the ordered call list is structurally blind to those
+ *                writes, and because the member the production code holds
+ *                the instance in is private and the check functions here
+ *                are free functions with no access to it. The pointer the
+ *                stub receives is the one caller-observable handle on it.
  *
  * Test-build only. See shim/rogue/Directives.h for why files/tests/ cannot
  * reach the Yocto image build.
@@ -57,6 +65,10 @@
 #include <map>
 #include <string>
 #include <vector>
+
+//! The driver instance type, declared rather than included. shim/xrfdc.h
+//! includes this header, so naming it here would close a cycle.
+struct XRFdc;
 
 //! Wildcard for any of the tile type, tile id or block id selector fields.
 //! Chosen well outside the 0 to 3 range every real index occupies, so it can
@@ -118,6 +130,12 @@ class XRFdcScript {
     //! PyRFdc::create(), because the constructor is where it is consulted.
     uint32_t pllEnabled = 0;
 
+    //! The driver instance pointer XRFdc_CfgInitialize was handed. The
+    //! constructor writes two fields of that instance per tile without
+    //! making a call, so this is the only handle a claim has on a write the
+    //! ordered call list cannot see.
+    const XRFdc *cfgInstance = nullptr;
+
     //! Clear every recorded and scripted item. Called between claims so one
     //! claim cannot pass on state another claim left behind.
     void reset() {
@@ -129,6 +147,7 @@ class XRFdcScript {
         failures_.clear();
         registers_.clear();
         pllEnabled = 0;
+        cfgInstance = nullptr;
     }
 
     //! Script a non-success return for the matching calls. A field left at

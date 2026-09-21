@@ -147,6 +147,10 @@ XRFdc_Config *XRFdc_LookupConfig(u16 DeviceId) {
 }
 
 u32 XRFdc_CfgInitialize(XRFdc *InstancePtr, XRFdc_Config *ConfigPtr) {
+    //! Recorded whatever the scripted status, because the question a claim
+    //! asks through it is what the constructor did to the instance after
+    //! this call declined, and there is no other handle on it.
+    gScript.cfgInstance = InstancePtr;
     if (InstancePtr != nullptr && ConfigPtr != nullptr) InstancePtr->RFdc_Config = *ConfigPtr;
     return rec("XRFdc_CfgInitialize", ANY, ANY, ANY);
 }
