@@ -212,9 +212,25 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // the configuration into the driver instance and marks it ready, so a
     // non-success return here is exactly the case where every later
     // transaction would read through an instance that was never set up.
-    // Nothing else about this call changed: the argument list, the position
-    // in the sequence and the code that follows are all as they were.
+    // The argument list and the position in the sequence are unchanged. What
+    // the status now also decides is whether the constructor continues.
     uint32_t cfgStatus = XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
+
+    if (cfgStatus != XRFDC_SUCCESS) {
+        // No reason value is assigned here, deliberately. A configuration
+        // initialize that did not succeed is a construction that neither
+        // bailed out at a named step nor completed, and the declaration
+        // default in PyRFdc.h already reports exactly that. Naming a fifth
+        // step for this path would put that default back out of reach.
+        //
+        // Sited before the sample rate workaround loop below rather than
+        // after it, because that loop writes two fields of the driver
+        // instance per tile, and everything below it issues driver calls,
+        // a PLL reconfigure and a raw register read among them, through an
+        // instance the driver has just declined to configure.
+        log_->error("PyRFdc: XRFdc_CfgInitialize() Failure");
+        return;
+    }
 
     log_->debug("PyRFdc::PyRFdc() Initialization Complete");
 
@@ -226,19 +242,17 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     }
 
     // The driver instance is usable from here and not before. This is the
-    // only place the flag is raised, and it is raised late on purpose: every
-    // path that leaves this constructor without reaching this line, the four
-    // early returns above and any added later, leaves the object carrying
-    // the declaration defaults in PyRFdc.h and therefore dead.
+    // only place the flag is raised, it is raised once, and it is raised
+    // unconditionally: every failing step returns above rather than falling
+    // through, so reaching this line means every step reported success and a
+    // condition here could no longer be false.
     //
-    // No reason value is assigned on the failing side. Leaving the default
-    // is the point: a configuration initialize that did not succeed is a
-    // construction that neither bailed out nor completed, and reporting that
-    // is more honest than inventing a fifth named step for it.
-    if (cfgStatus == XRFDC_SUCCESS) {
-        driverValid_ = true;
-        initFailReason_ = PYRFDC_INIT_OK;
-    }
+    // Every path that leaves this constructor without reaching this line,
+    // the four early returns above, the configuration initialize bail-out
+    // and any added later, leaves the object carrying the declaration
+    // defaults in PyRFdc.h and is therefore dead.
+    driverValid_ = true;
+    initFailReason_ = PYRFDC_INIT_OK;
 
     // Init local variables
     errMsg_.clear();
