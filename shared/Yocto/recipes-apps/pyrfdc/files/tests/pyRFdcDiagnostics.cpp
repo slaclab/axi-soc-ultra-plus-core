@@ -4368,6 +4368,67 @@ void checkRecoveryClearsOnlyTheTileItReRan() {
 }
 
 /*
+ * One tile of the group that is not enabled does not defeat the recovery.
+ *
+ * The sweep asks XRFdc_CheckTileEnabled before it touches a tile, and the
+ * walk builder's own documentation leans on that guard as the reason a
+ * wrong cache cannot reach the converter. The recovery pass is the one
+ * reset path that did not ask, so the guard is a contract between the two
+ * rather than a local nicety, and this claim is where the contract is
+ * stated.
+ *
+ * DAC 2 is scripted as not enabled and ADC 3 fails its reset once, so the
+ * attempt is armed and every reset it does issue succeeds. Two things have
+ * to hold. No reset may be issued against DAC 2, because a refusal counted
+ * against the attempt would make the recovery unreachable on any board with
+ * a partially populated group. And DAC 2's cycle nibble has to stay at
+ * zero, because the count is read by this project as evidence of what the
+ * driver did, and a cycle published for a tile that was never touched is
+ * evidence of something that did not happen.
+ *
+ * The group master's nibble is asserted at 2, one from the sweep and one
+ * from the recovery pass, so a pass that skipped everything rather than
+ * skipping the disabled tile cannot satisfy the first two assertions by
+ * doing nothing at all.
+ */
+void checkDisabledTileInAGroupDoesNotDefeatTheRecovery() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    gScript.scriptFailure("XRFdc_CheckTileEnabled", XRFDC_DAC_TILE, 2, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+    gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = armed->doneCalled() && !armed->errorStrCalled();
+    if (ok) ok = (armed->getWord(0) == 0x00010001u);
+    if (ok) ok = (countExactCalls("XRFdc_Reset", XRFDC_DAC_TILE, 2, XRFDC_SCRIPT_ANY) == 0);
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_DAC_TILE, 2) == 0u);
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_DAC_TILE, 0) == 2u);
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr,
+                "disabled in group: recoveries=0x%08X, counts=0x%08X, "
+                "dac2 reset=%zu, done=%u err=%u\n",
+                armed->getWord(0), counts->getWord(0),
+                countExactCalls("XRFdc_Reset", XRFDC_DAC_TILE, 2, XRFDC_SCRIPT_ANY),
+                dac->doneCalls(), dac->errorStrCalls());
+    }
+
+    runCheck("a disabled tile in a group does not defeat the recovery", ok);
+}
+
+/*
  * Two failing edge tiles of one group arm one recovery between them.
  *
  * The bound is one attempt per group per global reset, tracked by a set of
@@ -4620,7 +4681,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 88;
+const int kClaimsBeforeCountCheck = 89;
 
 /*
  * Every claim this file defines actually ran.
@@ -4737,6 +4798,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkEdgeTileFailingAtAnotherStepArmsNoRecovery();
     checkRecoveryThatSucceededIsStillCounted();
     checkRecoveryClearsOnlyTheTileItReRan();
+    checkDisabledTileInAGroupDoesNotDefeatTheRecovery();
     checkTwoFailingEdgesInOneGroupArmOneRecovery();
     checkRecoveryCounterIsReadOnlyAndAnswersADeadDriver();
     checkRecoveryRerunsTheGroupMasterFirst();
