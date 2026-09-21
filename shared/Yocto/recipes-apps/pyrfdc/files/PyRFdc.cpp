@@ -836,8 +836,8 @@ void PyRFdc::Reset(int Tile_Id) {
 
                 // Range check the index before it is used as one. An
                 // ungrouped tile carries 0xFF in both master fields, so the
-                // value formed above is 0x3FF for such a tile and would
-                // index far past the fixed member arrays.
+                // value formed above is 1275 for such a tile and would index
+                // far past the fixed member arrays, which hold 8 entries.
                 //
                 // The role test above is what keeps the value in range
                 // today, but a bound that is a consequence of a predicate is
