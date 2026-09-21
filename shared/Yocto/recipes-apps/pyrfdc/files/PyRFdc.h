@@ -483,6 +483,30 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! cannot disturb a word some other caller is about to hand back.
     void decodeClkDistributionRaw();
 
+    //! Establish the cached topology's ordering precondition: after this
+    //! runs, every tile marked as an edge names an in-range tile that is
+    //! marked as a master.
+    //!
+    //! It lives at cache level rather than inside either decoder because
+    //! every consumer reads the cache and not one of them asks which source
+    //! filled it. buildOwnedTileWalk, tileIsOwnedBy, the recovery arming
+    //! pass, ClkDistStatus and ClkDistMap all take the cache as the
+    //! topology, so an invariant those consumers depend on belongs to the
+    //! cache and not to one of the two ways of filling it. Attaching it to a
+    //! decoder would also mean a third source, whenever one arrives, has to
+    //! rediscover the same rule rather than inherit it.
+    //!
+    //! It only ever marks a master and re-points an edge. Nothing is
+    //! demoted and a tile already marked as a master is left untouched, so a
+    //! cache that already satisfied the invariant comes out byte identical.
+    //!
+    //! A helper rather than a transaction body, for the same reason
+    //! readTileDiagnostics is one: it runs from the constructor, where no
+    //! transaction is in flight, and it writes only members of its own. It
+    //! makes no driver call at all, which is what lets it run on the path
+    //! where the documented topology query already failed.
+    void normalizeClkDistCache();
+
     //! Whether the global reset of this tile type is the one that owns the
     //! named tile, where a tile index is type * 4 + tile.
     //!

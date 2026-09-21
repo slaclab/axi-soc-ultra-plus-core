@@ -390,6 +390,13 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // leaves a tile ungrouped when its register names no source. So a board
     // with no distribution keeps every tile at the ungrouped values PyRFdc.h
     // declares and its reset path is what it is today.
+    //
+    // The order is source first and normalization second, and the
+    // normalization runs on every path out of the branch below, including
+    // the one that obtained nothing, where it is a no-op. Neither arm calls
+    // it: the ordering invariant it establishes is a property of the cache
+    // that every consumer reads, not of whichever source happened to fill
+    // that cache, and the same defect was reachable from both arms.
     ipType_ = RFdcInstPtr_->RFdc_Config.IPType;
     if (ipType_ >= XRFDC_GEN3) {
         // The structure is roughly three kilobytes, so it lives in a block of
@@ -402,6 +409,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     } else {
         decodeClkDistributionRaw();
     }
+    normalizeClkDistCache();
 
     // Loop through type indexes
     for(i=0; i<2; i++) {
@@ -4226,6 +4234,116 @@ void PyRFdc::decodeClkDistributionRaw() {
     // nothing stays distinguishable from one that was never attempted, and
     // clkDistGroups_ is what says whether anything was found.
     clkDistSource_ = PYRFDC_CLKDIST_SRC_RAW_DECODE;
+}
+
+// Make the cache satisfy the precondition the walk's ordering rests on.
+//
+// buildOwnedTileWalk's first pass keys on the master role. A cache that
+// names a master without marking one therefore yields no group at all, both
+// the master and its edges fall through to the pass that sorts by tile
+// index, and on this carrier that emits ADC 3 at index 3 ahead of DAC 0 at
+// index 4. That is the ordering this driver exists to remove, produced by a
+// cache shape both decoders can reach without any anomalous register value.
+//
+// It makes no driver call, which is worth stating because every other call
+// site in this file compares a driver return against XRFDC_SUCCESS and there
+// is nothing here to compare. That is also what lets it run on the path
+// where the documented topology query already returned an error.
+void PyRFdc::normalizeClkDistCache() {
+    uint32_t idx;
+
+    // Pass one, resolve. An edge naming another edge is one link of a
+    // chain, and what the walk needs from it is the tile at the far end.
+    //
+    // Bounded at eight hops, with an in-range test and a revisit test at
+    // every hop. Eight tiles means a chain longer than eight hops has
+    // visited one twice and is a cycle, this runs at construction time on a
+    // device whose registers can read back anything, and a loop that did not
+    // terminate here is a bridge that never starts. A tile the walk cannot
+    // resolve keeps the master fields the decode gave it: it is still owned
+    // by exactly one entry point through tileIsOwnedBy and still walked by
+    // that one, so membership stays total either way.
+    for (idx = 0; idx < 8; idx++) {
+        bool seen[8] = {false, false, false, false, false, false, false, false};
+        bool resolved = false;
+        uint32_t named;
+        uint32_t hop;
+
+        if (clkDist_[idx >> 2][idx & 0x3].role != PYRFDC_CLKDIST_EDGE) {
+            continue;
+        }
+
+        named = (uint32_t(clkDist_[idx >> 2][idx & 0x3].masterType) * 4) +
+                uint32_t(clkDist_[idx >> 2][idx & 0x3].masterTile);
+        if (named > 7) {
+            continue;
+        }
+
+        seen[idx] = true;
+
+        for (hop = 0; hop < 8; hop++) {
+            if (seen[named]) {
+                break;
+            }
+            seen[named] = true;
+
+            if (clkDist_[named >> 2][named & 0x3].role != PYRFDC_CLKDIST_EDGE) {
+                resolved = true;
+                break;
+            }
+
+            named = (uint32_t(clkDist_[named >> 2][named & 0x3].masterType) * 4) +
+                    uint32_t(clkDist_[named >> 2][named & 0x3].masterTile);
+            if (named > 7) {
+                break;
+            }
+        }
+
+        if (resolved) {
+            clkDist_[idx >> 2][idx & 0x3].masterType = uint8_t(named >> 2);
+            clkDist_[idx >> 2][idx & 0x3].masterTile = uint8_t(named & 0x3);
+        }
+    }
+
+    // Pass two, promote. A tile at least one edge names, that no decode
+    // marked, is the master of a group whatever its role field says.
+    //
+    // The group count is incremented here because a group that exists only
+    // because this pass found it is still a group, and a status register
+    // reporting no groups beside a map register naming a master would have
+    // the two words contradict each other. On the path where the decode
+    // counted a slot whose master it never marked, the count therefore rises
+    // once more than the slot count, which is the honest reading: the slot
+    // and the group this pass recovered from it are two separate findings.
+    //
+    // Nothing is demoted and a tile already marked as a master is left
+    // exactly as it was, so a cache that already held the invariant comes
+    // out byte identical and every claim written against one stays green.
+    for (idx = 0; idx < 8; idx++) {
+        uint32_t named;
+
+        if (clkDist_[idx >> 2][idx & 0x3].role != PYRFDC_CLKDIST_EDGE) {
+            continue;
+        }
+
+        named = (uint32_t(clkDist_[idx >> 2][idx & 0x3].masterType) * 4) +
+                uint32_t(clkDist_[idx >> 2][idx & 0x3].masterTile);
+        if (named > 7) {
+            continue;
+        }
+
+        if (clkDist_[named >> 2][named & 0x3].role != PYRFDC_CLKDIST_UNGROUPED) {
+            continue;
+        }
+
+        // Named as its own master, the way both decoders already record a
+        // master, so tileIsOwnedBy and ClkDistMap need no rule of their own
+        // for a tile this pass marked.
+        clkDist_[named >> 2][named & 0x3].role = PYRFDC_CLKDIST_MASTER;
+        clkDist_[named >> 2][named & 0x3].masterType = uint8_t(named >> 2);
+        clkDist_[named >> 2][named & 0x3].masterTile = uint8_t(named & 0x3);
+        clkDistGroups_++;
+    }
 }
 
 bool PyRFdc::tileIsOwnedBy(uint32_t type, uint32_t idx) const {
