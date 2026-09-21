@@ -938,6 +938,30 @@ size_t firstCallAt(const char *name, uint32_t type, uint32_t tile, uint32_t bloc
     return gScript.calls.size();
 }
 
+//! Position of the nth recorded call with this exact name and index tuple,
+//! counting from one, or the length of the list when there are fewer than n
+//! of them. The length rather than a sentinel, for the reason firstCallAt
+//! gives above: a sentinel that is not an index would have to be special
+//! cased at every call site, while the length compares correctly against any
+//! real index and keeps an ordering comparison honest on its own.
+//!
+//! Second occurrences are the only way to ask about a pass that re-runs
+//! tiles an earlier pass already visited. Such a pass issues calls carrying
+//! the same name, type, tile and block as the first, so no selector can tell
+//! the two apart and recorded position is the whole of the discriminator.
+size_t nthCallAt(const char *name, uint32_t type, uint32_t tile, uint32_t block, size_t n) {
+    const std::string want = XRFdcScript::describe(name, type, tile, block);
+    size_t seen = 0;
+
+    for (size_t i = 0; i < gScript.calls.size(); i++) {
+        if (gScript.calls[i] != want) continue;
+
+        seen++;
+        if (seen == n) return i;
+    }
+    return gScript.calls.size();
+}
+
 //! The tile the step-attribution sub-checks script their failure on.
 //! Deliberately not tile 3, the tile this project keeps seeing fail on the
 //! carrier, so none of them can pass because of something done for that

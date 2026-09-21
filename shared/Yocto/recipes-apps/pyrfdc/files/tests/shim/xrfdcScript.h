@@ -23,7 +23,9 @@
  *                plus tile type, tile id, block id and one optional extra
  *                distinguishing argument, any field wildcarded with
  *                XRFDC_SCRIPT_ANY, so one entry can fail one tile or every
- *                tile
+ *                tile, and each entry carrying how many further matching
+ *                calls it still applies to, so a fault that clears on the
+ *                retry can be scripted as well as one that never clears
  *   registers    scripted register contents keyed on type, tile and offset,
  *                consulted by the XRFdc_ReadReg stub, so a diagnostic read
  *                can be made to return a chosen value
@@ -88,8 +90,14 @@ struct XRFdc;
 //! never collide with a value a driver call actually passes.
 #define XRFDC_SCRIPT_ANY 0xFFFFFFFFu
 
-//! One scripted failure. An entry matches a call when the name matches and
-//! every non-wildcard index field matches.
+//! Sentinel for the remaining-uses field of a scripted failure: the entry
+//! never runs out and applies to every matching call forever. Every selector
+//! written before that field existed is created with this value, so nothing
+//! written against the old fixture changes behaviour.
+#define XRFDC_SCRIPT_UNLIMITED 0xFFFFFFFFu
+
+//! One scripted failure. An entry matches a call when the name matches, every
+//! non-wildcard index field matches, and the entry has uses left.
 //!
 //! detail is a fifth selector field for a call that carries one more
 //! distinguishing argument than the four the recorded form names. The two
@@ -101,12 +109,20 @@ struct XRFdc;
 //! every selector written before this field existed matches exactly as it
 //! did. A detail-qualified entry matches only a call that supplies that
 //! detail, never one that carries none.
+//!
+//! remaining is how many further matching calls the entry still applies to,
+//! or XRFDC_SCRIPT_UNLIMITED for an entry that never runs out. It exists
+//! because a fault that clears on the retry was previously unscriptable: a
+//! scripted failure applied to every matching call forever, so a call that
+//! fails once and then succeeds could not be expressed, and the only
+//! provable outcome of a retry was the one that fails again.
 struct XRFdcScriptFailure {
     std::string name;
     uint32_t type;
     uint32_t tile;
     uint32_t block;
     uint32_t detail;
+    uint32_t remaining;
     int status;
 };
 
@@ -184,6 +200,11 @@ class XRFdcScript {
 
     //! Clear every recorded and scripted item. Called between claims so one
     //! claim cannot pass on state another claim left behind.
+    //!
+    //! The remaining-uses field of a scripted failure needs no clear of its
+    //! own: failures_ is emptied whole below, and the claim that catches an
+    //! uncleared field is written against the container rather than against
+    //! each field, so a field added to the entry is covered by construction.
     void reset() {
         calls.clear();
         logErrors.clear();
@@ -218,14 +239,26 @@ class XRFdcScript {
                              uint32_t block,
                              uint32_t detail,
                              int status) {
-        XRFdcScriptFailure entry;
-        entry.name = name;
-        entry.type = type;
-        entry.tile = tile;
-        entry.block = block;
-        entry.detail = detail;
-        entry.status = status;
-        failures_.push_back(entry);
+        pushFailure(name, type, tile, block, detail, XRFDC_SCRIPT_UNLIMITED, status);
+    }
+
+    //! Script a non-success return for the next times matching calls only,
+    //! after which the entry stops matching and a later entry, or plain
+    //! success, answers instead.
+    //!
+    //! The same selector arguments as scriptFailureDetail plus the count.
+    //! This is the only way to express a fault that clears, which is what a
+    //! retry that works looks like from outside: the first call fails, the
+    //! second returns success, and nothing but the count distinguishes that
+    //! from a call that never failed at all.
+    void scriptFailureTimes(const std::string &name,
+                            uint32_t type,
+                            uint32_t tile,
+                            uint32_t block,
+                            uint32_t detail,
+                            uint32_t times,
+                            int status) {
+        pushFailure(name, type, tile, block, detail, times, status);
     }
 
     //! Script the value an XRFdc_ReadReg of this base and offset returns.
@@ -248,26 +281,30 @@ class XRFdcScript {
     int callDetail(const char *name, uint32_t type, uint32_t tile, uint32_t block,
                    uint32_t detail) {
         calls.push_back(describe(name, type, tile, block));
-        return statusFor(name, type, tile, block, detail);
+        return consumeStatusFor(name, type, tile, block, detail);
     }
 
-    //! The status the selector produces for this call, without recording it.
+    //! The status the selector produces for this call, without recording it
+    //! and without consuming a use of the entry that answered.
     int statusFor(const char *name, uint32_t type, uint32_t tile, uint32_t block) const {
         return statusFor(name, type, tile, block, XRFDC_SCRIPT_ANY);
     }
 
     //! The status the selector produces for a call carrying an extra
-    //! distinguishing argument, without recording it.
+    //! distinguishing argument, without recording it and without consuming a
+    //! use of the entry that answered.
+    //!
+    //! Const, and it stays const. A peek is a different question from a
+    //! call: the fixture lifecycle claim calls this directly to ask what the
+    //! fixture would return, and a peek that consumed a use would change the
+    //! answer it was asking about. An entry with no uses left is skipped
+    //! here exactly as it is on the recording path, so the two agree about
+    //! which entries are still live.
     int statusFor(const char *name, uint32_t type, uint32_t tile, uint32_t block,
                   uint32_t detail) const {
         for (size_t i = 0; i < failures_.size(); i++) {
-            const XRFdcScriptFailure &entry = failures_[i];
-            if (entry.name != name) continue;
-            if (entry.type != XRFDC_SCRIPT_ANY && entry.type != type) continue;
-            if (entry.tile != XRFDC_SCRIPT_ANY && entry.tile != tile) continue;
-            if (entry.block != XRFDC_SCRIPT_ANY && entry.block != block) continue;
-            if (entry.detail != XRFDC_SCRIPT_ANY && entry.detail != detail) continue;
-            return entry.status;
+            if (!matches(failures_[i], name, type, tile, block, detail)) continue;
+            return failures_[i].status;
         }
         return 0;  // XRFDC_SUCCESS. Spelled numerically so this header does
                    // not have to include the driver shim it is consulted by.
@@ -310,6 +347,59 @@ class XRFdcScript {
     static std::string field(uint32_t value) {
         if (value == XRFDC_SCRIPT_ANY) return "-";
         return std::to_string(value);
+    }
+
+    //! Whether one entry answers this call. The one place the selector rule
+    //! is written, so the consuming path and the const peek cannot drift
+    //! into disagreeing about which entries are live.
+    static bool matches(const XRFdcScriptFailure &entry, const char *name, uint32_t type,
+                        uint32_t tile, uint32_t block, uint32_t detail) {
+        if (entry.remaining == 0) return false;
+        if (entry.name != name) return false;
+        if (entry.type != XRFDC_SCRIPT_ANY && entry.type != type) return false;
+        if (entry.tile != XRFDC_SCRIPT_ANY && entry.tile != tile) return false;
+        if (entry.block != XRFDC_SCRIPT_ANY && entry.block != block) return false;
+        if (entry.detail != XRFDC_SCRIPT_ANY && entry.detail != detail) return false;
+        return true;
+    }
+
+    //! The status the selector produces for this call, spending one use of
+    //! the entry that answered. The only path that consumes, reached from
+    //! call and callDetail and from nowhere else, so an entry's uses are
+    //! spent by calls the code under test actually made.
+    int consumeStatusFor(const char *name, uint32_t type, uint32_t tile, uint32_t block,
+                         uint32_t detail) {
+        for (size_t i = 0; i < failures_.size(); i++) {
+            XRFdcScriptFailure &entry = failures_[i];
+
+            if (!matches(entry, name, type, tile, block, detail)) continue;
+            if (entry.remaining != XRFDC_SCRIPT_UNLIMITED) {
+                entry.remaining--;
+            }
+            return entry.status;
+        }
+        return 0;  // XRFDC_SUCCESS, for the reason statusFor states.
+    }
+
+    //! Append one selector. Both public scripting entry points come through
+    //! here, so the unlimited default is one value in one place rather than
+    //! a literal repeated at each of them.
+    void pushFailure(const std::string &name,
+                     uint32_t type,
+                     uint32_t tile,
+                     uint32_t block,
+                     uint32_t detail,
+                     uint32_t remaining,
+                     int status) {
+        XRFdcScriptFailure entry;
+        entry.name = name;
+        entry.type = type;
+        entry.tile = tile;
+        entry.block = block;
+        entry.detail = detail;
+        entry.remaining = remaining;
+        entry.status = status;
+        failures_.push_back(entry);
     }
 
     std::vector<XRFdcScriptFailure> failures_;
