@@ -2208,6 +2208,91 @@ void checkDeadDriverAnswersAdmittedBlockBeforeWrite() {
     runCheck("a dead driver answers the admitted block before anything is written", ok);
 }
 
+/*
+ * The declined configuration initialize path answers the block too.
+ *
+ * That path is a different control flow through the constructor than the
+ * bail-outs above: it returns from further down, past three steps that
+ * reported success. It skips the same local variable block all the same, so
+ * a fix that covered the bail-outs and not this one is possible and this
+ * claim is what rules it out.
+ *
+ * The write at the end pins the other half: this path is readable where the
+ * guard says it should be and refused where it should be, and the refusal
+ * still names the not-completed outcome.
+ */
+void checkDeclinedCfgInitializeKeepsAdmittedBlockReadable() {
+    PyRFdcPtr device = createDeadDeviceInDirtyStorage("XRFdc_CfgInitialize");
+
+    uint32_t words[5] = {0, 0, 0, 0, 0};
+    uint32_t errs[5] = {0, 0, 0, 0, 0};
+    bool ok = true;
+
+    for (size_t i = 0; i < 5; i++) {
+        rim::TransactionPtr tran = driveRead(device, kAdmittedBlock[i]);
+
+        words[i] = tran->getWord(0);
+        errs[i] = tran->errorStrCalls();
+
+        if (!tran->doneCalled() || tran->errorStrCalled()) ok = false;
+        if (words[i] != 0) ok = false;
+    }
+
+    if (!ok) reportAdmittedBlock("admitted block on declined cfg initialize", words, errs);
+
+    if (ok) {
+        rim::TransactionPtr refused = driveWrite(device, kResetAllAdc, 1);
+        const std::string msg = refused->errorStrValue();
+
+        ok = refused->errorStrCalled() && !refused->doneCalled();
+        if (ok) ok = (msg.find(kStepNotCompleted) != std::string::npos);
+
+        if (!ok) {
+            fprintf(stderr, "declined cfg initialize refusal: err=%u done=%u, text '%s'\n",
+                    refused->errorStrCalls(), refused->doneCalls(), msg.c_str());
+        }
+    }
+
+    runCheck("a declined configuration initialize leaves the admitted block readable", ok);
+}
+
+/*
+ * An admitted read changes nothing, so a retry gets the same answer.
+ *
+ * A host polling one of these offsets to find out why the driver is dead
+ * needs the same word each time, and a body that mutated its own member on a
+ * read would hand back a different one. Only the equality is asserted here:
+ * the claim above owns the declared value, and a claim asserting both would
+ * move for two reasons and its one log line could not say which.
+ */
+void checkAdmittedReadOnDeadDriverMutatesNothing() {
+    PyRFdcPtr device = createDeadDeviceInDirtyStorage("metal_init");
+
+    uint32_t first[5] = {0, 0, 0, 0, 0};
+    uint32_t second[5] = {0, 0, 0, 0, 0};
+    uint32_t errs[5] = {0, 0, 0, 0, 0};
+    bool ok = true;
+
+    for (size_t i = 0; i < 5; i++) {
+        rim::TransactionPtr one = driveRead(device, kAdmittedBlock[i]);
+        rim::TransactionPtr two = driveRead(device, kAdmittedBlock[i]);
+
+        first[i] = one->getWord(0);
+        second[i] = two->getWord(0);
+        errs[i] = one->errorStrCalls() + two->errorStrCalls();
+
+        if (one->errorStrCalled() || two->errorStrCalled()) ok = false;
+        if (first[i] != second[i]) ok = false;
+    }
+
+    if (!ok) {
+        reportAdmittedBlock("admitted read repeated, first pass", first, errs);
+        reportAdmittedBlock("admitted read repeated, second pass", second, errs);
+    }
+
+    runCheck("an admitted read on a dead driver mutates nothing", ok);
+}
+
 /* ------------------------------------------------------------------------ */
 /* The metal error bypass, narrowed.                                         */
 /*                                                                           */
@@ -2560,7 +2645,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 54;
+const int kClaimsBeforeCountCheck = 56;
 
 /*
  * Every claim this file defines actually ran.
@@ -2635,6 +2720,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkReasonOffsetDoesNotCollide();
 
     checkDeadDriverAnswersAdmittedBlockBeforeWrite();
+    checkDeclinedCfgInitializeKeepsAdmittedBlockReadable();
+    checkAdmittedReadOnDeadDriverMutatesNothing();
 
     checkIgnoreMetalErrorCannotClearAResetDiagnostic();
     checkIgnoreMetalErrorStillClearsAnUnprotectedError();
