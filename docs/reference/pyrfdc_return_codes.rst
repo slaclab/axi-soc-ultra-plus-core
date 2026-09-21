@@ -269,6 +269,63 @@ The reviewer who can close it is one who owns a board on which that call does no
 not a corner case: the call runs on every construction on every board, and this is the path
 taken whenever it answers anything other than success.
 
+Teardown after a construction that did not complete
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+One rule governs both of the changes described below, so it is stated first. libmetal and the
+driver's device registration are released by whichever of the constructor and the destructor
+acquired them, exactly once, and the driver instance is never handed to the registration entry
+point after the driver declined to configure it.
+
+The registration bail-out now closes only what the registration handed back. Before the change,
+the local pointer passed to ``metal_device_close`` on that bail-out was declared without an
+initializer, and ``XRFdc_RegisterMetal`` writes through its out parameter on success alone, so on
+the failure branch the close entry point was handed whatever the stack held and dereferenced it.
+The pointer is now initialized at its declaration and only a non-null pointer is closed, which is
+the shape the destructor has always used. The consequence for a board that takes that path is
+concrete: a fault inside libmetal during construction was previously possible before the driver
+could answer the reason register this page documents, and the path now returns so that register
+answers.
+
+The destructor now releases only what it still owns. Before the change, its teardown ran
+unconditionally on every outcome. It released libmetal a second time on the three bail-outs where
+the constructor had already released it, and it called ``XRFdc_RegisterMetal`` with the driver
+instance on all of them, including the outcomes where the driver had declined to configure that
+instance or had never seen it. A private ``metalReady_``, declared in ``PyRFdc.h`` beside the
+validity flag, now records whether the libmetal bring-up succeeded and has not been released yet.
+The destructor's teardown is gated on that flag, and the registration call and the device close
+inside it are additionally gated on the instance being usable. The resulting property is a number
+a reviewer can check rather than a description to be taken on trust: counted across construction
+and destruction together, libmetal is released exactly once on every constructor outcome. On the
+three named bail-outs the constructor performs that release and the destructor performs none. On
+the declined configuration initialize path the constructor performs none and the destructor
+performs one.
+
+Two residuals are left knowingly, and are named here rather than omitted.
+
+- On the declined configuration initialize path a metal device was registered during construction
+  and is not closed individually. The libmetal release is what ends its lifetime, and whether that
+  release closes devices that are still open is a property of a library whose source is not
+  present in this repository, so it is recorded here rather than asserted in either direction.
+- The destructor's teardown block is compiled out in its entirety in the baremetal build, while
+  the constructor's libmetal bring-up is not. On that build a construction that completes raises
+  the flag and nothing ever releases the library. The flag makes the asymmetry explicit and does
+  not remove it.
+
+Unlike the comparison conversions above, both of these changes are exercised in this repository,
+and it is worth being precise about how far that goes. Both are driven by the board-free host
+harness whose invocation is recorded in the reference facts section below: it scripts each
+constructor outcome, drops the instance, and asserts on the recorded driver call list what
+teardown did. That is a claim about the shim's behavior and not automatically about the Yocto
+build's, in the same terms that section states for every other claim this harness makes. What
+remains untestable here is the behavior on a board where the device registration or the
+configuration initialize actually reports a non-success, which no board available to this work
+does.
+
+The reviewer who can close what remains is one who owns a board on which either of those two
+calls reports a non-success. The first residual above can also be closed by anyone who can read
+the release implementation in libmetal's own source, which this repository does not carry.
+
 Reference facts
 ---------------
 
