@@ -3652,10 +3652,10 @@ void checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle() {
 /* clock pin of its own, and the whole point of the division is that it is   */
 /* never restarted by a call that cannot restart DAC 0 first.                */
 /*                                                                           */
-/* Four of the seven claims below run on that carrier topology and all four  */
-/* push it through scriptThisCarriersDistribution, the one definition of it  */
-/* in this file, so no two of them can drift into describing different       */
-/* boards.                                                                   */
+/* Four of the seven claims in this section run on that carrier topology     */
+/* and all four push it through scriptThisCarriersDistribution, the one      */
+/* definition of it in this file, so no two of them can drift into           */
+/* describing different boards.                                              */
 /* ------------------------------------------------------------------------ */
 
 //! How many recorded calls are exactly this name and index tuple.
@@ -3679,6 +3679,30 @@ size_t countExactCalls(const char *name, uint32_t type, uint32_t tile, uint32_t 
 //! map are laid out.
 uint32_t tileNibble(uint32_t word, uint32_t type, uint32_t tile) {
     return (word >> (4 * ((type * 4) + tile))) & 0xFu;
+}
+
+//! Whether every nibble of a distribution map word that names a master names
+//! a tile whose own nibble is that tile's own index.
+//!
+//! The ungrouped sentinel is skipped, because a tile in no group names
+//! nobody. Every other nibble is a tile index, and the tile it points at has
+//! to be a marked master, which in this encoding is a tile whose nibble holds
+//! its own index. So the whole property is one read of the published word and
+//! needs no reach into the driver's private state.
+//!
+//! Written over the word rather than over a pair of tiles, because the
+//! property is about the map as a whole. A helper that took two tiles would
+//! have to be driven from a list of pairs written down per fixture, and a
+//! fixture whose pair list was incomplete would pass while describing a map
+//! that broke the rule somewhere the list did not look.
+bool everyNamedMasterNamesItself(uint32_t word) {
+    for (uint32_t index = 0; index < 8; index++) {
+        const uint32_t named = (word >> (4 * index)) & 0xFu;
+
+        if (named == 0xFu) continue;
+        if (((word >> (4 * named)) & 0xFu) != named) return false;
+    }
+    return true;
 }
 
 //! Position of the first enable probe against one tile. The probe is the
@@ -4031,6 +4055,315 @@ void checkNoDistributionLeavesTheTileOrderUnchanged() {
     }
 
     runCheck("no distribution leaves the tile order unchanged", ok);
+}
+
+/* ------------------------------------------------------------------------ */
+/* A group whose master no decode marked.                                    */
+/*                                                                           */
+/* The ordering above rests on a cache in which every tile marked as an edge */
+/* names a tile marked as a master. A decode can produce a cache that breaks */
+/* that, and both decodes can, by different routes. When it happens the      */
+/* group is invisible to the walk's first pass, master and edges alike fall  */
+/* through to the pass that sorts by tile index, and on this carrier that    */
+/* emits ADC 3 at index 3 ahead of DAC 0 at index 4. No anomalous register   */
+/* value is needed for it and nothing in the walk notices.                   */
+/*                                                                           */
+/* The first two claims below are the two reproductions, one per decode. The */
+/* third is the property both of them are instances of, asserted over the    */
+/* published map word.                                                       */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * One half of the zero clock detect claim, labelled so a single red half is
+ * identifiable.
+ *
+ * The same shape as runStepCheck above and for the same reason. The two
+ * halves ask different questions of the same fixture, one about the order
+ * the DAC entry point visits the group in and one about the ADC entry point
+ * declining the group altogether, and an aggregate verdict over both would
+ * go red for either and say nothing about which.
+ */
+void runZeroClockDetectCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("a master whose own clock detect reads zero is still reset first [") +
+        site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * A group master whose own clock detect register reads zero is reset first.
+ *
+ * This is the raw decode route to a master-less group, scripted exactly as
+ * it was reproduced against the unfixed source. The fixture is this
+ * carrier's own clock detect with one register changed: DAC 0, the master,
+ * reads 0x0000. The decode treats that as naming no source, which is a
+ * supported reading rather than a corrupt one, so DAC 0 stays ungrouped
+ * while ADC 3 and the three other DAC tiles all name it.
+ *
+ * The two words are asserted as literals rather than rebuilt from the same
+ * arithmetic the driver uses. 0x44444FFF is ADC 0, 1 and 2 ungrouped with
+ * ADC 3 and all four DAC tiles naming tile index 4, which is DAC 0 naming
+ * itself, and it is the same word this carrier produces when nothing is
+ * wrong. 0x00010102 is the raw decode as the source, an IPType of 1 and one
+ * group, so the group count rises with the master that was marked.
+ *
+ * Both the walk order and the reset call order are asserted. The probe
+ * positions are the walk, and the reset positions are what the converter
+ * actually receives. A walk that were reordered without the resets following
+ * it, or the reverse, would satisfy one of the two and is not the property.
+ *
+ * The second half drives the ADC entry point over the same fixture and
+ * asserts that no reset reaches ADC 3 at all. ADC 3 has no clock pin of its
+ * own, so an ADC call that cannot restart DAC 0 first must not restart it,
+ * and on the unfixed source that call owned ADC 3 only by accident of the
+ * index sort.
+ */
+void checkMasterWithZeroClockDetectIsStillResetFirst() {
+    {
+        gScript.reset();
+        gScript.ipType = 1;
+        scriptThisCarriersClockDetect();
+        gScript.scriptRegister(XRFDC_DAC_TILE, 0, 0x80, 0x0000);
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        gScript.calls.clear();
+
+        rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+        const size_t masterProbe = probeAt(XRFDC_DAC_TILE, 0);
+        const size_t edgeProbe = probeAt(XRFDC_ADC_TILE, 3);
+        const size_t masterReset =
+            firstCallAt("XRFdc_Reset", XRFDC_DAC_TILE, 0, XRFDC_SCRIPT_ANY);
+        const size_t edgeReset =
+            firstCallAt("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY);
+
+        bool ok = status->doneCalled() && !status->errorStrCalled();
+        if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+        if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+        if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+        if (ok) ok = (status->getWord(0) == 0x00010102u);
+        if (ok) ok = (masterProbe < edgeProbe);
+        if (ok) ok = (masterReset < edgeReset);
+
+        if (!ok) {
+            fprintf(stderr,
+                    "zero clock detect, dac sweep: status=0x%08X map=0x%08X, "
+                    "probes dac0=%zu adc3=%zu, resets dac0=%zu adc3=%zu\n",
+                    status->getWord(0), map->getWord(0), masterProbe, edgeProbe,
+                    masterReset, edgeReset);
+        }
+
+        runZeroClockDetectCheck("dac entry point", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 1;
+        scriptThisCarriersClockDetect();
+        gScript.scriptRegister(XRFDC_DAC_TILE, 0, 0x80, 0x0000);
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        gScript.calls.clear();
+
+        rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+        bool ok = adc->doneCalled() && !adc->errorStrCalled();
+        if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+        if (ok) ok = !gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY);
+        if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 3);
+
+        if (!ok) {
+            fprintf(stderr,
+                    "zero clock detect, adc sweep: map=0x%08X, adc reset=%zu, adc3 reset=%d\n",
+                    map->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                    static_cast<int>(gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, 3,
+                                                     XRFDC_SCRIPT_ANY)));
+        }
+
+        runZeroClockDetectCheck("adc entry point", ok);
+    }
+}
+
+/*
+ * A distribution slot whose source tile is outside its own edge range still
+ * resets that source tile first.
+ *
+ * This is the documented getter route to the same master-less cache the
+ * claim above reaches through the raw decode, and it is a separate claim
+ * rather than a second half of that one on purpose. The two fixtures arrive
+ * at the same cache shape through different decoders, so a fix written into
+ * one decoder leaves exactly one of the two red, and a reader looking at a
+ * single red verdict can say which decoder it came from.
+ *
+ * The slot names DAC 0 as its source and ADC 3 and ADC 1 as its two edges.
+ * In package indices DAC 0 is 3 while the two edges are 4 and 6, so the
+ * source sits below the inclusive range it bounds, that range covers ADC 3,
+ * ADC 2 and ADC 1, and the decode marks no tile in it as the master. The
+ * slot is well formed and every field is in range, so nothing in the decode
+ * rejects it.
+ *
+ * 0xFFF4444F is asserted as a literal: DAC 0 at tile index 4 naming itself,
+ * ADC 1, ADC 2 and ADC 3 naming it, and the three remaining DAC tiles
+ * ungrouped because no slot covered them.
+ */
+void checkSourceOutsideItsEdgeRangeIsStillResetFirst() {
+    XRFdcScriptDistribution dist;
+
+    gScript.reset();
+    gScript.ipType = 2;
+
+    dist.sourceType = XRFDC_DAC_TILE;
+    dist.sourceTileId = 0;
+    dist.edgeTypes[0] = XRFDC_ADC_TILE;
+    dist.edgeTypes[1] = XRFDC_ADC_TILE;
+    dist.edgeTileIds[0] = 3;
+    dist.edgeTileIds[1] = 1;
+    gScript.distributions.push_back(dist);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    gScript.calls.clear();
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+    const size_t master = probeAt(XRFDC_DAC_TILE, 0);
+    const size_t adc1 = probeAt(XRFDC_ADC_TILE, 1);
+    const size_t adc2 = probeAt(XRFDC_ADC_TILE, 2);
+    const size_t adc3 = probeAt(XRFDC_ADC_TILE, 3);
+
+    bool ok = map->doneCalled() && !map->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = (map->getWord(0) == 0xFFF4444Fu);
+    if (ok) ok = (master < adc1);
+    if (ok) ok = (master < adc2);
+    if (ok) ok = (master < adc3);
+
+    if (!ok) {
+        fprintf(stderr,
+                "source outside its range: map=0x%08X, probes dac0=%zu adc1=%zu adc2=%zu "
+                "adc3=%zu\n",
+                map->getWord(0), master, adc1, adc2, adc3);
+    }
+
+    runCheck("a source tile outside its own edge range is still reset first", ok);
+}
+
+/*
+ * One fixture of the named master contract claim, labelled so a single red
+ * fixture is identifiable.
+ */
+void runNamedMasterCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("every named clock master names itself for every topology source [") +
+        site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * Every nibble of the published map that names a master names a marked one.
+ *
+ * This is a contract claim and not a fourth restatement of the three above.
+ * Those three pin three particular boards, each with its own expected word
+ * written down as a literal. This one pins the property those three are
+ * instances of, so a change that reintroduces an ordering rule belonging to
+ * one topology source turns it red on a fixture nobody thought to write
+ * down, which is the failure mode the two reproductions above both came
+ * from.
+ *
+ * Four fixtures, two per topology source: this carrier through the
+ * documented getter, this carrier through the raw decode, and the two
+ * master-less reproductions. Each builds its own device after its own
+ * fixture reset, so no fixture inherits the one before it, and each reads
+ * the property off the published word alone.
+ */
+void checkEveryNamedClockMasterNamesItself() {
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+
+        PyRFdcPtr device = PyRFdc::create();
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = map->doneCalled() && !map->errorStrCalled();
+        if (ok) ok = everyNamedMasterNamesItself(map->getWord(0));
+
+        if (!ok) fprintf(stderr, "named master, documented getter: map=0x%08X\n",
+                         map->getWord(0));
+
+        runNamedMasterCheck("documented getter", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 0;
+        scriptThisCarriersClockDetect();
+
+        PyRFdcPtr device = PyRFdc::create();
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = map->doneCalled() && !map->errorStrCalled();
+        if (ok) ok = everyNamedMasterNamesItself(map->getWord(0));
+
+        if (!ok) fprintf(stderr, "named master, raw decode: map=0x%08X\n", map->getWord(0));
+
+        runNamedMasterCheck("raw decode", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 1;
+        scriptThisCarriersClockDetect();
+        gScript.scriptRegister(XRFDC_DAC_TILE, 0, 0x80, 0x0000);
+
+        PyRFdcPtr device = PyRFdc::create();
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = map->doneCalled() && !map->errorStrCalled();
+        if (ok) ok = everyNamedMasterNamesItself(map->getWord(0));
+
+        if (!ok) fprintf(stderr, "named master, zero clock detect: map=0x%08X\n",
+                         map->getWord(0));
+
+        runNamedMasterCheck("zero clock detect", ok);
+    }
+
+    {
+        XRFdcScriptDistribution dist;
+
+        gScript.reset();
+        gScript.ipType = 2;
+
+        dist.sourceType = XRFDC_DAC_TILE;
+        dist.sourceTileId = 0;
+        dist.edgeTypes[0] = XRFDC_ADC_TILE;
+        dist.edgeTypes[1] = XRFDC_ADC_TILE;
+        dist.edgeTileIds[0] = 3;
+        dist.edgeTileIds[1] = 1;
+        gScript.distributions.push_back(dist);
+
+        PyRFdcPtr device = PyRFdc::create();
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = map->doneCalled() && !map->errorStrCalled();
+        if (ok) ok = everyNamedMasterNamesItself(map->getWord(0));
+
+        if (!ok) fprintf(stderr, "named master, source outside its range: map=0x%08X\n",
+                         map->getWord(0));
+
+        runNamedMasterCheck("source outside its range", ok);
+    }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -4681,7 +5014,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 89;
+const int kClaimsBeforeCountCheck = 96;
 
 /*
  * Every claim this file defines actually ran.
@@ -4792,6 +5125,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkTileClaimedByTwoGroupsIsResetExactlyOnce();
     checkGroupWhoseTwoEdgesAreTheSameTileContributesNoGroup();
     checkNoDistributionLeavesTheTileOrderUnchanged();
+
+    checkMasterWithZeroClockDetectIsStillResetFirst();
+    checkSourceOutsideItsEdgeRangeIsStillResetFirst();
+    checkEveryNamedClockMasterNamesItself();
 
     checkFailingEdgeTileArmsExactlyOneRecovery();
     checkFailingTileThatIsNotAnEdgeArmsNoRecovery();
