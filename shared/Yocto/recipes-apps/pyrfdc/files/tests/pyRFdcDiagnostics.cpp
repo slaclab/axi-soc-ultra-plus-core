@@ -61,6 +61,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <string>
 
 /*
@@ -1458,6 +1459,54 @@ PyRFdcPtr createDeadDeviceKeepingCalls(const char *failingCall) {
     return PyRFdc::create();
 }
 
+//! The byte the storage below is prefilled with. Non-zero and recognizable:
+//! the same 0xA5 the round-trip claims use for a distinctive word, so a value
+//! read back out of a member nothing assigned is obviously the fill and not a
+//! plausible register value.
+const unsigned char kDirtyFill = 0xA5;
+
+//! Storage for one instance, aligned for the class and sized by it, so the
+//! fill covers every member a claim can read.
+alignas(PyRFdc) unsigned char gDirtyStorage[sizeof(PyRFdc)];
+
+/*
+ * The same construction as createDeadDevice, into storage this file filled
+ * with a known non-zero pattern first.
+ *
+ * PyRFdc has a user-provided default constructor, so the allocator behind
+ * std::make_shared hands that constructor raw storage and zero-initializes
+ * none of it. The reason this helper exists is the other half of that fact: a
+ * freshly mapped allocator page reads as zero in practice, so a claim that
+ * reads a member no construction path assigned would read zero back through
+ * PyRFdc::create() and print PASS with the member uninitialized. That is the
+ * shape of false assurance this harness has already produced once. Filling
+ * the storage first is what lets such a claim fail.
+ *
+ * Only one instance from this buffer may be alive at a time, because the next
+ * call refills the buffer underneath whatever is still there. Every claim
+ * that uses this creates its instance inside its own body and drops it there.
+ *
+ * The returned pointer destroys in place and frees nothing, since the storage
+ * is static and outlives every claim. The recorded lists are cleared exactly
+ * as createDeadDevice clears them, so a claim observes only its own
+ * transactions.
+ */
+PyRFdcPtr createDeadDeviceInDirtyStorage(const char *failingCall) {
+    gScript.reset();
+    gScript.scriptFailure(failingCall, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    std::memset(gDirtyStorage, kDirtyFill, sizeof(gDirtyStorage));
+
+    PyRFdc *instance = new (static_cast<void *>(gDirtyStorage)) PyRFdc();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+    gScript.metalLogs.clear();
+
+    return PyRFdcPtr(instance, [](PyRFdc *p) { p->~PyRFdc(); });
+}
+
 /*
  * The step wording, transcribed rather than taken from the driver's own
  * mapping. Generating these from the table under test would make the two
@@ -2099,6 +2148,67 @@ void checkReasonOffsetDoesNotCollide() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* The admitted block, read before anything is written to it.                */
+/*                                                                           */
+/* The guard keeps five offsets answerable on a dead driver so a host can     */
+/* ask over the same transport why the driver is dead. Four of the members    */
+/* behind them are assigned in the constructor's local variable block, which  */
+/* every early return skips, so on exactly the paths the guard exists for     */
+/* those reads hand back whatever the storage held unless the declarations    */
+/* say otherwise. Reading with nothing written first is the only order in     */
+/* which that is observable: the round-trip claim above writes before it      */
+/* reads, which is correct for a round trip and is what hid this.             */
+/* ------------------------------------------------------------------------ */
+
+//! The five offsets the guard admits on a dead driver, in the order the
+//! claims below read them.
+const uint64_t kAdmittedBlock[5] = {kMetalLogLevel, kIgnoreMetalError, kScratchPad,
+                                    kDoubleTestLower, kDoubleTestUpper};
+
+//! Print what the admitted block handed back, so a failing run says which of
+//! the five reads moved rather than only that the claim is red.
+void reportAdmittedBlock(const char *label, const uint32_t *words, const uint32_t *errs) {
+    fprintf(stderr,
+            "%s: read back 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X, "
+            "err counts %u %u %u %u %u\n",
+            label, words[0], words[1], words[2], words[3], words[4], errs[0], errs[1], errs[2],
+            errs[3], errs[4]);
+}
+
+/*
+ * A dead driver answers the admitted block with the declared values.
+ *
+ * Driven in storage this harness prefilled itself, because an instance from
+ * the allocator reads back as zero in practice and this claim would then pass
+ * with the members uninitialized. Nothing is written to any of the five
+ * offsets before they are read.
+ */
+void checkDeadDriverAnswersAdmittedBlockBeforeWrite() {
+    PyRFdcPtr device = createDeadDeviceInDirtyStorage("metal_init");
+
+    uint32_t words[5] = {0, 0, 0, 0, 0};
+    uint32_t errs[5] = {0, 0, 0, 0, 0};
+    bool ok = true;
+
+    for (size_t i = 0; i < 5; i++) {
+        rim::TransactionPtr tran = driveRead(device, kAdmittedBlock[i]);
+
+        words[i] = tran->getWord(0);
+        errs[i] = tran->errorStrCalls();
+
+        if (!tran->doneCalled() || tran->errorStrCalled()) ok = false;
+        // Zero is what the four declared values produce: false for both
+        // booleans, zero for the scratchpad, and both words of a positive
+        // zero double.
+        if (words[i] != 0) ok = false;
+    }
+
+    if (!ok) reportAdmittedBlock("admitted block before write", words, errs);
+
+    runCheck("a dead driver answers the admitted block before anything is written", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* The metal error bypass, narrowed.                                         */
 /*                                                                           */
 /* The bypass at 0x12004 cleared the error string unconditionally, inside    */
@@ -2450,7 +2560,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 53;
+const int kClaimsBeforeCountCheck = 54;
 
 /*
  * Every claim this file defines actually ran.
@@ -2523,6 +2633,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkReasonRegisterIsReadOnly();
     checkReasonRegisterPerformsNoDriverAccess();
     checkReasonOffsetDoesNotCollide();
+
+    checkDeadDriverAnswersAdmittedBlockBeforeWrite();
 
     checkIgnoreMetalErrorCannotClearAResetDiagnostic();
     checkIgnoreMetalErrorStillClearsAnUnprotectedError();
