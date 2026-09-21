@@ -2456,6 +2456,188 @@ void checkAdmittedReadOnDeadDriverMutatesNothing() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* What an instance does on its way out.                                     */
+/*                                                                           */
+/* The transaction guard closed the surface a host can reach: nothing gets   */
+/* through an instance the driver declined to configure. Teardown is the     */
+/* surface it did not close. The destructor runs on every construction       */
+/* outcome, so on the ones where the constructor already released libmetal   */
+/* on its way out it releases a second time, and on all of them it hands the */
+/* driver instance to the registration entry point, which is the same reach  */
+/* through an unconfigured instance that the guard refuses everywhere else.  */
+/*                                                                           */
+/* Every other claim in this file reads the recorded call list while the     */
+/* instance is still alive, and the comment on                               */
+/* checkNoDriverCallFollowsAFailedCfgInitialize states the reason: the       */
+/* destructor appends entries of its own, so a count taken after the         */
+/* instance went out of scope would be about teardown rather than about      */
+/* construction. The three claims below invert that convention on purpose,   */
+/* because teardown is exactly their subject. Each drops its instance inside */
+/* its own body and reads afterwards. That is not an oversight for a later   */
+/* reader to tidy back into line with the claims above.                      */
+/* ------------------------------------------------------------------------ */
+
+//! The prefix every recorded driver call entry begins with. The recorded
+//! form is name/type/tile/block, so an anchored compare against this tests
+//! the name field itself and cannot match a libmetal entry or a substring
+//! further along the line the way a free text search would.
+const std::string kDriverCallPrefix = "XRFdc_";
+
+//! One reachable constructor outcome, named by the call scripted to fail.
+struct TeardownOutcome {
+    const char *call;   //!< The entry point scripted to report non-success.
+    const char *label;  //!< What that outcome is, for a failure diagnostic.
+};
+
+/*
+ * The four constructor outcomes this build can reach, in the order the
+ * constructor reaches them.
+ *
+ * Written as one table so a reader can see that the set is every outcome
+ * this build has rather than an arbitrary sample of them. The baremetal
+ * readiness lookup is the fifth and is deliberately absent: it sits inside a
+ * block this build compiles out, so no claim here can drive it.
+ */
+const TeardownOutcome kTeardownOutcomes[4] = {
+    {"metal_init", "the libmetal bring-up"},
+    {"XRFdc_LookupConfig", "the driver configuration lookup"},
+    {"XRFdc_RegisterMetal", "the libmetal device registration"},
+    {"XRFdc_CfgInitialize", "the configuration initialize"},
+};
+
+/*
+ * libmetal is brought up by one party and released once, counted over the
+ * whole life of the object.
+ *
+ * The count spans the construction and the destruction together rather than
+ * the destructor alone, and that is what lets one expected value cover all
+ * four outcomes: on three of them the constructor performs the release and
+ * on the fourth the destructor does. A claim counting only what the
+ * destructor did would need a different expected number per path, which
+ * restates the control flow instead of constraining it, and it would stay
+ * green if a later edit moved the release from one end to the other without
+ * changing the total.
+ *
+ * The recorded lists are kept, because the construction's own calls are half
+ * of what is being counted. The instance is dropped explicitly before the
+ * count is taken, so the destructor's calls are in the list as well.
+ */
+void checkLibmetalIsFinishedOnceOverAFailedConstruction() {
+    size_t finishes[4] = {0, 0, 0, 0};
+
+    bool ok = true;
+    for (size_t s = 0; s < 4; s++) {
+        PyRFdcPtr device = createDeadDeviceKeepingCalls(kTeardownOutcomes[s].call);
+        device.reset();
+
+        finishes[s] = gScript.countCalls("metal_finish");
+        if (finishes[s] != 1) ok = false;
+    }
+
+    if (!ok) {
+        fprintf(stderr, "libmetal finish count over construction and destruction:");
+        for (size_t s = 0; s < 4; s++) {
+            fprintf(stderr, " %s=%zu%s", kTeardownOutcomes[s].label, finishes[s],
+                    (s == 3) ? "\n" : ",");
+        }
+    }
+
+    runCheck("libmetal is finished exactly once over a failed construction and its destruction",
+             ok);
+}
+
+/*
+ * An instance the driver never configured makes no driver call while it is
+ * destroyed.
+ *
+ * The same invariant the transaction guard enforces on the surface a host
+ * can reach, asserted at the other end of the object's life. The recorded
+ * lists are cleared after the construction, so everything still in them when
+ * the count is taken belongs to teardown alone.
+ *
+ * Two assertions rather than one. The anchored prefix compare catches any
+ * driver entry point, including one a later edit adds, and the close count
+ * is named separately because the close is the call that reaches into
+ * libmetal carrying a pointer the registration handed back.
+ */
+void checkDeadDriverMakesNoDriverCallWhileDestroyed() {
+    bool ok = true;
+    std::string detail;
+
+    for (size_t s = 0; s < 4; s++) {
+        PyRFdcPtr device = createDeadDeviceKeepingCalls(kTeardownOutcomes[s].call);
+
+        gScript.calls.clear();
+        gScript.logErrors.clear();
+        gScript.metalLogs.clear();
+
+        device.reset();
+
+        bool one = true;
+        for (size_t i = 0; i < gScript.calls.size(); i++) {
+            if (gScript.calls[i].compare(0, kDriverCallPrefix.size(), kDriverCallPrefix) == 0) {
+                one = false;
+            }
+        }
+        if (one) one = (gScript.countCalls("metal_device_close") == 0);
+
+        if (!one) {
+            ok = false;
+            // The whole surviving list and not merely its size: on a red run
+            // the useful datum is which calls teardown actually made.
+            detail = std::string(kTeardownOutcomes[s].label) + ": teardown recorded";
+            for (size_t i = 0; i < gScript.calls.size(); i++) {
+                detail += " " + gScript.calls[i];
+            }
+            break;
+        }
+    }
+
+    if (!ok) fprintf(stderr, "dead driver teardown: %s\n", detail.c_str());
+
+    runCheck("a dead driver instance makes no driver call while it is destroyed", ok);
+}
+
+/*
+ * A construction that completed still tears down exactly as it did.
+ *
+ * A guard on a change this work must not make, in the same sense as the
+ * guard claims earlier in this file, and green from the moment it is
+ * written. It exists to turn red if the teardown gate is written so that it
+ * never opens: a flag that is declared and cleared but never raised would
+ * leave every board that ever constructed the driver successfully holding
+ * its metal device and its libmetal bring-up for the life of the process,
+ * and nothing else in this suite would say so.
+ */
+void checkLiveDriverStillClosesItsDeviceOnTeardown() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+    gScript.metalLogs.clear();
+
+    device.reset();
+
+    const size_t registrations = gScript.countCalls("XRFdc_RegisterMetal");
+    const size_t closes = gScript.countCalls("metal_device_close");
+    const size_t finishes = gScript.countCalls("metal_finish");
+
+    bool ok = (registrations == 1);
+    if (ok) ok = (closes == 1);
+    if (ok) ok = (finishes == 1);
+
+    if (!ok) {
+        fprintf(stderr,
+                "live driver teardown: %zu registration call(s), %zu close call(s), "
+                "%zu libmetal finish call(s)\n",
+                registrations, closes, finishes);
+    }
+
+    runCheck("a live driver still closes its device and finishes libmetal once", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* The metal error bypass, narrowed.                                         */
 /*                                                                           */
 /* The bypass at 0x12004 cleared the error string unconditionally, inside    */
@@ -2807,7 +2989,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 58;
+const int kClaimsBeforeCountCheck = 61;
 
 /*
  * Every claim this file defines actually ran.
@@ -2886,6 +3068,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkDeadDriverAnswersAdmittedBlockBeforeWrite();
     checkDeclinedCfgInitializeKeepsAdmittedBlockReadable();
     checkAdmittedReadOnDeadDriverMutatesNothing();
+
+    checkLibmetalIsFinishedOnceOverAFailedConstruction();
+    checkDeadDriverMakesNoDriverCallWhileDestroyed();
+    checkLiveDriverStillClosesItsDeviceOnTeardown();
 
     checkIgnoreMetalErrorCannotClearAResetDiagnostic();
     checkIgnoreMetalErrorStillClearsAnUnprotectedError();
