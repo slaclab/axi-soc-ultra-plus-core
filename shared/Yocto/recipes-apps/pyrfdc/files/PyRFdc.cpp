@@ -184,15 +184,27 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     if (metal_init(&init_param)) {
         initFailReason_ = PYRFDC_INIT_FAIL_METAL_INIT;
         log_->error("PyRFdc: Failed to initialize libmetal");
+        // The clear is redundant on this path, because the bring-up did not
+        // succeed and the flag was therefore never set. It is written anyway
+        // so that every release in this function is paired with a clear as a
+        // rule, rather than the pairing having to be judged case by case at
+        // each site.
+        metalReady_ = false;
         metal_finish();
         return;
     }
+
+    // The library is up from here, so the release below is owned by this
+    // function until one of the bail-outs performs it, and by the destructor
+    // if none of them does.
+    metalReady_ = true;
 
     // Initialize RFdc Configuration
     XRFdc_Config *ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
     if (ConfigPtr == NULL) {
         initFailReason_ = PYRFDC_INIT_FAIL_CONFIG_LOOKUP;
         log_->error("PyRFdc: RFdc Config Failure");
+        metalReady_ = false;
         metal_finish();
         return;
     }
@@ -210,6 +222,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
         if (deviceptr != nullptr) {
             metal_device_close(deviceptr);
         }
+        metalReady_ = false;
         metal_finish();
         return;
     }
@@ -391,11 +404,35 @@ PyRFdc::~PyRFdc() {
     log_->debug("PyRFdc::~PyRFdc() called");
 
 #ifndef __BAREMETAL__
-    struct metal_device *deviceptr = nullptr;
-    if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) == XRFDC_SUCCESS && deviceptr) {
-        metal_device_close(deviceptr);  // Close metal device if applicable
+    // Two nested tests, each answering a different question.
+    //
+    // The outer one is so that libmetal is released by whichever end brought
+    // it up and never by both. Every constructor path that released the
+    // library cleared the flag immediately before doing so, so reaching this
+    // point with it still set means the release is this destructor's to
+    // perform and has not already happened.
+    //
+    // The inner one is so that XRFdc_RegisterMetal is never handed a driver
+    // instance the driver declined to configure or never saw. That call
+    // writes into the instance, which is the same reach through an
+    // unconfigured instance that rejectIfDriverDead refuses on every
+    // transaction a host can issue.
+    //
+    // What this deliberately does not do, stated here rather than left to be
+    // rediscovered: on the path where XRFdc_CfgInitialize reported
+    // non-success a metal device was registered during construction and is
+    // not closed individually here, and the release below is what ends its
+    // lifetime.
+    if (metalReady_) {
+        if (driverValid_) {
+            struct metal_device *deviceptr = nullptr;
+            if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) == XRFDC_SUCCESS && deviceptr) {
+                metal_device_close(deviceptr);  // Close metal device if applicable
+            }
+        }
+        metal_finish(); // Cleanup metal library
+        metalReady_ = false;
     }
-    metal_finish(); // Cleanup metal library
 #endif
 
     log_->debug("PyRFdc::~PyRFdc() completed");

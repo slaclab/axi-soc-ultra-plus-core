@@ -119,6 +119,28 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     bool driverValid_ = false;
     uint32_t initFailReason_ = PYRFDC_INIT_FAIL_NOT_COMPLETED;
 
+    //! Whether metal_init succeeded and metal_finish has not run yet.
+    //!
+    //! Teardown of libmetal is owned by exactly one of the constructor and
+    //! the destructor and never by both, and this flag is what makes that
+    //! decidable: the constructor clears it wherever it releases the library
+    //! itself, so the destructor releasing only while it is set means the
+    //! library is released once on every path.
+    //!
+    //! It answers a different question from driverValid_ just above, which
+    //! is why it is a second flag rather than a reuse of that one. The two
+    //! diverge on the path where XRFdc_CfgInitialize reported non-success:
+    //! there libmetal is up and the driver instance is not usable, and that
+    //! is precisely the path on which the destructor has to perform the
+    //! release. Gating the release on driverValid_ would leak the bring-up
+    //! on that path for the life of the process.
+    //!
+    //! Declared unconditionally, outside every conditional compilation
+    //! block, for the same reason the failure reason enumerators are. Note
+    //! that on a baremetal build the destructor's teardown block is compiled
+    //! out in its entirety, so there this flag is set and never read.
+    bool metalReady_ = false;
+
     bool rdTxn_;
     bool isADC_;
     uint8_t tileId_;
