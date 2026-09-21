@@ -3613,6 +3613,402 @@ void checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* The group ordered walk.                                                   */
+/*                                                                           */
+/* A global reset no longer walks the four tiles of its own type. It walks   */
+/* the distribution groups whose master is of its own type, master first     */
+/* and then that master's edge tiles whatever type they are, and afterwards  */
+/* its own tiles that belong to no group at all.                             */
+/*                                                                           */
+/* On this carrier that divides the eight tiles unevenly. The ADC entry      */
+/* point covers ADC 0, 1 and 2, which have their own clock pins. The DAC     */
+/* entry point covers DAC 0 as the master of the distribution and then       */
+/* ADC 3, DAC 1, DAC 2 and DAC 3 as its edges. ADC 3 is the tile with no     */
+/* clock pin of its own, and the whole point of the division is that it is   */
+/* never restarted by a call that cannot restart DAC 0 first.                */
+/*                                                                           */
+/* Four of the seven claims below run on that carrier topology and all four  */
+/* push it through scriptThisCarriersDistribution, the one definition of it  */
+/* in this file, so no two of them can drift into describing different       */
+/* boards.                                                                   */
+/* ------------------------------------------------------------------------ */
+
+//! How many recorded calls are exactly this name and index tuple.
+//!
+//! Distinct from countCallsForType, which counts a whole tile type. A claim
+//! that one tile was visited exactly once across two entry points needs the
+//! tile id inside the comparison, because the type total says nothing about
+//! how it was spread over the tiles.
+size_t countExactCalls(const char *name, uint32_t type, uint32_t tile, uint32_t block) {
+    const std::string want = XRFdcScript::describe(name, type, tile, block);
+    size_t n = 0;
+
+    for (size_t i = 0; i < gScript.calls.size(); i++) {
+        if (gScript.calls[i] == want) n++;
+    }
+    return n;
+}
+
+//! One tile's nibble of a word encoded four bits per tile at tile index
+//! type * 4 + tile, which is how both the cycle count and the distribution
+//! map are laid out.
+uint32_t tileNibble(uint32_t word, uint32_t type, uint32_t tile) {
+    return (word >> (4 * ((type * 4) + tile))) & 0xFu;
+}
+
+//! Position of the first enable probe against one tile. The probe is the
+//! first driver call the sweep makes against every tile in its walk, so its
+//! position is the tile's position in the walk. A reset position would be
+//! the position of one conditional step inside the per-tile body instead,
+//! which is a different question.
+size_t probeAt(uint32_t type, uint32_t tile) {
+    return firstCallAt("XRFdc_CheckTileEnabled", type, tile, XRFDC_SCRIPT_ANY);
+}
+
+/*
+ * An ADC global reset declines to touch the tile whose clock master is a DAC.
+ *
+ * Read in the negative, this is the property the whole division of work
+ * exists for. ADC 3 has no clock pin of its own and takes its clock from
+ * DAC 0, so a call that cannot restart DAC 0 first must not restart ADC 3
+ * at all. The ADC entry point therefore covers three tiles and not four,
+ * and that is the invariant rather than an omission.
+ *
+ * The cycle count word is asserted alongside the call counts, because a
+ * walk that included ADC 3 and happened to make no driver call against it
+ * would satisfy every count here and would still have cleared its nibble.
+ */
+void checkAdcEntryPointDefersATileMasteredByADac() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 3);
+    if (ok) ok = !gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY);
+    if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE) == 3);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 0);
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    // ADC 0, 1 and 2 cycled once each and ADC 3 untouched, so its nibble is
+    // still the zero the counter was declared with.
+    if (ok) ok = (counts->getWord(0) == 0x00000111u);
+
+    if (!ok) {
+        fprintf(stderr,
+                "adc defers: counts=0x%08X, adc reset=%zu pll=%zu dac reset=%zu, adc3 reset=%d\n",
+                counts->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE),
+                static_cast<int>(gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, 3,
+                                                 XRFDC_SCRIPT_ANY)));
+    }
+
+    runCheck("the adc entry point defers a tile mastered by a dac", ok);
+}
+
+/*
+ * The master of a distribution group is visited before every one of its
+ * edge tiles.
+ *
+ * Asserted on the recorded call order and not on a return value, because
+ * the order is the whole content of the property: a call that reset the
+ * same five tiles in the wrong order would return exactly the same status
+ * and would restart an edge tile while its clock source was still down.
+ *
+ * The enable probe is the position being compared rather than the reset,
+ * because the probe is the first driver call made against every tile in the
+ * walk. A reset is conditional on the power up state of the tile, so its
+ * position would be the position of one step inside the per-tile body and
+ * would go missing entirely for a tile the reconfigure already cycled.
+ */
+void checkGroupMasterIsResetBeforeItsEdgeTiles() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    const size_t master = probeAt(XRFDC_DAC_TILE, 0);
+
+    bool ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = (master < probeAt(XRFDC_DAC_TILE, 1));
+    if (ok) ok = (master < probeAt(XRFDC_DAC_TILE, 2));
+    if (ok) ok = (master < probeAt(XRFDC_DAC_TILE, 3));
+    if (ok) ok = (master < probeAt(XRFDC_ADC_TILE, 3));
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 1);
+    if (ok) ok = gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY);
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    // All four DAC tiles and ADC 3 at one cycle each, and the three ADC
+    // tiles this entry point does not own still at zero.
+    if (ok) ok = (counts->getWord(0) == 0x11111000u);
+
+    if (!ok) {
+        fprintf(stderr,
+                "master first: counts=0x%08X, probes dac0=%zu dac1=%zu dac2=%zu dac3=%zu "
+                "adc3=%zu, dac reset=%zu adc reset=%zu\n",
+                counts->getWord(0), master, probeAt(XRFDC_DAC_TILE, 1),
+                probeAt(XRFDC_DAC_TILE, 2), probeAt(XRFDC_DAC_TILE, 3),
+                probeAt(XRFDC_ADC_TILE, 3),
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
+    }
+
+    runCheck("the group master is reset before its edge tiles", ok);
+}
+
+/*
+ * Across the two entry points every tile still receives exactly one cycle.
+ *
+ * The division of work moves a tile from one call to the other, and the
+ * thing that must survive the move is the total. This claim depends on an
+ * invariant that is easy to break by accident: each call clears the cycle
+ * counters of exactly the tiles it covers, so ADC 3's nibble survives the
+ * ADC call that did not cover it and is written by the DAC call that did.
+ * A clear of all eight tiles at the top of each sweep would leave this word
+ * reading 0x11110000 while every other assertion in this file still passed.
+ */
+void checkBothEntryPointsTogetherGiveEveryTileOneCycle() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    if (ok) ok = (counts->getWord(0) == 0x11111111u);
+
+    if (!ok) {
+        fprintf(stderr, "both entry points: counts=0x%08X\n", counts->getWord(0));
+    }
+
+    runCheck("both entry points together give every tile one cycle", ok);
+}
+
+/*
+ * A tile a global reset declined to touch is named in the log.
+ *
+ * Exactly one line, and it has to carry both names. A line for every tile
+ * on every reset would be noise a reader learns to skip, and no line at all
+ * is the thing this claim exists to prevent: a board owner reading a log
+ * that shows an ADC reset quietly passing over one of its four tiles sees
+ * something indistinguishable from the fault this whole change is removing.
+ *
+ * The warning channel and not the error channel. A deferral is a correct
+ * outcome, the transaction completes, and routing it through the diagnostic
+ * error path would report a healthy reset as a failure on every boot. The
+ * empty error list and the completed transaction are asserted here so that
+ * cannot happen without a claim going red.
+ */
+void checkDeferredTileIsNamedInTheLog() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    // Construction itself emits no warning, so the count below belongs to
+    // the reset and to nothing else.
+    bool ok = gScript.logWarnings.empty();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+    if (ok) ok = (gScript.logWarnings.size() == 1);
+    if (ok) ok = (gScript.logWarnings[0].find("ADC3") != std::string::npos);
+    if (ok) ok = (gScript.logWarnings[0].find("DAC0") != std::string::npos);
+    if (ok) ok = gScript.logErrors.empty();
+    if (ok) ok = adc->doneCalled() && !adc->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr, "deferral log: %zu warning(s), %zu error(s), first '%s'\n",
+                gScript.logWarnings.size(), gScript.logErrors.size(),
+                gScript.logWarnings.empty() ? "" : gScript.logWarnings[0].c_str());
+    }
+
+    runCheck("a deferred tile is named in the log rather than skipped silently", ok);
+}
+
+/*
+ * A tile two scripted distributions both reach belongs to one of them.
+ *
+ * The first slot to claim a tile keeps it. Without that rule the same tile
+ * would take whichever master the iteration order happened to reach last,
+ * and a tile that appeared in two groups would be walked by both entry
+ * points and cycled twice inside one pair of global resets, which is the
+ * defect this change removes wearing a different hat.
+ *
+ * The second distribution here names ADC 2 as its own source and ADC 3 as
+ * its far edge, so its package range covers a tile the carrier group has
+ * already taken. ADC 2 is free and becomes the master of a group of its
+ * own; ADC 3 keeps DAC 0.
+ */
+void checkTileClaimedByTwoGroupsIsResetExactlyOnce() {
+    XRFdcScriptDistribution overlap;
+
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    overlap.sourceType = XRFDC_ADC_TILE;
+    overlap.sourceTileId = 2;
+    overlap.edgeTypes[0] = XRFDC_ADC_TILE;
+    overlap.edgeTypes[1] = XRFDC_ADC_TILE;
+    overlap.edgeTileIds[0] = 2;
+    overlap.edgeTileIds[1] = 3;
+    gScript.distributions.push_back(overlap);
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    // ADC 3 still names DAC 0, tile index 4, rather than the ADC 2 the
+    // later slot would have given it. ADC 2 names itself, tile index 2.
+    if (ok) ok = (map->getWord(0) == 0x444442FFu);
+    if (ok) ok = (tileNibble(map->getWord(0), XRFDC_ADC_TILE, 3) == 4);
+    // One entry in the recorded list for a reset of ADC 3, across both
+    // entry points, and one cycle in its nibble.
+    if (ok) ok = (countExactCalls("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY) == 1);
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, 3) == 1);
+
+    if (!ok) {
+        fprintf(stderr, "two groups: map=0x%08X counts=0x%08X, adc3 reset entries=%zu\n",
+                map->getWord(0), counts->getWord(0),
+                countExactCalls("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY));
+    }
+
+    runCheck("a tile claimed by two groups is reset exactly once", ok);
+}
+
+/*
+ * A distribution slot whose two edges are one tile is not a group of one.
+ *
+ * Both edges landing on the same package index is how the driver describes
+ * a tile that sources its own clock and feeds nothing. It contributes no
+ * group, the tile it names stays ungrouped, and both entry points therefore
+ * walk their own four tiles exactly as they do on a board with no
+ * distribution at all.
+ */
+void checkGroupWhoseTwoEdgesAreTheSameTileContributesNoGroup() {
+    XRFdcScriptDistribution single;
+
+    gScript.reset();
+    gScript.ipType = 2;
+
+    single.sourceType = XRFDC_DAC_TILE;
+    single.sourceTileId = 2;
+    single.edgeTypes[0] = XRFDC_DAC_TILE;
+    single.edgeTypes[1] = XRFDC_DAC_TILE;
+    single.edgeTileIds[0] = 2;
+    single.edgeTileIds[1] = 2;
+    gScript.distributions.push_back(single);
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    // The group count field of the status word, which is one byte wide at
+    // bit 16.
+    bool ok = (((status->getWord(0) >> 16) & 0xFFu) == 0);
+    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+    if (ok) ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 4);
+    if (ok) ok = (counts->getWord(0) == 0x11111111u);
+
+    if (!ok) {
+        fprintf(stderr, "single tile slot: status=0x%08X map=0x%08X counts=0x%08X, "
+                "adc reset=%zu dac reset=%zu\n",
+                status->getWord(0), map->getWord(0), counts->getWord(0),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE));
+    }
+
+    runCheck("a group whose two edges are the same tile contributes no group", ok);
+}
+
+/*
+ * A board with no clock distribution walks the order it always walked.
+ *
+ * This is the guarantee for every board this change is not trying to
+ * affect, and it is checked as an order and a call count rather than as an
+ * absence of crashes. Each entry point visits its own four tiles in
+ * ascending tile id, which is the order the bare index loop produced, and
+ * no tile is deferred so no board gains a per reset log line it did not
+ * have before.
+ */
+void checkNoDistributionLeavesTheTileOrderUnchanged() {
+    gScript.reset();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+    const size_t adc0 = probeAt(XRFDC_ADC_TILE, 0);
+    const size_t adc1 = probeAt(XRFDC_ADC_TILE, 1);
+    const size_t adc2 = probeAt(XRFDC_ADC_TILE, 2);
+    const size_t adc3 = probeAt(XRFDC_ADC_TILE, 3);
+
+    gScript.calls.clear();
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+    const size_t dac0 = probeAt(XRFDC_DAC_TILE, 0);
+    const size_t dac1 = probeAt(XRFDC_DAC_TILE, 1);
+    const size_t dac2 = probeAt(XRFDC_DAC_TILE, 2);
+    const size_t dac3 = probeAt(XRFDC_DAC_TILE, 3);
+
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = (adc0 < adc1) && (adc1 < adc2) && (adc2 < adc3);
+    if (ok) ok = (dac0 < dac1) && (dac1 < dac2) && (dac2 < dac3);
+    if (ok) ok = (counts->getWord(0) == 0x11111111u);
+    if (ok) ok = gScript.logWarnings.empty();
+
+    if (!ok) {
+        fprintf(stderr,
+                "no distribution: adc probes %zu %zu %zu %zu, dac probes %zu %zu %zu %zu, "
+                "counts=0x%08X, %zu warning(s)\n",
+                adc0, adc1, adc2, adc3, dac0, dac1, dac2, dac3, counts->getWord(0),
+                gScript.logWarnings.size());
+    }
+
+    runCheck("no distribution leaves the tile order unchanged", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -3707,7 +4103,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 72;
+const int kClaimsBeforeCountCheck = 79;
 
 /*
  * Every claim this file defines actually ran.
@@ -3810,6 +4206,14 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkPoweredUpTileWithSucceedingReconfigureGetsNoExplicitReset();
     checkWedgedTileStillGetsItsOneCycle();
     checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle();
+
+    checkAdcEntryPointDefersATileMasteredByADac();
+    checkGroupMasterIsResetBeforeItsEdgeTiles();
+    checkBothEntryPointsTogetherGiveEveryTileOneCycle();
+    checkDeferredTileIsNamedInTheLog();
+    checkTileClaimedByTwoGroupsIsResetExactlyOnce();
+    checkGroupWhoseTwoEdgesAreTheSameTileContributesNoGroup();
+    checkNoDistributionLeavesTheTileOrderUnchanged();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
