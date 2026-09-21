@@ -198,11 +198,18 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     }
 
 #ifndef __BAREMETAL__
-    struct metal_device *deviceptr;
+    struct metal_device *deviceptr = nullptr;
     if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) != XRFDC_SUCCESS) {
         initFailReason_ = PYRFDC_INIT_FAIL_REGISTER_METAL;
         log_->error("PyRFdc: XRFdc_RegisterMetal() Failure");
-        metal_device_close(deviceptr);
+        // A registration that did not succeed opened nothing to close. It is
+        // the only writer of deviceptr and it writes it through the out
+        // parameter on success alone, so only what the call actually handed
+        // back is closed here. The declaration above carries the initializer
+        // for the same reason the destructor's does.
+        if (deviceptr != nullptr) {
+            metal_device_close(deviceptr);
+        }
         metal_finish();
         return;
     }

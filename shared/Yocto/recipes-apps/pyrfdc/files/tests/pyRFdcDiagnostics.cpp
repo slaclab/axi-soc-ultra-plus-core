@@ -1527,6 +1527,11 @@ __attribute__((noinline)) void poisonStackRegion() {
     for (size_t i = 0; i < kStackPoisonBytes; i++) {
         scratch[i] = kDirtyFill;
     }
+    // Nothing reads it back, and nothing here can: the only reader that
+    // matters is whatever the next frame puts in the same place. The cast
+    // keeps the build warning-free without weakening the volatile writes
+    // above, which are what makes those writes survive -O2.
+    (void)scratch;
 }
 
 /*
