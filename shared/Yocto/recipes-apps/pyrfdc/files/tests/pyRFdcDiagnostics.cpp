@@ -4202,6 +4202,67 @@ void checkFailingTileThatIsNotAnEdgeArmsNoRecovery() {
 }
 
 /*
+ * An edge tile that failed at some other step arms no recovery.
+ *
+ * Arming is a conjunction: the record has to name the reset as the step
+ * that went wrong and the cached role has to be edge. The claims above move
+ * only the role half, so a predicate simplified to the role alone would
+ * satisfy every one of them and would still be wrong. It would re-cycle a
+ * whole clock group whenever an edge tile failed at anything at all, for a
+ * fault another pass of resets does not address, at the price of an extra
+ * pass and up to a second per tile on the transaction thread.
+ *
+ * That tile is not hypothetical. The PLL reconfigure early-fails its
+ * reference frequency check for every tile whose clock source reads
+ * external, which on this carrier is the edge tile and all four tiles of
+ * the group it belongs to in the state that follows a failure.
+ *
+ * The reset that follows the failed reconfigure is the compensating one and
+ * it succeeds here, so the record keeps the first step it went wrong at and
+ * the reset is not what the tile is reported under. That is the input the
+ * arming predicate has to decline.
+ */
+void checkEdgeTileFailingAtAnotherStepArmsNoRecovery() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    gScript.scriptFailure("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    const std::string msg = dac->errorStrValue();
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+
+    bool ok = armed->doneCalled() && !armed->errorStrCalled();
+    if (ok) ok = (armed->getWord(0) == 0x00000000u);
+    // The walk and nothing after it: four DAC resets and the one against the
+    // edge tile, with no second pass over any of them.
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 1);
+    if (ok) ok = dac->errorStrCalled() && !dac->doneCalled();
+    // And the tile is still reported under the call that actually went
+    // wrong, which is what the arming predicate read to decline.
+    if (ok) {
+        ok = (recordFor(msg, "ADC3").find("XRFdc_DynamicPLLConfig") != std::string::npos);
+    }
+
+    if (!ok) {
+        fprintf(stderr,
+                "other step arms none: recoveries=0x%08X, dac reset=%zu adc reset=%zu, "
+                "record '%s'\n",
+                armed->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                recordFor(msg, "ADC3").c_str());
+    }
+
+    runCheck("a failing edge tile that did not fail at the reset arms no recovery", ok);
+}
+
+/*
  * A recovery that succeeded is still counted.
  *
  * This is the claim the counter exists for. The ADC 3 reset is scripted to
@@ -4438,7 +4499,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 85;
+const int kClaimsBeforeCountCheck = 86;
 
 /*
  * Every claim this file defines actually ran.
@@ -4552,6 +4613,7 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     checkFailingEdgeTileArmsExactlyOneRecovery();
     checkFailingTileThatIsNotAnEdgeArmsNoRecovery();
+    checkEdgeTileFailingAtAnotherStepArmsNoRecovery();
     checkRecoveryThatSucceededIsStillCounted();
     checkTwoFailingEdgesInOneGroupArmOneRecovery();
     checkRecoveryRerunsTheGroupMasterFirst();
