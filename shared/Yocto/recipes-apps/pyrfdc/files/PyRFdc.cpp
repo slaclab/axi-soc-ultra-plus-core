@@ -834,6 +834,23 @@ void PyRFdc::Reset(int Tile_Id) {
 
                 masterIdx = (uint32_t(armTile.masterType) * 4) + uint32_t(armTile.masterTile);
 
+                // Range check the index before it is used as one. An
+                // ungrouped tile carries 0xFF in both master fields, so the
+                // value formed above is 0x3FF for such a tile and would
+                // index far past the fixed member arrays.
+                //
+                // The role test above is what keeps the value in range
+                // today, but a bound that is a consequence of a predicate is
+                // not a property of the index, and the predicate is one edit
+                // away from changing. This test is also what makes the
+                // ungrouped half of the arming predicate measurable at all:
+                // without it, removing the role test is undefined behaviour
+                // rather than a failing claim, and a crash is not a failing
+                // claim.
+                if (masterIdx > 7) {
+                    continue;
+                }
+
                 for (a = 0; a < attemptedLen; a++) {
                     if (attempted[a] == masterIdx) {
                         alreadyAttempted = true;
@@ -4390,6 +4407,14 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     uint32_t group[8];
     uint32_t groupLen = 0;
     uint32_t idx, g;
+
+    // Whether every reset this call actually issued returned success, over
+    // the tiles the loop below did not skip. A group whose every member is
+    // disabled issues nothing and reports the attempt as successful with
+    // nothing done, which is the right answer rather than a loophole: the
+    // arming tile has to have been enabled for the sweep to have reached a
+    // reset against it and recorded the failure that armed this call at
+    // all, so a group with no enabled member cannot be armed.
     bool attemptOk = true;
 
     // The master, then every edge tile that names it, in ascending tile
@@ -4417,6 +4442,24 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     for (g = 0; g < groupLen; g++) {
         const uint32_t type = group[g] >> 2;
         const uint32_t tile = group[g] & 0x3;
+
+        // The same guard the sweep uses before it touches a tile, and for
+        // two reasons rather than one.
+        //
+        // A disabled tile is not part of this group in any sense the driver
+        // recognises, and it answers every call with a non-success. Counting
+        // that refusal against the attempt below would make the whole
+        // recovery unreachable on any board with a partially populated
+        // group, which is most of them.
+        //
+        // The cycle increment sits behind the same guard as the reset it
+        // counts, because that count is published through a register this
+        // project reads as evidence of what the driver did, and a cycle
+        // recorded for a tile that was never driven is evidence of something
+        // that did not happen.
+        if (XRFdc_CheckTileEnabled(RFdcInstPtr_, int(type), int(tile)) != XRFDC_SUCCESS) {
+            continue;
+        }
 
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
         uint32_t resetStatus = XRFdc_Reset(RFdcInstPtr_, int(type), int(tile));
