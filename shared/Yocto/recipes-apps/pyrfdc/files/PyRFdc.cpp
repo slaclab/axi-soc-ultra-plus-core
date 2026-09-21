@@ -32,6 +32,7 @@
 #include "xrfdc_hw.h"
 
 #include <inttypes.h>
+#include <cstring>
 #include <string>
 
 #include "rogue/GilRelease.h"
@@ -572,6 +573,12 @@ void PyRFdc::Reset(int Tile_Id) {
     uint32_t walk[8];
     uint32_t walkLen = 0;
     uint32_t w;
+    // The group masters a recovery has already been attempted for during
+    // this call. Local, and on this frame, for the reason the arming pass
+    // below states: the bound is per global reset, so it has to expire with
+    // the call rather than need a boundary of its own to be cleared on.
+    uint32_t attempted[8];
+    uint32_t attemptedLen = 0;
     bool sweepFailed = false;
 
     // Check if read
@@ -767,6 +774,77 @@ void PyRFdc::Reset(int Tile_Id) {
                         }
                     }
                 }
+            }
+
+            // Arm one bounded recovery per clock group whose edge tile could
+            // not be restarted.
+            //
+            // Placed after the walk and before the derivation below on
+            // purpose: a recovery that works clears the records of the tiles
+            // it recovered, so it has to run before anything reads them.
+            //
+            // What arms one. A tile whose record names the step XRFdc_Reset
+            // and whose cached role is edge. The restart timeout itself is
+            // never visible here: the wait lives inside the driver and is a
+            // static function there, so it surfaces to this code only as a
+            // non-success return from that call, and that return is what the
+            // record carries.
+            //
+            // A tile that failed at any other step does not arm one. A
+            // failing PLL reconfigure or a failing settings write is a
+            // different fault and re-cycling the group would not address it.
+            // A tile that is ungrouped does not arm one either, because
+            // there is no group to re-establish, and neither does a group
+            // master: the recovery re-establishes a group around its master,
+            // and a master that will not reset is not a group that can be
+            // re-established by resetting it again.
+            //
+            // On a board the topology reports as having no distribution no
+            // tile is ever an edge, so this pass finds nothing, the whole
+            // recovery is unreachable, and that board's reset path is
+            // bit-identical to the one before this was added.
+            //
+            // The bound is one attempt per group per global reset, whatever
+            // number of that group's edge tiles failed. It is tracked in the
+            // local set of attempted masters below rather than in a member
+            // because a member would need a boundary to clear on, and this
+            // work deliberately introduced no state that outlives a call. A
+            // single attempt is the only bound this project can state
+            // honestly: it adds roughly one extra cycle to a reset that was
+            // going to fail anyway and nothing at all to the healthy path,
+            // and each failed internal restart wait costs one second on the
+            // transaction thread.
+            for(w=0; w<walkLen; w++) {
+                const uint32_t armIdx = walk[w];
+                const TileDiag &armDiag = tileDiag_[armIdx >> 2][armIdx & 0x3];
+                const TileClkDist &armTile = clkDist_[armIdx >> 2][armIdx & 0x3];
+                uint32_t masterIdx;
+                uint32_t a;
+                bool alreadyAttempted = false;
+
+                if (!armDiag.failed || (armDiag.step == nullptr)) {
+                    continue;
+                }
+                if (std::strcmp(armDiag.step, "XRFdc_Reset") != 0) {
+                    continue;
+                }
+                if (armTile.role != PYRFDC_CLKDIST_EDGE) {
+                    continue;
+                }
+
+                masterIdx = (uint32_t(armTile.masterType) * 4) + uint32_t(armTile.masterTile);
+
+                for (a = 0; a < attemptedLen; a++) {
+                    if (attempted[a] == masterIdx) {
+                        alreadyAttempted = true;
+                    }
+                }
+                if (alreadyAttempted) {
+                    continue;
+                }
+
+                attempted[attemptedLen++] = masterIdx;
+                recoverClkGroup(masterIdx, armIdx);
             }
 
             // A sweep failed when any tile recorded a failure. Derived from
@@ -4270,6 +4348,122 @@ std::string PyRFdc::buildDeferralMessage(uint32_t type) const {
          + " tile(s) to a group mastered by the other tile type:" + tiles + "\n";
 }
 
+// Re-run one distribution group once with the explicit reset.
+//
+// Order. The master first and then its edge tiles in ascending tile index
+// order, which is the order the normal walk uses. An edge tile has no clock
+// until its master has one, so re-cycling an edge ahead of its master would
+// repeat the mistake this whole change exists to stop making.
+//
+// Primitive. XRFdc_Reset and never XRFdc_DynamicPLLConfig. The reconfigure
+// performs its own restart only for a tile that is already powered up, and
+// a tile that failed to come back is not, so a recovery built on it would
+// perform no cycle at all on precisely the tile it exists for.
+//
+// Counting. One additional cycle per tile the attempt resets, so a tile
+// whose recovery fired reads two in the cycle count register rather than
+// one, and a reader can tell a tile that took one pass from a tile that
+// took two whatever the reset finally returned.
+//
+// Visibility, which is the point of the whole helper. A recovery that
+// succeeded makes the reset return success, which is exactly the shape of a
+// reset that never had a problem. Without the counters and this line a
+// silent retry would hide the failure rate that later measurements exist to
+// establish, and twenty clean reboots could be twenty recoveries. The
+// counters say that an attempt happened and what it returned. Neither they
+// nor this line are evidence that a recovery repairs anything.
+//
+// log_->warning and not setDiagError. On the success path there is no error
+// to report and the transaction completes, so routing this through the
+// error channel would turn a recovered reset into a reported failure.
+//
+// Built with std::string concatenation and HexValue, matching the rest of
+// the message assembly in this file. No <iomanip> and no snprintf, so the
+// text is the same under the Yocto build and a host build and contains
+// nothing but ASCII. The line names two tiles and one word, so it is well
+// under the 960 character console budget and needs no omission counter.
+void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
+    // The same two names and the same tile numbering the failure report and
+    // the deferral line use, so a reader comparing the three is reading one
+    // vocabulary.
+    static const char* const typeName[2] = {"ADC", "DAC"};
+    uint32_t group[8];
+    uint32_t groupLen = 0;
+    uint32_t idx, g;
+    bool attemptOk = true;
+
+    // The master, then every edge tile that names it, in ascending tile
+    // index order. Derived from the cached topology rather than from the
+    // walk the sweep used, because the walk holds the tiles this call owns
+    // and this holds the tiles of one group.
+    group[groupLen++] = masterIdx;
+
+    for (idx = 0; idx < 8; idx++) {
+        const TileClkDist &tile = clkDist_[idx >> 2][idx & 0x3];
+
+        if (idx == masterIdx) {
+            continue;
+        }
+        if (tile.role != PYRFDC_CLKDIST_EDGE) {
+            continue;
+        }
+        if (((uint32_t(tile.masterType) * 4) + uint32_t(tile.masterTile)) != masterIdx) {
+            continue;
+        }
+
+        group[groupLen++] = idx;
+    }
+
+    for (g = 0; g < groupLen; g++) {
+        const uint32_t type = group[g] >> 2;
+        const uint32_t tile = group[g] & 0x3;
+
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
+        uint32_t resetStatus = XRFdc_Reset(RFdcInstPtr_, int(type), int(tile));
+        if (resetStatus != XRFDC_SUCCESS) {
+            attemptOk = false;
+        }
+
+        // Counted whether or not the reset returned success, for the reason
+        // the sweep's own compensating reset states: the tile was driven at
+        // its state machine either way.
+        resetCycles_[type][tile]++;
+    }
+
+    // Saturating, so a board that somehow armed more than this field can
+    // hold reads as out of range rather than wrapping back to a small and
+    // plausible number.
+    if (recoveriesArmed_ < 0xFFFF) {
+        recoveriesArmed_++;
+    }
+
+    if (attemptOk) {
+        if (recoveriesSucceeded_ < 0xFFFF) {
+            recoveriesSucceeded_++;
+        }
+
+        // Clear the failure but keep the evidence. Dropping failed and step
+        // is what lets the transaction complete; keeping diagRead and the
+        // values captured at the instant of the failure is what lets a
+        // message built for some other tile still report this one as
+        // observed rather than as failed, which is a distinction the
+        // message builder already draws.
+        for (g = 0; g < groupLen; g++) {
+            tileDiag_[group[g] >> 2][group[g] & 0x3].failed = false;
+            tileDiag_[group[g] >> 2][group[g] & 0x3].step = "";
+        }
+    }
+
+    log_->warning((std::string("clock group recovery armed by ")
+                   + typeName[(armingIdx >> 2) & 0x1] + std::to_string(armingIdx & 0x3)
+                   + ", group master " + typeName[(masterIdx >> 2) & 0x1]
+                   + std::to_string(masterIdx & 0x3)
+                   + ", tiles reset " + std::to_string(groupLen)
+                   + ", outcome " + (attemptOk ? "succeeded" : "failed")
+                   + ", armed/succeeded so far " + HexValue(recoveriesArmed_)
+                   + "/" + HexValue(recoveriesSucceeded_) + "\n").c_str());
+}
+
 // Where the cached topology came from, which IP generation the driver
 // reported and how many distribution groups were found, as one word at
 // offset 0x12010.
@@ -4374,6 +4568,46 @@ void PyRFdc::ResetCycleCount() {
     }
 }
 
+// How many clock group recoveries were armed and how many of them succeeded,
+// as one word at offset 0x1201C.
+//
+// Bits 15 down to 0 hold the armed count and bits 31 down to 16 hold the
+// succeeded count. The encoding is part of this driver's address space
+// contract and is fixed here. Both halves saturate at 0xFFFF rather than
+// wrapping, for the reason the status register above states.
+//
+// Two counts and not one. Never armed, armed and failed, and armed and
+// succeeded are three different findings, and a single number collapses two
+// of them. A word reading zero says no recovery was ever armed, which is a
+// different statement from a recovery that was not needed, and a reader has
+// to be able to tell them apart from the cycle count beside this one.
+//
+// Counted since construction rather than per reset, so a host reading this
+// after a boot learns whether anything fired at all.
+//
+// It says nothing about whether a recovery repairs a converter. It says one
+// was attempted and what the driver returned, and that is the whole of it.
+//
+// Same shape as the three registers above: a read hands back members and a
+// write is refused, and it names RFdcInstPtr_ nowhere, which is what lets
+// the dead-driver guard admit it on read. It answers zero on an instance
+// whose construction never produced a driver, which is the truth: a driver
+// that never came up ran no sweep and armed no recovery. Deliberately not
+// polled, for the reason the reason register states.
+void PyRFdc::RecoveryCount() {
+    // Check for a write
+    if (!rdTxn_) {
+        errMsg_ = "RecoveryCount(): read only\n";
+    } else {
+        const uint32_t armed =
+            (recoveriesArmed_ > 0xFFFF) ? 0xFFFF : recoveriesArmed_;
+        const uint32_t succeeded =
+            (recoveriesSucceeded_ > 0xFFFF) ? 0xFFFF : recoveriesSucceeded_;
+
+        data_ = (armed & 0xFFFF) | ((succeeded & 0xFFFF) << 16);
+    }
+}
+
 void PyRFdc::DoubleTestReg(bool upper) {
     // Check for a write
     if (!rdTxn_) {
@@ -4439,15 +4673,16 @@ bool PyRFdc::rejectIfDriverDead(uint32_t addr) {
         return false;
     }
     //
-    // The two clock distribution registers and the per-tile reset cycle
-    // count are admitted on read by that same rule rather than as an
-    // exception to it: all three bodies read members and none dereferences
-    // the driver instance, and the IP generation a host reads at 0x12010 is
-    // exactly what someone trying to find out why this driver is dead needs
-    // to see. The cycle count answers zero on such an instance, which is the
-    // truth: a driver that never came up ran no sweep and cycled no tile.
+    // The two clock distribution registers, the per-tile reset cycle count
+    // and the recovery counter are admitted on read by that same rule rather
+    // than as an exception to it: all four bodies read members and none
+    // dereferences the driver instance, and the IP generation a host reads
+    // at 0x12010 is exactly what someone trying to find out why this driver
+    // is dead needs to see. The cycle count and the recovery counter answer
+    // zero on such an instance, which is the truth: a driver that never came
+    // up ran no sweep, cycled no tile and armed no recovery.
     if (rdTxn_ && ((addr == 0x12000) || (addr == 0x1200C) ||
-                   ((addr >= 0x12010) && (addr <= 0x12018)))) {
+                   ((addr >= 0x12010) && (addr <= 0x1201C)))) {
         return false;
     }
 
@@ -4693,6 +4928,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x12018) {
                 ResetCycleCount();
+
+            } else if (addr==0x1201C) {
+                RecoveryCount();
 
             } else if ( (addr >= 0x13000) && (addr <= 0x13004) ) {
                 DoubleTestReg(bool((addr>>2)&0x1));

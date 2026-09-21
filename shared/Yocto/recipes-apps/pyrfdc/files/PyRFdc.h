@@ -278,6 +278,32 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! hand a host the contents of this process's memory.
     uint32_t resetCycles_[2][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}};
 
+    //! How many clock group recoveries have been armed since construction,
+    //! and how many of those succeeded.
+    //!
+    //! Counted since construction and not per reset, so a host reading them
+    //! after a boot learns whether any recovery fired at all rather than
+    //! only what the most recent reset did.
+    //!
+    //! Two counts and not one, because never armed, armed and failed, and
+    //! armed and succeeded are three different findings and a single number
+    //! collapses two of them. A recovery that succeeded leaves the reset
+    //! returning success, which is the shape of a reset that never needed
+    //! one, so these are the only things standing between a silent retry and
+    //! a run of clean reboots that were every one of them a recovery.
+    //!
+    //! Nothing here is evidence that a recovery works on any board. They
+    //! record that one was attempted and what it returned, and no more.
+    //!
+    //! Initialized here at their declaration and not only in the
+    //! constructor, for the reason stated on the members above: every one of
+    //! the constructor's early returns happens before its local variable
+    //! block, and these are read by a register the dead-driver guard admits,
+    //! so on exactly the paths that guard exists for they would otherwise
+    //! hand a host the contents of this process's memory.
+    uint32_t recoveriesArmed_ = 0;
+    uint32_t recoveriesSucceeded_ = 0;
+
     //! Application functions
     void StartUp(int Tile_Id);
     void Shutdown(int Tile_Id);
@@ -508,6 +534,32 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! log output at all.
     std::string buildDeferralMessage(uint32_t type) const;
 
+    //! Re-run one distribution group once with the explicit reset, master
+    //! first and then its edge tiles in ascending tile index order, count
+    //! the attempt and its outcome, and say in the log what happened.
+    //!
+    //! masterIdx is the tile index of the group's master and armingIdx the
+    //! tile index of the edge tile whose failure armed the attempt, carried
+    //! in only so the log line can name it.
+    //!
+    //! The explicit reset and never the PLL reconfigure. A tile that did not
+    //! come back is not powered up, and the reconfigure performs no cycle at
+    //! all for a tile in that state, so a recovery built on it would be a
+    //! no-op on precisely the tile it exists for.
+    //!
+    //! One attempt, with no loop of its own. The caller bounds it to one per
+    //! group per global reset, and each failed internal restart wait inside
+    //! the driver costs a second on the transaction thread, so an unbounded
+    //! retry on a wedged tile would hold that thread for as long as the tile
+    //! stays wedged.
+    //!
+    //! On success it clears the failed flag and the step of the tiles it
+    //! reset and leaves their captured registers alone, so the transaction
+    //! completes and a message built for some other tile still reports the
+    //! recovered one as observed rather than as failed. On failure it
+    //! changes no record at all.
+    void recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx);
+
     void MetalLogLevel();
     void IgnoreMetalError();
     void ScratchPad();
@@ -527,6 +579,14 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! back members and a write is refused, and it names RFdcInstPtr_
     //! nowhere, which is what lets the dead-driver guard admit it on read.
     void ResetCycleCount();
+
+    //! How many clock group recoveries were armed and how many succeeded,
+    //! armed in the low half and succeeded in the high half, at 0x1201C.
+    //!
+    //! A transaction body of the same shape as the three above: a read hands
+    //! back members and a write is refused, and it names RFdcInstPtr_
+    //! nowhere, which is what lets the dead-driver guard admit it on read.
+    void RecoveryCount();
     void DoubleTestReg(bool upper);
     uint32_t DoubleToUint32(double value, bool upper);
     double RemapDoubleWithUint32(double original, uint32_t newPart, bool upper);
