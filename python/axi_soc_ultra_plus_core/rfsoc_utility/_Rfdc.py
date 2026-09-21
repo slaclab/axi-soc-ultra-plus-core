@@ -626,6 +626,72 @@ class Rfdc(pr.Device):
             hidden       = True,
         ))
 
+        # No poll interval on any of the four below, for the same reason the
+        # register above states. A polled variable adds a background
+        # transaction every interval to a register path that has been measured
+        # degrading once a converter fails. The matching driver bodies are
+        # PyRFdc::ClkDistStatus(), PyRFdc::ClkDistMap(),
+        # PyRFdc::ResetCycleCount() and PyRFdc::RecoveryCount(), and each of
+        # them reads a member and never touches the driver instance, so all
+        # four still answer when every other register is being refused. They
+        # are read when someone asks.
+        #
+        # Adding these four is a deliberate choice and not an oversight of the
+        # rule that this file leaves the reset path alone. That rule exists to
+        # avoid host and driver version skew on the path that performs a
+        # reset: ResetAllAdc at 0x10010 and ResetAllDac at 0x10014 keep their
+        # offsets and their RemoteCommand form, and Init() is untouched, so a
+        # host and a driver built from different trees still agree on how a
+        # reset is requested. A read-only variable creates no such skew, since
+        # a driver that does not implement the offset simply refuses the read.
+        # Without these four the registers cannot be reached from the host at
+        # all, because the read-only state capture tool reads by variable path
+        # through this device model and never by literal address.
+        #
+        # disp is a full width hexadecimal word on all four because every one
+        # of them packs fields into a word rather than reporting a quantity.
+        # Printed as 0x11111111 the per tile nibbles and the two counter
+        # halves are read off directly, which is the point of publishing them.
+        self.add(pr.RemoteVariable(
+            name         = 'ClkDistStatus',
+            description  = 'Where the cached clock distribution topology came from. Bits 7:0 report the source (0 nothing was obtained, 1 the documented distribution getter answered, 2 a raw clock detect decode answered), bits 15:8 report the IP generation the driver holds for this part, and bits 23:16 report how many distribution groups the cached topology holds',
+            offset       = 0x12010,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ClkDistMap',
+            description  = 'Cached clock distribution map, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble reads 0xF when the tile is ungrouped, and otherwise the tile index (tile type times four plus tile id) of the master that tile takes its clock from',
+            offset       = 0x12014,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetCycleCount',
+            description  = 'IPSM cycles the last global reset issued per tile, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble counts the cycles that reset issued for that tile, whether from an explicit reset or from the internal restart the PLL reconfigure performs, and one per tile is the expected reading on a healthy boot',
+            offset       = 0x12018,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'RecoveryCount',
+            description  = 'Clock group recoveries counted since construction. Bits 15:0 count the recoveries armed and bits 31:16 count the ones that succeeded. A word reading zero on a clean boot means no recovery was ever armed, which is a different statement from a recovery that was not needed',
+            offset       = 0x1201C,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
         self.add(pr.RemoteVariable(
             name         = 'DoubleTestReg',
             description  = 'Test register (no impact to RFDC module)',
