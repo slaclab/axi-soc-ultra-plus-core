@@ -1436,6 +1436,29 @@ PyRFdcPtr createDeadDevice(const char *failingCall) {
 }
 
 /*
+ * The same construction, with the recorded lists left alone.
+ *
+ * The clear in createDeadDevice is correct for a claim about a transaction:
+ * it makes what the claim reads afterwards belong to the transaction it
+ * drove and not to the construction that preceded it. It is also exactly
+ * what made a claim about the construction itself impossible, because the
+ * calls the constructor made after the scripted failure were recorded and
+ * then thrown away before any claim looked at them.
+ *
+ * The two helpers stand side by side rather than one replacing the other, so
+ * no claim written against createDeadDevice changes behavior. A claim that
+ * asserts about what the constructor did calls this one; a claim that
+ * asserts about what a transaction did calls the other.
+ */
+PyRFdcPtr createDeadDeviceKeepingCalls(const char *failingCall) {
+    gScript.reset();
+    gScript.scriptFailure(failingCall, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    return PyRFdc::create();
+}
+
+/*
  * The step wording, transcribed rather than taken from the driver's own
  * mapping. Generating these from the table under test would make the two
  * copies one copy and the claims would assert nothing about the wording.
@@ -1632,6 +1655,38 @@ void checkNotCompletedConstructorIsDeadByDefault() {
     }
 
     runCheck("not-completed constructor is dead by default", ok);
+}
+
+/*
+ * A configuration initialize that reported non-success stops the constructor.
+ *
+ * Asserted on the recorded call list and not on any message. The refusal
+ * message was already correct before this behavior existed, so a claim over
+ * the message would print PASS whether the constructor stopped or carried on,
+ * and would be evidence about nothing. The three names are the ones the
+ * driver instance is reached through after the configuration initialize: the
+ * tile enable probe, the PLL reconfigure that is a converter write, and the
+ * raw register read.
+ */
+void checkFailedCfgInitializeStopsTheConstructor() {
+    PyRFdcPtr device = createDeadDeviceKeepingCalls("XRFdc_CfgInitialize");
+
+    const size_t tileEnabled = gScript.countCalls("XRFdc_CheckTileEnabled");
+    const size_t pllConfig = gScript.countCalls("XRFdc_DynamicPLLConfig");
+    const size_t rdReg = gScript.countCalls("XRFdc_RDReg");
+
+    bool ok = (tileEnabled == 0);
+    if (ok) ok = (pllConfig == 0);
+    if (ok) ok = (rdReg == 0);
+
+    if (!ok) {
+        fprintf(stderr,
+                "cfg initialize stop: %zu recorded call(s), CheckTileEnabled=%zu "
+                "DynamicPLLConfig=%zu RDReg=%zu\n",
+                gScript.calls.size(), tileEnabled, pllConfig, rdReg);
+    }
+
+    runCheck("a failed configuration initialize stops the constructor", ok);
 }
 
 /*
@@ -2315,7 +2370,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 50;
+const int kClaimsBeforeCountCheck = 51;
 
 /*
  * Every claim this file defines actually ran.
@@ -2376,6 +2431,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkDeadDriverRejectsMetalLogLevelWrite();
     checkEachBailOutNamesItsOwnStep();
     checkNotCompletedConstructorIsDeadByDefault();
+    checkFailedCfgInitializeStopsTheConstructor();
     checkRepeatedRejectionIsByteIdentical();
     checkMultiWordRejectionReachesErrorStr();
     checkLiveDriverIsUnaffectedByTheGuard();
