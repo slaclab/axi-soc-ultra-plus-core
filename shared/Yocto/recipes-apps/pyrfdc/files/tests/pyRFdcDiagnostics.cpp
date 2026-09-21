@@ -866,7 +866,18 @@ void checkReportedLineFitsTheConsoleBuffer() {
             gScript.scriptRegister(type, tile, kOffsetCurrentState, 0xFFFFFFFEu);
             gScript.scriptRegister(type, tile, kOffsetRestartState, 0xFFFFFFFFu);
             gScript.scriptRegister(type, tile, kOffsetClockDetector, 0xFFFFFFFFu);
-            gScript.scriptRegister(type, tile, 0x0228, 0xFFFFFFFFu);
+            // Every bit but one, and the one is deliberate. This register
+            // is read twice for two different purposes now: the diagnostic
+            // reads the whole word, and the sweep reads bit 2 of it through
+            // a mask to decide whether the tile was already powered up. All
+            // ones would report every tile as powered up, the compensating
+            // reset would never fire, the scripted reset failure below
+            // would have nothing to fail, and this claim would measure the
+            // length of an empty message. Clearing bit 2 keeps the printed
+            // field at its full eight hex digits, which is what this claim
+            // is about, while leaving the tiles in the state that makes the
+            // sweep issue its resets.
+            gScript.scriptRegister(type, tile, 0x0228, 0xFFFFFFFBu);
         }
     }
     gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
