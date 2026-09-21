@@ -2732,11 +2732,12 @@ void checkLiveDriverStillClosesItsDeviceOnTeardown() {
 //! for the claim that the bypass still clears what it legitimately should.
 //!
 //! It was 0x12010 until the two clock distribution registers took 0x12010
-//! and 0x12014, then 0x12018 until the per-tile cycle count took that, so it
-//! moves up again to the first address past the published set that no branch
-//! decodes. The claims below need an address that decodes to nothing at all,
-//! and a published register that merely refuses a write is not that.
-const uint64_t kUndecodedGlobal = 0x1201C;
+//! and 0x12014, then 0x12018 until the per-tile cycle count took that, then
+//! 0x1201C until the recovery counter took that, so it moves up again to the
+//! first address past the published set that no branch decodes. The claims
+//! below need an address that decodes to nothing at all, and a published
+//! register that merely refuses a write is not that.
+const uint64_t kUndecodedGlobal = 0x12020;
 
 /*
  * With the bypass set, a failing global reset still reports its tiles.
@@ -4033,6 +4034,307 @@ void checkNoDistributionLeavesTheTileOrderUnchanged() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* One bounded recovery attempt per group.                                   */
+/*                                                                           */
+/* A restart that timed out surfaces to this driver only as a non-success    */
+/* return from XRFdc_Reset, because the wait itself lives inside the AMD     */
+/* driver. When that happens on a tile the cached topology calls an edge of  */
+/* a distributed clock, the whole group is re-run once with the explicit     */
+/* reset, master first.                                                      */
+/*                                                                           */
+/* What these five claims establish, stated before they are read: the        */
+/* mechanism behaves as specified against a scripted fixture. They establish */
+/* nothing whatever about whether it recovers a converter on this carrier.   */
+/* No software recovery has ever worked here, and the existence of a retry   */
+/* path is not evidence that it recovers anything.                           */
+/*                                                                           */
+/* The counter is the point of the exercise. A recovery that worked makes    */
+/* the reset return success, which is the shape of a reset that never needed */
+/* one, so without a number that separates never armed from armed and failed */
+/* from armed and succeeded, twenty clean reboots could be twenty            */
+/* recoveries and nothing would say so.                                      */
+/* ------------------------------------------------------------------------ */
+
+//! The read-only word the armed and succeeded counts are published through.
+const uint64_t kRecoveryCount = 0x1201C;
+
+/*
+ * One sub-check of the not-an-edge claim, labelled so a single red one is
+ * identifiable.
+ *
+ * The same shape as runStepCheck above and for the same reason. One
+ * aggregate verdict over the ungrouped tile and the group master would go
+ * red for either and say nothing about which, and the two are excluded from
+ * arming for two different reasons.
+ */
+void runNotAnEdgeCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("a failing tile that is not an edge arms no recovery [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * A failing reset on a distribution edge tile arms exactly one recovery.
+ *
+ * ADC 3 is the edge tile on this carrier and its reset is scripted to fail
+ * for good, so the recovery fires and then fails too. That is the outcome
+ * this project has every reason to expect on the board, and it is asserted
+ * first: the counter reports one armed and none succeeded, the transaction
+ * still reports the error it would have reported anyway, and the record for
+ * ADC 3 still names the step it went wrong at. A recovery that did not work
+ * must not suppress the diagnosis.
+ *
+ * The call counts and the cycle count are asserted alongside the counter,
+ * because a counter incremented by an arming pass that then issued nothing
+ * would satisfy the counter assertion on its own.
+ */
+void checkFailingEdgeTileArmsExactlyOneRecovery() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    const std::string msg = dac->errorStrValue();
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = armed->doneCalled() && !armed->errorStrCalled();
+    if (ok) ok = (armed->getWord(0) == 0x00000001u);
+    // Four DAC resets in the walk and four in the recovery pass, and ADC 3
+    // once in each.
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 8);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 2);
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    // Two cycles for every tile of the group and nothing at all for ADC 0,
+    // 1 and 2, which this entry point does not own.
+    if (ok) ok = (counts->getWord(0) == 0x22222000u);
+    if (ok) ok = dac->errorStrCalled() && !dac->doneCalled();
+    if (ok) ok = (recordFor(msg, "ADC3").find("XRFdc_Reset") != std::string::npos);
+
+    if (!ok) {
+        fprintf(stderr,
+                "edge arms one: recoveries=0x%08X, counts=0x%08X, dac reset=%zu "
+                "adc reset=%zu, record '%s'\n",
+                armed->getWord(0), counts->getWord(0),
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                recordFor(msg, "ADC3").c_str());
+    }
+
+    runCheck("a failing edge tile arms exactly one recovery", ok);
+}
+
+/*
+ * A failing reset on a tile that is not a distribution edge arms nothing.
+ *
+ * Two tiles, excluded for two different reasons.
+ *
+ * ADC 1 has its own clock pin and belongs to no group, so there is no group
+ * to re-establish and re-cycling it would address nothing.
+ *
+ * DAC 0 is the group master. The recovery re-establishes a group around its
+ * master, and a master that will not reset is not a group that can be
+ * re-established by resetting it again. Excluding it is the difference
+ * between a bounded attempt and an attempt whose first act repeats the call
+ * that just failed.
+ */
+void checkFailingTileThatIsNotAnEdgeArmsNoRecovery() {
+    // An ungrouped tile of this call's own type.
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+
+        PyRFdcPtr device = PyRFdc::create();
+        gScript.calls.clear();
+
+        gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 1, XRFDC_SCRIPT_ANY,
+                              XRFDC_FAILURE);
+
+        driveWrite(device, kResetAllAdc, 1);
+        rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+
+        bool ok = armed->doneCalled() && !armed->errorStrCalled();
+        if (ok) ok = (armed->getWord(0) == 0x00000000u);
+        // The ADC entry point owns ADC 0, 1 and 2 and nothing else, so three
+        // resets and no fourth pass over any of them.
+        if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 3);
+
+        if (!ok) {
+            fprintf(stderr, "ungrouped arms none: recoveries=0x%08X, adc reset=%zu\n",
+                    armed->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
+        }
+
+        runNotAnEdgeCheck("ungrouped tile", ok);
+    }
+
+    // The master of the group itself.
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+
+        PyRFdcPtr device = PyRFdc::create();
+        gScript.calls.clear();
+
+        gScript.scriptFailure("XRFdc_Reset", XRFDC_DAC_TILE, 0, XRFDC_SCRIPT_ANY,
+                              XRFDC_FAILURE);
+
+        driveWrite(device, kResetAllDac, 1);
+        rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+
+        bool ok = armed->doneCalled() && !armed->errorStrCalled();
+        if (ok) ok = (armed->getWord(0) == 0x00000000u);
+
+        if (!ok) {
+            fprintf(stderr, "master arms none: recoveries=0x%08X, dac reset=%zu\n",
+                    armed->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE));
+        }
+
+        runNotAnEdgeCheck("group master", ok);
+    }
+}
+
+/*
+ * A recovery that succeeded is still counted.
+ *
+ * This is the claim the counter exists for. The ADC 3 reset is scripted to
+ * fail exactly once, so the walk's reset fails and the recovery pass's reset
+ * succeeds, the records are cleared for the tiles the attempt reset, and the
+ * transaction completes reporting no error at all. From the caller's side
+ * the reset is indistinguishable from one that never had a problem.
+ *
+ * Without this claim a silent retry would be indistinguishable from a reset
+ * that never needed one, and twenty clean reboots could be twenty
+ * recoveries. What remains is the counter, reading one armed and one
+ * succeeded, and one warning line naming the tile and its master.
+ */
+void checkRecoveryThatSucceededIsStillCounted() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+    gScript.logWarnings.clear();
+
+    gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+
+    bool ok = armed->doneCalled() && !armed->errorStrCalled();
+    if (ok) ok = (armed->getWord(0) == 0x00010001u);
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = gScript.logErrors.empty();
+    if (ok) ok = (gScript.logWarnings.size() == 1);
+    if (ok) ok = (gScript.logWarnings[0].find("ADC3") != std::string::npos);
+    if (ok) ok = (gScript.logWarnings[0].find("DAC0") != std::string::npos);
+
+    if (!ok) {
+        fprintf(stderr,
+                "recovery counted: recoveries=0x%08X, done=%u err=%u, %zu warning(s) '%s'\n",
+                armed->getWord(0), dac->doneCalls(), dac->errorStrCalls(),
+                gScript.logWarnings.size(),
+                gScript.logWarnings.empty() ? "" : gScript.logWarnings[0].c_str());
+    }
+
+    runCheck("a recovery that succeeded is still counted", ok);
+}
+
+/*
+ * Two failing edge tiles of one group arm one recovery between them.
+ *
+ * The bound is one attempt per group per global reset, tracked by a set of
+ * attempted masters local to the call, so a second failing edge of a group
+ * already attempted arms nothing further. Each failed internal restart wait
+ * costs a second on the transaction thread, so an attempt per failing tile
+ * would scale the worst case with the size of the group.
+ *
+ * Asserted on the reset call count as well as on the counter, because a
+ * bound that held in the counter and not in the calls would be no bound at
+ * all: twelve DAC resets rather than eight is the shape of two passes.
+ */
+void checkTwoFailingEdgesInOneGroupArmOneRecovery() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_DAC_TILE, 2, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+
+    bool ok = armed->doneCalled() && !armed->errorStrCalled();
+    if (ok) ok = (armed->getWord(0) == 0x00000001u);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 8);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 2);
+
+    if (!ok) {
+        fprintf(stderr,
+                "two edges one recovery: recoveries=0x%08X, dac reset=%zu adc reset=%zu\n",
+                armed->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
+    }
+
+    runCheck("two failing edges in one group arm one recovery", ok);
+}
+
+/*
+ * The recovery pass re-runs the group master before the edge tile that
+ * armed it, and starts only after the walk has finished.
+ *
+ * Positions rather than a selector, because the recovery issues calls
+ * carrying the same name, type, tile and block as the walk's own calls
+ * against the same tiles. Recorded order is the only discriminator that
+ * exists, so the assertion is on second occurrences.
+ *
+ * Both halves are needed. The master preceding the edge inside the pass is
+ * the property the recovery exists for, and the pass following the whole
+ * walk is what makes it a pass rather than an interleaving that happened to
+ * put two calls in the right order.
+ */
+void checkRecoveryRerunsTheGroupMasterFirst() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    driveWrite(device, kResetAllDac, 1);
+
+    const size_t edgeFirst = nthCallAt("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, 1);
+    const size_t masterSecond = nthCallAt("XRFdc_Reset", XRFDC_DAC_TILE, 0, XRFDC_SCRIPT_ANY, 2);
+    const size_t edgeSecond = nthCallAt("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY, 2);
+
+    bool ok = (masterSecond < edgeSecond);
+    if (ok) ok = (edgeFirst < masterSecond);
+
+    if (!ok) {
+        fprintf(stderr,
+                "master first in recovery: adc3 first=%zu, dac0 second=%zu, "
+                "adc3 second=%zu, of %zu recorded call(s)\n",
+                edgeFirst, masterSecond, edgeSecond, gScript.calls.size());
+    }
+
+    runCheck("the recovery re-runs the group master first", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -4054,6 +4356,15 @@ void checkNoDistributionLeavesTheTileOrderUnchanged() {
  * lines.
  */
 void checkFixtureResetEmptiesRecordedState() {
+    // Construct under a known fixture rather than under whatever the claim
+    // before this one left behind. The topology is read once at
+    // construction, so a predecessor that pushed a distribution would make
+    // ADC 3 an edge, the ADC entry point would correctly decline to reset
+    // it, the scripted failure below would never fire and the dirty
+    // precondition would be unsatisfiable. This claim is about reset()
+    // emptying state and must not also depend on its position in main.
+    gScript.reset();
+
     PyRFdcPtr device = PyRFdc::create();
 
     gScript.reset();
@@ -4127,7 +4438,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 79;
+const int kClaimsBeforeCountCheck = 85;
 
 /*
  * Every claim this file defines actually ran.
@@ -4238,6 +4549,12 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkTileClaimedByTwoGroupsIsResetExactlyOnce();
     checkGroupWhoseTwoEdgesAreTheSameTileContributesNoGroup();
     checkNoDistributionLeavesTheTileOrderUnchanged();
+
+    checkFailingEdgeTileArmsExactlyOneRecovery();
+    checkFailingTileThatIsNotAnEdgeArmsNoRecovery();
+    checkRecoveryThatSucceededIsStillCounted();
+    checkTwoFailingEdgesInOneGroupArmOneRecovery();
+    checkRecoveryRerunsTheGroupMasterFirst();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
