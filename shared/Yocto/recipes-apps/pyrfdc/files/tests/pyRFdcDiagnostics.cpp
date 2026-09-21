@@ -2989,6 +2989,176 @@ void checkClockDistributionTopologyIsCapturedAtConstruction() {
     runCheck("the clock distribution topology is captured at construction", ok);
 }
 
+/*
+ * A driver that reports a pre-Gen3 part is never asked for the distribution.
+ *
+ * The fixture is given a topology it is perfectly willing to serve, so the
+ * only reason the query is not made is the runtime gate. That is what makes
+ * this a claim about the gate rather than a restatement of an empty fixture.
+ *
+ * It earns its keep on a file every SLAC RFSoC project consumes. An
+ * unguarded call prints "Requested functionality not available for this IP"
+ * on the console of every first and second generation board at every bridge
+ * start, and this claim is what stops that being reintroduced by someone who
+ * reads the gate as redundant with the failure fallback.
+ */
+void checkPreGen3DriverIsNeverAskedForTheDistribution() {
+    gScript.reset();
+    gScript.ipType = 1;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    bool ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 0);
+    if (ok) ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // No source, an IPType of 1 and no groups.
+    if (ok) ok = (status->getWord(0) == 0x00000100u);
+    // Every tile ungrouped.
+    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+    if (!ok) {
+        fprintf(stderr, "pre-Gen3 gate: status=0x%08X map=0x%08X, %zu query call(s)\n",
+                status->getWord(0), map->getWord(0),
+                gScript.countCalls("XRFdc_GetClkDistribution"));
+    }
+
+    runCheck("a pre-Gen3 driver is never asked for the distribution", ok);
+}
+
+/*
+ * A refused query leaves every tile ungrouped.
+ *
+ * The call count is asserted at exactly one, so this claim is about the
+ * refusal and cannot be satisfied by the runtime gate above. The cache keeps
+ * the values it was declared with because the constructor writes it only
+ * inside a success test, which is the whole of the no-distribution fallback:
+ * there is no separate branch for it to be written wrong in.
+ */
+void checkRefusedDistributionQueryLeavesEveryTileUngrouped() {
+    gScript.reset();
+    gScript.ipType = 2;
+    gScript.scriptFailure("XRFdc_GetClkDistribution", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    bool ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 1);
+    if (ok) ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // No source, an IPType of 2 and no groups.
+    if (ok) ok = (status->getWord(0) == 0x00000200u);
+    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+    if (!ok) {
+        fprintf(stderr, "refused query: status=0x%08X map=0x%08X, %zu query call(s)\n",
+                status->getWord(0), map->getWord(0),
+                gScript.countCalls("XRFdc_GetClkDistribution"));
+    }
+
+    runCheck("a refused distribution query leaves every tile ungrouped", ok);
+}
+
+/*
+ * The two new branches disturb nothing already in the chain, and both
+ * answer on an instance whose construction never produced a driver.
+ *
+ * Same shape as the reason-offset claim above and for the same reason: the
+ * branches are inserted into a flat else chain, so one written too wide
+ * would swallow a neighbour and one placed after the tile decode would be
+ * unreachable. The read of the first address past the pair is what proves
+ * the next register in this region is still absent rather than already
+ * answered by something.
+ */
+void checkDistributionRegistersDoNotCollideAndAnswerADeadDriver() {
+    const uint32_t pattern = 0x3C5AA5C3u;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    // The reason register and the double test pair still answer as before.
+    rim::TransactionPtr reason = driveRead(device, kInitFailReason);
+    rim::TransactionPtr lower = driveRead(device, kDoubleTestLower);
+    rim::TransactionPtr upper = driveRead(device, kDoubleTestUpper);
+
+    bool ok = reason->doneCalled() && !reason->errorStrCalled();
+    if (ok) ok = (reason->getWord(0) == 0);
+    if (ok) ok = lower->doneCalled() && !lower->errorStrCalled();
+    if (ok) ok = upper->doneCalled() && !upper->errorStrCalled();
+
+    // The first address past the pair still decodes to nothing at all.
+    if (ok) {
+        rim::TransactionPtr undecoded = driveRead(device, kUndecodedGlobal);
+
+        ok = undecoded->errorStrCalled() && !undecoded->doneCalled();
+        if (ok) ok = (undecoded->errorStrValue().find("Undefined memory") != std::string::npos);
+    }
+
+    // A write to either register is refused by the register itself, which
+    // names itself in the refusal, and mutates nothing: the scratchpad is
+    // read back afterwards to show that a refused word left the rest of the
+    // block alone.
+    if (ok) {
+        driveWrite(device, kScratchPad, pattern);
+
+        rim::TransactionPtr wrStatus = driveWrite(device, kClkDistStatus, 0xDEADBEEFu);
+        rim::TransactionPtr wrMap = driveWrite(device, kClkDistMap, 0xDEADBEEFu);
+
+        ok = wrStatus->errorStrCalled() && !wrStatus->doneCalled();
+        if (ok) ok = (wrStatus->errorStrValue().find("ClkDistStatus") != std::string::npos);
+        if (ok) ok = wrMap->errorStrCalled() && !wrMap->doneCalled();
+        if (ok) ok = (wrMap->errorStrValue().find("ClkDistMap") != std::string::npos);
+
+        if (ok) {
+            rim::TransactionPtr scratch = driveRead(device, kScratchPad);
+
+            ok = scratch->doneCalled() && !scratch->errorStrCalled();
+            if (ok) ok = (scratch->getWord(0) == pattern);
+        }
+    }
+
+    // And both are answered rather than refused on an instance whose
+    // construction died at the libmetal device registration, which is the
+    // whole point of admitting them: the IPType a host reads there is what
+    // someone working out why this driver is dead actually needs.
+    if (ok) {
+        PyRFdcPtr dead = createDeadDevice("XRFdc_RegisterMetal");
+
+        rim::TransactionPtr deadStatus = driveRead(dead, kClkDistStatus);
+        rim::TransactionPtr deadMap = driveRead(dead, kClkDistMap);
+
+        ok = deadStatus->doneCalled() && !deadStatus->errorStrCalled();
+        if (ok) ok = deadMap->doneCalled() && !deadMap->errorStrCalled();
+        // Never captured, no source, no groups, and every tile ungrouped.
+        if (ok) ok = (deadStatus->getWord(0) == 0x0000FF00u);
+        if (ok) ok = (deadMap->getWord(0) == 0xFFFFFFFFu);
+
+        if (!ok) {
+            fprintf(stderr, "distribution registers on a dead driver: status=0x%08X map=0x%08X\n",
+                    deadStatus->getWord(0), deadMap->getWord(0));
+        }
+    }
+
+    if (!ok) {
+        fprintf(stderr, "distribution register collision: reason=0x%08X\n", reason->getWord(0));
+    }
+
+    // Cleared on the way out, because this claim is the only one here that
+    // scripts a construction failure and the two meta-assertions at the end
+    // of this file construct their instance before they reset the fixture.
+    // Leaving the selector set would hand them a dead driver and make them
+    // red for a reason that has nothing to do with what they assert.
+    gScript.reset();
+
+    runCheck("the distribution registers do not collide and answer a dead driver", ok);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
@@ -3078,7 +3248,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 62;
+const int kClaimsBeforeCountCheck = 65;
 
 /*
  * Every claim this file defines actually ran.
@@ -3170,6 +3340,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkFailureConstantStillStopsTheCall();
 
     checkClockDistributionTopologyIsCapturedAtConstruction();
+    checkPreGen3DriverIsNeverAskedForTheDistribution();
+    checkRefusedDistributionQueryLeavesEveryTileUngrouped();
+    checkDistributionRegistersDoNotCollideAndAnswerADeadDriver();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
