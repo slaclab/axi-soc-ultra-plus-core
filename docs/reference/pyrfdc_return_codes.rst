@@ -1,14 +1,15 @@
 PyRFdc Return Codes and Initialization Guard
 ============================================
 
-This page documents two properties of ``shared/Yocto/recipes-apps/pyrfdc/files/PyRFdc.cpp``,
+This page documents three properties of ``shared/Yocto/recipes-apps/pyrfdc/files/PyRFdc.cpp``,
 the rogue memory slave that exposes the Xilinx RF Data Converter driver over AXI-Lite: how it
-compares the status values the driver hands back, and which register offsets it still answers
-on an instance whose construction never produced a usable driver instance. Both are behavior
-changes against the previously released file, and this file is consumed by every project built
-on this core, so the detail below is written for a reviewer auditing the change against a board
-this repository has no access to. The AXI-Lite addressing model itself is documented on the
-``Register Map`` page.
+compares the status values the driver hands back, which register offsets it still answers
+on an instance whose construction never produced a usable driver instance, and how a global
+reset now sequences the converter tiles against the clock distribution topology the part is
+wired for. All three are behavior changes against the previously released file, and this file
+is consumed by every project built on this core, so the detail below is written for a reviewer
+auditing the change against a board this repository has no access to. The AXI-Lite addressing
+model itself is documented on the ``Register Map`` page.
 
 Driver return code comparisons
 ------------------------------
@@ -325,6 +326,200 @@ does.
 The reviewer who can close what remains is one who owns a board on which either of those two
 calls reports a non-success. The first residual above can also be closed by anyone who can read
 the release implementation in libmetal's own source, which this repository does not carry.
+
+Global reset sequencing and clock distribution
+----------------------------------------------
+
+A converter tile whose sample clock is distributed from another tile cannot be restarted on its
+own. The previously released file did not know which tile clocks which: a global reset walked
+the four tiles of one type in tile id order, and issued up to three IPSM cycles per tile. This
+section records, per site, what a global reset does now.
+
+The topology is read and never programmed. Nothing on this path calls
+``XRFdc_SetClkDistribution``. A board whose topology reports no distribution keeps the tile
+order, the call sequence and the log output it has today, and the rows below say for each site
+whether it can reach such a board at all.
+
+Line numbers below are as of the commit that added this section. The durable anchor for each row
+is the enclosing function together with the driver call named beside it.
+
+.. list-table:: Behavior change at each sequencing site
+   :header-rows: 1
+   :widths: 18 16 22 24 20
+
+   * - Enclosing function
+     - Driver call
+     - Before the change
+     - After the change
+     - Can this arise on a board with no clock distribution
+   * - ``PyRFdc::PyRFdc``, line 399
+     - ``XRFdc_GetClkDistribution``
+     - Never called. This file named no distribution symbol at all and carried the support as a
+       standing TODO.
+     - Called once at construction, and only when ``RFdc_Config.IPType`` is at least
+       ``XRFDC_GEN3``. The result is decoded into a per tile cache of role, master type and
+       master tile. The call sits inside an ``== XRFDC_SUCCESS`` test and the cache is written
+       only on success, so a refused query leaves every tile ungrouped.
+     - Yes, and on such a board the gate is the point. A driver reporting pre-Gen3 is never
+       asked and therefore gains no new driver error line at bridge start. A Gen3 driver that
+       refuses the call falls back to ungrouped rather than to the raw decode below, because the
+       decode is selected by the IP generation gate and not by the return value.
+   * - ``PyRFdc::decodeClkDistributionRaw``, line 4104, reached from the constructor at line 403
+     - ``XRFdc_CheckTileEnabled``, then ``XRFdc_RDReg`` of the per tile clock detect register at
+       offset ``0x0080``
+     - No such function. A driver that would refuse the documented query left this file with no
+       topology and no second source.
+     - Runs in place of the documented query for a driver reporting pre-Gen3. It reads the clock
+       detect register of each enabled tile and reproduces the arithmetic the driver itself
+       performs inside ``XRFdc_GetClkDistribution``, which is the search for the source package
+       tile and the mapping from a package index back to a tile type and tile id. A tile whose
+       register names no source stays ungrouped, and a tile that names only itself is a master
+       only if at least one other tile names it.
+     - Yes. It runs on every pre-Gen3 board, which is the population most likely to have no
+       distribution at all, and there every clock detect register names no source, so the decode
+       finds nothing and every tile stays ungrouped. This path reads registers and nothing else:
+       it issues no reset and writes no tile.
+   * - ``PyRFdc::Reset`` global sweep, the removed pre-reset and second loop, and the
+       compensating reset at line 706
+     - ``XRFdc_Reset``, decided by the ``XRFdc_RDReg`` power up status read of the tile common
+       status register at offset ``0x0228`` at line 670 and by ``XRFdc_DynamicPLLConfig`` at
+       line 673
+     - Every enabled tile received a conditional reset before its PLL reconfigure, guarded on
+       the tile PLL being enabled, and an unconditional reset in a second loop over the tiles
+       after the settings had been restored. A healthy powered up tile with its PLL enabled
+       therefore received three IPSM cycles per global reset: the pre-reset, the cycle the
+       reconfigure performs internally, and the post-reset.
+     - Both explicit resets are gone and the entire second loop with them, so the sweep walks
+       the tiles once rather than twice. One compensating ``XRFdc_Reset`` is issued for a tile
+       only when the power up status read taken before the reconfigure was zero, or the
+       reconfigure did not return success. The same healthy powered up tile now receives one
+       cycle, and that cycle is performed by the PLL reconfigure through the same restart
+       primitive the explicit resets reach. The two cases the compensating reset covers are the
+       tile that was not powered up and the tile whose reconfigure failed, which are exactly the
+       tiles that would otherwise have received no cycle at all.
+     - Yes, on every board. This row is reached by a host write to either global reset offset,
+       which is the first thing the pyrogue bring up sequence does, and the per tile cycle count
+       it changes does not depend on the topology in any way.
+   * - ``PyRFdc::Reset`` global sweep, line 621, with ``PyRFdc::buildOwnedTileWalk`` at line 4248
+       and ``PyRFdc::buildDeferralMessage`` at line 4311
+     - None in the walk itself. Every tile it yields still passes ``XRFdc_CheckTileEnabled`` at
+       line 656 before any driver call is made against it.
+     - Each of the two global reset commands walked the four tiles of its own type in tile id
+       order. A tile taking its clock from a tile of the other type was therefore restarted
+       without its master.
+     - Work is divided between the two commands by ownership of the distribution master. Each
+       command takes the groups whose master is of its own tile type, in full and master first
+       with the edge tiles in ascending tile index order, including edge tiles of the other
+       type, and then its own tiles that belong to no group. No state is carried between the two
+       calls. A command that passes over a tile of its own type emits one ``log_->warning`` at
+       line 916 naming each deferred tile and the master it was deferred to.
+     - Yes, and there the behavior is unchanged: every tile is ungrouped, each command walks its
+       own four tiles in ascending tile id exactly as before, and the deferral line is not built
+       at all. **The consequence for a board owner who does have a distribution:** a standalone
+       call to one of the two commands no longer resets a tile of that type whose clock master
+       is of the other type, and the warning line names the tile it deferred and the master it
+       deferred to.
+   * - ``PyRFdc::recoverClkGroup``, line 4385, armed by the pass at line 817
+     - ``XRFdc_Reset`` at line 4422
+     - No retry construct of any kind existed in this file. A tile that returned non-success
+       from its reset was recorded and reported, and nothing further was attempted.
+     - A reset that returns non-success on a tile the cached topology calls a distribution edge
+       arms exactly one further pass of ``XRFdc_Reset`` over that tile's whole group, master
+       first and then the edge tiles in ascending tile index order. The arming predicate is a
+       conjunction: the recorded step must be ``XRFdc_Reset`` and the cached role must be edge,
+       so a tile that failed at some other step arms nothing. The bound is one attempt per group
+       per global reset however many of that group's edge tiles failed, held in a set local to
+       the call. A recovery whose resets all succeed clears the failure records of the tiles it
+       reset, so the transaction completes reporting no error, and it remains visible in three
+       places: the armed and succeeded halves of ``0x1201C``, a second cycle in the per tile
+       cycle count, and one warning line naming the arming tile and the master.
+     - No. Arming requires the cached topology to call the tile a distribution edge, so on a
+       board reporting no distribution no tile ever qualifies, the arming pass finds nothing,
+       and the reset path is identical to the one before this was added.
+   * - ``PyRFdc::ClkDistStatus``, line 4478, at offset ``0x12010``
+     - None. The body reads members and names the driver instance nowhere.
+     - The offset decoded to nothing, so a transaction against it was refused as undefined
+       memory.
+     - Reports where the cached topology came from in bits 7:0, as 0 for nothing obtained, 1 for
+       the documented getter and 2 for the raw decode; the IP generation the driver reports for
+       this part in bits 15:8; and the number of distribution groups found in bits 23:16. Both
+       byte fields saturate rather than wrap. A write is refused by name.
+     - Yes, and this is the register that says so. A board with no distribution reads a group
+       count of zero against a non-zero source, which is a different reading from a board that
+       was never asked, and the IP generation field is the only place this driver publishes what
+       the driver thinks the part is.
+   * - ``PyRFdc::ClkDistMap``, line 4501, at offset ``0x12014``
+     - None. The body reads members and names the driver instance nowhere.
+     - The offset decoded to nothing, as above.
+     - Four bits per tile at tile index type times four plus tile, so ADC 0 occupies bits 3:0 and
+       DAC 3 occupies bits 31:28. A nibble reads ``0xF`` when the tile is ungrouped, and
+       otherwise the tile index of that tile's distribution master, so a master's own nibble
+       holds its own index. A write is refused by name.
+     - Yes. Such a board reads ``0xFFFFFFFF``, which is every tile ungrouped, and that reading is
+       what distinguishes a grouping that did not engage from one that did.
+   * - ``PyRFdc::ResetCycleCount``, line 4550, at offset ``0x12018``
+     - None. The body reads members and names the driver instance nowhere.
+     - The offset decoded to nothing, as above.
+     - Four bits per tile in the same nibble layout, holding how many IPSM cycles the last global
+       reset covering that tile issued for it. A cycle is counted whether it came from an
+       explicit reset or from the internal restart the PLL reconfigure performs, because a count
+       of explicit calls would read zero for every tile of a healthy reset. Each nibble saturates
+       at 15. Each global reset clears only the tiles it covers, so a host that has driven both
+       reads all eight nibbles. A write is refused by name.
+     - Yes. On such a board both commands walk their own four tiles, so a host that has driven
+       both reads one per tile, and a nibble reading zero after a reset that covered the tile
+       means the tile received no cycle at all.
+   * - ``PyRFdc::RecoveryCount``, line 4597, at offset ``0x1201C``
+     - None. The body reads members and names the driver instance nowhere.
+     - The offset decoded to nothing, as above.
+     - Bits 15:0 count the recoveries armed since construction and bits 31:16 count the ones that
+       succeeded. Both halves saturate at ``0xFFFF``. Two counts and not one, because never
+       armed, armed and failed, and armed and succeeded are three findings and a single number
+       collapses two of them: a successful recovery leaves the reset returning success, so
+       without this register a boot with several silent recoveries and a boot that needed none
+       would look identical. A write is refused by name.
+     - Yes, and it reads zero there forever, because no tile on such a board can arm a recovery.
+       A zero on any board means no recovery was ever armed, which is not the same statement as a
+       recovery that was not needed.
+
+All four registers are admitted on read by the guard described above, at line 4685, which admits
+``0x12010`` through ``0x1201C`` for reads because none of the four bodies dereferences the driver
+instance. On an instance whose construction never produced a usable driver they answer with the
+values their members were declared with, which is the truth for a driver that ran no sweep. All
+four are exposed on the host side as read-only variables with no polling interval, for the reason
+recorded above for the initialization failure reason register.
+
+What this change is not proven to do
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A reviewer auditing this against a board that this repository cannot test should read the
+following as part of the change itself, not as a caveat appended to it.
+
+The grouping and the recovery are proven board-free and nothing more. Both are driven by the host
+harness recorded in the reference facts section below, against hand-written shim headers and a
+scripted driver stub. That is a claim about the shim's behavior and not automatically about the
+Yocto build's, in the same terms that section states for every other claim this harness makes.
+
+Neither topology source has been executed against a real driver in this repository. Both are
+transcriptions of driver behavior read at upstream tag ``xilinx_v2026.1``, which is not present
+on the host where this work was done. The documented getter is called through the vendor API and
+so is only as correct as the IP generation gate in front of it; the raw decode reproduces
+arithmetic read out of the driver source. A board whose topology reads back differently from what
+the driver would have reported is a possibility this repository cannot exclude, and ``0x12010``
+and ``0x12014`` exist so that a reader can see which source answered and what it found rather
+than assume either.
+
+No software recovery has ever been observed to work on the one carrier available to this work.
+Across the converter failures recorded on it, a bridge relaunch, a service restart and a full
+warm reboot all reported that nothing recovered; the only two things measured to clear the fault
+were several hours of elapsed time and a debug channel system reset, each observed once. The
+recovery described above is a mechanism, and the existence of that mechanism is not evidence that
+it recovers anything. It may be a no-op on that board.
+
+The accumulation of evidence on hardware is therefore limited to what the four registers report
+on a healthy boot: which topology source answered, what it found, how many IPSM cycles each of
+the eight tiles received, and whether any recovery armed. Nothing here has been observed clearing
+a wedged converter, and no row above should be read as claiming that it does.
 
 Reference facts
 ---------------
