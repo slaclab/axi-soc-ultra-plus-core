@@ -163,8 +163,10 @@ Driver initialization guard
 
 The constructor has four early returns. Each logs a line and leaves the object constructed with
 its driver instance never initialized, and roughly ninety dispatch bodies read through that
-instance. A fifth outcome exists with no early return at all: the configuration initialize call
-can report a non-success, in which case the driver instance was never configured.
+instance. A fifth outcome behaves the same way: the configuration initialize call can report a
+non-success, in which case the driver instance was never configured and the constructor returns
+at that point. That call is not one of the four named bail-outs, so the reason reported for it
+is that construction did not complete rather than a named step.
 
 A single guard now sits after the address decode and before the first dispatch branch. On an
 instance whose construction did not produce a usable driver it refuses the transaction with a
@@ -193,12 +195,27 @@ therefore refused by default, and admitting it has to be a deliberate edit.
    * - ``0x12008``
      - Reads and writes
      - Scratchpad. The body reads and writes one member and nothing else.
+   * - ``0x1200C``
+     - Reads only
+     - Initialization failure reason. The body reads one member and names the driver instance
+       nowhere. The write is refused.
    * - ``0x13000``
      - Reads and writes
      - Double test register, lower word. The body reads and writes one member of this class.
    * - ``0x13004``
      - Reads and writes
      - Double test register, upper word. Same body, same member.
+
+The members behind every offset in that table are initialized at their declaration in
+``PyRFdc.h`` and not in the constructor's local variable block. Every one of the constructor's
+early returns, including the one on a declined configuration initialize described below,
+happens before that block, so a member initialized only there would hold whatever the storage
+contained on exactly the paths the guard exists for. The declared values are ``scratchPad_``
+zero, ``doubleTestReg_`` positive zero, ``metalLogLevel_`` false and ``ignoreMetalError_``
+false, alongside ``initFailReason_`` at ``PYRFDC_INIT_FAIL_NOT_COMPLETED`` and ``driverValid_``
+false, which were already declared that way. An offset the guard was extended to keep
+answerable therefore answers with a declared value on every path that can reach it, rather
+than with the contents of this process's memory.
 
 Two departures from a minimal reading are worth naming, because a reviewer checking the rule
 against the requirement will find both.
@@ -213,6 +230,44 @@ because it returns a stored value, and its write is refused because the write pa
 library that may never have been initialized on this path. Reads and writes of the same offset
 are not always the same question, and this is the one place in the admitted set where they
 differ.
+
+Constructor bail-out on a declined configuration initialize
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The return on a non-success ``XRFdc_CfgInitialize`` is itself a behavior change, on a call that
+runs on every board, so it is written out here rather than left to be found in the diff.
+
+The return sits immediately after the ``XRFdc_CfgInitialize`` call and before the sample rate
+workaround loop, so that loop's two direct writes per tile to the ``MaxSampleRate`` field of the
+instance's ADC and DAC tile configurations do not happen either.
+
+A board on which that call reports a non-success previously continued through the rest of the
+constructor and did all of the following through an instance the driver had just declined to
+configure:
+
+- wrote ``MaxSampleRate`` on all four ADC tile configurations and all four DAC tile
+  configurations held inside the instance
+- ``XRFdc_CheckTileEnabled`` once per tile
+- ``XRFdc_GetClockSource`` and ``XRFdc_GetPLLConfig`` once per enabled tile
+- ``XRFdc_DynamicPLLConfig`` once per enabled tile. This is the one entry in the list that
+  writes the converter rather than reading it
+- ``XRFdc_CheckBlockEnabled`` and ``XRFdc_GetQMCSettings`` once per enabled block
+- ``XRFdc_CheckDigitalPathEnabled``, and on the digital path branch ``XRFdc_RDReg``, a raw
+  register read
+- ``XRFdc_GetMixerSettings`` once per enabled block
+
+It now returns at that call. None of the above is issued, the instance is marked unusable, the
+reason reports that construction did not complete, and every later transaction that would reach
+the driver instance is refused with a message naming that outcome and the rejected address. The
+offsets in the table above stay readable throughout.
+
+This repository cannot test that change, for the same reason it cannot test the comparison
+conversions above. There is one carrier available to this work, its configuration initialize
+succeeds, and the vendor driver implementation is not present in this repository, so the
+conditions under which that call reports a non-success can be neither reproduced nor read here.
+The reviewer who can close it is one who owns a board on which that call does not succeed. It is
+not a corner case: the call runs on every construction on every board, and this is the path
+taken whenever it answers anything other than success.
 
 Reference facts
 ---------------
