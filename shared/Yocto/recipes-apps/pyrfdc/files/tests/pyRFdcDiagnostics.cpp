@@ -4311,6 +4311,63 @@ void checkRecoveryThatSucceededIsStillCounted() {
 }
 
 /*
+ * A recovery that worked clears the record it re-ran and no other.
+ *
+ * The claim above establishes that a successful attempt clears what it
+ * addressed. This one establishes the other half, which is the half a
+ * clearing pass written over the whole group gets wrong: the group holds
+ * tiles that failed at different steps, and only one of those steps is the
+ * one the attempt re-ran.
+ *
+ * ADC 3 fails its reset once, so it arms the attempt and the attempt's own
+ * reset succeeds. DAC 0, the group master, fails its quadrature settings
+ * write for good, which no number of resets addresses. A pass that cleared
+ * the whole group would erase that record before the sweep derives its
+ * verdict from the records, and the host would be told the converter reset
+ * succeeded while DAC 0 runs with settings that were never applied. That is
+ * worse than the behaviour before the recovery existed, which at least
+ * reported the settings failure.
+ *
+ * Asserted on the reported text and not only on the transaction flag,
+ * because an error raised for some other reason would satisfy the flag. The
+ * surviving failure has to be named, by tile and by step, in what the host
+ * is handed.
+ */
+void checkRecoveryClearsOnlyTheTileItReRan() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+    gScript.scriptFailure("XRFdc_SetQMCSettings", XRFDC_DAC_TILE, 0, 0, XRFDC_FAILURE);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    const std::string msg = dac->errorStrValue();
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+
+    bool ok = armed->doneCalled() && !armed->errorStrCalled();
+    // One armed and one succeeded, so the attempt ran and reported success.
+    // Without that the surviving record would prove nothing: a recovery that
+    // failed clears nothing at all.
+    if (ok) ok = (armed->getWord(0) == 0x00010001u);
+    if (ok) ok = dac->errorStrCalled();
+    if (ok) ok = (msg.find("DAC0") != std::string::npos);
+    if (ok) ok = (msg.find("XRFdc_SetQMCSettings") != std::string::npos);
+
+    if (!ok) {
+        fprintf(stderr,
+                "clears only its own: recoveries=0x%08X, done=%u err=%u, message '%s'\n",
+                armed->getWord(0), dac->doneCalls(), dac->errorStrCalls(), msg.c_str());
+    }
+
+    runCheck("a recovery clears only the tile it re-ran at the reset", ok);
+}
+
+/*
  * Two failing edge tiles of one group arm one recovery between them.
  *
  * The bound is one attempt per group per global reset, tracked by a set of
@@ -4563,7 +4620,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 87;
+const int kClaimsBeforeCountCheck = 88;
 
 /*
  * Every claim this file defines actually ran.
@@ -4679,6 +4736,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkFailingTileThatIsNotAnEdgeArmsNoRecovery();
     checkEdgeTileFailingAtAnotherStepArmsNoRecovery();
     checkRecoveryThatSucceededIsStillCounted();
+    checkRecoveryClearsOnlyTheTileItReRan();
     checkTwoFailingEdgesInOneGroupArmOneRecovery();
     checkRecoveryCounterIsReadOnlyAndAnswersADeadDriver();
     checkRecoveryRerunsTheGroupMasterFirst();

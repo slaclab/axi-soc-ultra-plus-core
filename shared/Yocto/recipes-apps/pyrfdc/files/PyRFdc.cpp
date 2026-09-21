@@ -4448,9 +4448,29 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
         // message built for some other tile still report this one as
         // observed rather than as failed, which is a distinction the
         // message builder already draws.
+        //
+        // Scoped to the records this attempt actually addressed. The attempt
+        // re-ran one primitive, XRFdc_Reset, so the only record it can
+        // honestly clear is a record naming that primitive. A tile whose
+        // quadrature settings, mixer settings, PLL reconfigure or event
+        // update returned non-success failed at something this attempt did
+        // not address, and clearing it would report a reset that left
+        // settings unapplied as a clean one.
+        //
+        // The clear is a different question from the arm. The arming test
+        // upstream already decides which tile may arm an attempt, but one
+        // group can hold tiles that failed at different steps, so the tile
+        // that armed says nothing about what the rest of its group went
+        // wrong at.
         for (g = 0; g < groupLen; g++) {
-            tileDiag_[group[g] >> 2][group[g] & 0x3].failed = false;
-            tileDiag_[group[g] >> 2][group[g] & 0x3].step = "";
+            TileDiag &d = tileDiag_[group[g] >> 2][group[g] & 0x3];
+
+            if (!d.failed || (d.step == nullptr) ||
+                (std::strcmp(d.step, "XRFdc_Reset") != 0)) {
+                continue;
+            }
+            d.failed = false;
+            d.step   = "";
         }
     }
 
