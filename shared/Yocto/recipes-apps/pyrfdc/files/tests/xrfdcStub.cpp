@@ -117,7 +117,11 @@ void metal_set_log_level(enum metal_log_level level) {
 }
 
 void metal_device_close(struct metal_device *device) {
-    (void)device;
+    //! Recorded, never dereferenced. The constructor's registration bail-out
+    //! is the one caller that can reach here with a value the registration
+    //! never produced, so reading through it would reproduce the fault a
+    //! claim about this path is trying to observe.
+    gScript.closedDevice = static_cast<const void *>(device);
     rec("metal_device_close", ANY, ANY, ANY);
 }
 
@@ -157,8 +161,16 @@ u32 XRFdc_CfgInitialize(XRFdc *InstancePtr, XRFdc_Config *ConfigPtr) {
 
 u32 XRFdc_RegisterMetal(XRFdc *InstancePtr, u16 DeviceId, struct metal_device **DevicePtr) {
     (void)InstancePtr;
-    if (DevicePtr != nullptr) *DevicePtr = &gMetalDevice;
-    return rec("XRFdc_RegisterMetal", DeviceId, ANY, ANY);
+    const u32 status = rec("XRFdc_RegisterMetal", DeviceId, ANY, ANY);
+    //! Left unwritten on a failure, which is what the driver does. Both of
+    //! the vendor call's failure exits, the device name lookup and the
+    //! device open, return without touching the out parameter, so a stub
+    //! that writes it before consulting the status is kinder than the driver
+    //! and hides a whole class of defect from every claim that drives this
+    //! path: the caller's local keeps whatever it already held and any use
+    //! of it looks like a use of a pointer the registration produced.
+    if (status == XRFDC_SUCCESS && DevicePtr != nullptr) *DevicePtr = &gMetalDevice;
+    return status;
 }
 
 /* ------------------------------------------------------------------------ */

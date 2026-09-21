@@ -14,7 +14,7 @@
  * object that every stub consults keeps the scripted failure, the recorded
  * call list and the register contents consistent by construction.
  *
- * It carries six things:
+ * It carries seven things:
  *
  *   calls        an ordered record of every driver call, each formatted as
  *                name/type/tile/block, so a check can assert the sequence a
@@ -43,6 +43,13 @@
  *                the instance in is private and the check functions here
  *                are free functions with no access to it. The pointer the
  *                stub receives is the one caller-observable handle on it.
+ *   closedDevice the pointer metal_device_close was handed. Recorded for the
+ *                same reason cfgInstance is: the constructor's registration
+ *                bail-out passes a pointer this file cannot otherwise see,
+ *                the close stub discards its argument, and a claim about
+ *                which pointer was closed has no other handle on it. Stored
+ *                as an opaque address and never dereferenced, because on the
+ *                path it exists to observe the value is not a device at all.
  *
  * Test-build only. See shim/rogue/Directives.h for why files/tests/ cannot
  * reach the Yocto image build.
@@ -136,6 +143,13 @@ class XRFdcScript {
     //! ordered call list cannot see.
     const XRFdc *cfgInstance = nullptr;
 
+    //! The pointer metal_device_close was handed. The constructor's
+    //! registration bail-out closes a local this file cannot see and the
+    //! close stub discards its argument, so this is the only handle a claim
+    //! has on which pointer that bail-out actually passed. Held as an opaque
+    //! address so nothing here can be tempted to read through it.
+    const void *closedDevice = nullptr;
+
     //! Clear every recorded and scripted item. Called between claims so one
     //! claim cannot pass on state another claim left behind.
     void reset() {
@@ -148,6 +162,7 @@ class XRFdcScript {
         registers_.clear();
         pllEnabled = 0;
         cfgInstance = nullptr;
+        closedDevice = nullptr;
     }
 
     //! Script a non-success return for the matching calls. A field left at

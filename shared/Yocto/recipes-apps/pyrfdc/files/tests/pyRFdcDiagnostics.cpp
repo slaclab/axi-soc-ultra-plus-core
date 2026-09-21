@@ -1507,6 +1507,68 @@ PyRFdcPtr createDeadDeviceInDirtyStorage(const char *failingCall) {
     return PyRFdcPtr(instance, [](PyRFdc *p) { p->~PyRFdc(); });
 }
 
+//! Bytes of stack the helper below writes the fill pattern into. Comfortably
+//! larger than the frame the constructor and the calls it makes before its
+//! registration step occupy, so the region that frame is about to sit in is
+//! covered.
+const size_t kStackPoisonBytes = 8192;
+
+/*
+ * Write the fill pattern into a region of stack below this function's own
+ * frame, then release it.
+ *
+ * The array is volatile so the write loop survives the -O2 the tests
+ * Makefile builds with, and the function carries the no-inline attribute so
+ * its frame is really pushed and really released rather than folded into the
+ * caller's.
+ */
+__attribute__((noinline)) void poisonStackRegion() {
+    volatile unsigned char scratch[kStackPoisonBytes];
+    for (size_t i = 0; i < kStackPoisonBytes; i++) {
+        scratch[i] = kDirtyFill;
+    }
+}
+
+/*
+ * The same construction as createDeadDeviceInDirtyStorage, with the stack the
+ * constructor's frame is about to occupy filled with the same pattern first,
+ * and with the recorded lists left alone.
+ *
+ * Placement new into the existing static buffer is used rather than the
+ * allocator, because an allocation between the fill and the construction
+ * would run allocator code through the very region the constructor's frame is
+ * about to occupy and overwrite it.
+ *
+ * The fill is a best effort at making an uninitialized local in that frame
+ * read back as the pattern, and the language does not guarantee it: frame
+ * layout, a red zone or a register allocation can put the local somewhere the
+ * fill never reached. The evidence that a claim built on this helper is
+ * load-bearing therefore rests on the stub mutation as well, which is
+ * deterministic because the stub then writes a real device address into the
+ * out parameter whatever the scripted status says.
+ *
+ * The recorded lists are not cleared, because the claim that uses this
+ * asserts about what the construction itself did.
+ */
+PyRFdcPtr createDeadDeviceOnPoisonedStack(const char *failingCall) {
+    gScript.reset();
+    gScript.scriptFailure(failingCall, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    std::memset(gDirtyStorage, kDirtyFill, sizeof(gDirtyStorage));
+    poisonStackRegion();
+
+    PyRFdc *instance = new (static_cast<void *>(gDirtyStorage)) PyRFdc();
+
+    return PyRFdcPtr(instance, [](PyRFdc *p) { p->~PyRFdc(); });
+}
+
+//! A recognizable non-null value a claim puts into its own local before it
+//! calls the registration entry point, so a stub that left the out parameter
+//! alone is distinguishable from one that wrote a real address into it.
+struct metal_device *const kRegistrationSentinel =
+    reinterpret_cast<struct metal_device *>(static_cast<uintptr_t>(0xA5A5A5A5u));
+
 /*
  * The step wording, transcribed rather than taken from the driver's own
  * mapping. Generating these from the table under test would make the two
@@ -1669,6 +1731,101 @@ void checkEachBailOutNamesItsOwnStep() {
     if (!ok) fprintf(stderr, "bail-out step: %s\n", detail.c_str());
 
     runCheck("each constructor bail-out names its own step", ok);
+}
+
+/*
+ * The registration stub reports its out parameter the way the driver does.
+ *
+ * This claim owns the stub's contract and nothing else. It constructs no
+ * instance of the production class, because its subject is what the stub
+ * writes and a construction would make it depend on the production code as
+ * well. The entry point is driven directly with a local this claim set to a
+ * recognizable non-null value first, so "left alone" and "written with an
+ * address" are distinguishable outcomes rather than one indistinguishable
+ * non-null.
+ *
+ * It exists so that a later edit cannot re-blind the harness silently. A stub
+ * that went back to writing the out parameter before consulting the scripted
+ * status would make every claim about the registration bail-out a claim about
+ * a stub kinder than the driver, and nothing else in this file would say so.
+ */
+void checkRegistrationStubLeavesDevicePointerUnwrittenOnFailure() {
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_RegisterMetal", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    struct metal_device *failed = kRegistrationSentinel;
+    const u32 failStatus = XRFdc_RegisterMetal(nullptr, RFDC_DEVICE_ID, &failed);
+
+    gScript.reset();
+
+    struct metal_device *passed = kRegistrationSentinel;
+    const u32 okStatus = XRFdc_RegisterMetal(nullptr, RFDC_DEVICE_ID, &passed);
+
+    bool ok = (failStatus != XRFDC_SUCCESS);
+    if (ok) ok = (failed == kRegistrationSentinel);
+    if (ok) ok = (okStatus == XRFDC_SUCCESS);
+    if (ok) ok = (passed != nullptr);
+    if (ok) ok = (passed != kRegistrationSentinel);
+
+    if (!ok) {
+        fprintf(stderr,
+                "registration stub: failure status=%u pointer=%p, success status=%u pointer=%p, "
+                "sentinel=%p\n",
+                failStatus, static_cast<void *>(failed), okStatus, static_cast<void *>(passed),
+                static_cast<void *>(kRegistrationSentinel));
+    }
+
+    runCheck("the registration stub leaves its device pointer unwritten on a scripted failure", ok);
+}
+
+/*
+ * A registration that did not succeed handed nothing back, so the bail-out
+ * closes nothing.
+ *
+ * The recorded call list is read while the instance is still alive, for the
+ * reason the comment on checkNoDriverCallFollowsAFailedCfgInitialize gives:
+ * the destructor closes a device and finishes libmetal of its own, so counts
+ * taken after the instance went out of scope would be about teardown rather
+ * than about construction. Nothing is written through the instance before
+ * those counts are taken either.
+ *
+ * The libmetal finish is counted alongside the close because the two sit on
+ * the same three lines: a guard written so that it skipped the release as
+ * well would satisfy a close-only claim and would leak the library.
+ *
+ * The refusal is driven afterwards so the step a host reads back is pinned
+ * here too, since the whole reason the process has to survive this path is
+ * that the reason register is the answer to why the driver is dead.
+ */
+void checkRegistrationBailOutClosesNoDevice() {
+    PyRFdcPtr device = createDeadDeviceOnPoisonedStack("XRFdc_RegisterMetal");
+
+    const size_t closes = gScript.countCalls("metal_device_close");
+    const size_t finishes = gScript.countCalls("metal_finish");
+    const void *handed = gScript.closedDevice;
+
+    bool ok = (closes == 0);
+    if (ok) ok = (finishes == 1);
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+    gScript.metalLogs.clear();
+
+    rim::TransactionPtr tran = driveWrite(device, kResetAllAdc, 1);
+    const std::string msg = tran->errorStrValue();
+
+    if (ok) ok = tran->errorStrCalled() && !tran->doneCalled();
+    if (ok) ok = (msg.find(kStepRegisterMetal) != std::string::npos);
+
+    if (!ok) {
+        fprintf(stderr,
+                "registration bail-out: %zu close call(s), %zu libmetal finish call(s), "
+                "closed pointer handed to the close stub %p, text '%s'\n",
+                closes, finishes, const_cast<void *>(handed), msg.c_str());
+    }
+
+    runCheck("the registration bail-out closes no device the registration never handed back", ok);
 }
 
 /*
@@ -2645,7 +2802,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 56;
+const int kClaimsBeforeCountCheck = 58;
 
 /*
  * Every claim this file defines actually ran.
@@ -2705,6 +2862,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkDeadDriverKeepsPureStateReadable();
     checkDeadDriverRejectsMetalLogLevelWrite();
     checkEachBailOutNamesItsOwnStep();
+    checkRegistrationStubLeavesDevicePointerUnwrittenOnFailure();
+    checkRegistrationBailOutClosesNoDevice();
     checkNotCompletedConstructorIsDeadByDefault();
     checkFailedCfgInitializeStopsTheConstructor();
     checkNoDriverCallFollowsAFailedCfgInitialize();
