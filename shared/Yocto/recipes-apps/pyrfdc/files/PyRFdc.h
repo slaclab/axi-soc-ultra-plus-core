@@ -457,6 +457,42 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! cannot disturb a word some other caller is about to hand back.
     void decodeClkDistributionRaw();
 
+    //! Whether the global reset of this tile type is the one that owns the
+    //! named tile, where a tile index is type * 4 + tile.
+    //!
+    //! A call owns every distribution group whose master is of its own tile
+    //! type, in full and including edge tiles of the other type, plus every
+    //! tile of its own type that belongs to no group. It owns no group whose
+    //! master is of the other type.
+    //!
+    //! On this carrier that makes the ADC entry point the owner of ADC 0, 1
+    //! and 2, which have their own clock pins, and the DAC entry point the
+    //! owner of DAC 0 as master and of ADC 3, DAC 1, DAC 2 and DAC 3 as its
+    //! edges. A standalone ADC reset declining to touch ADC 3 is the point
+    //! of the rule and not a gap in it: ADC 3 has no clock of its own and
+    //! cannot be restarted in isolation from DAC 0.
+    bool tileIsOwnedBy(uint32_t type, uint32_t idx) const;
+
+    //! Fill walk with the tile indices the global reset of this tile type
+    //! must visit, in the order it must visit them, and return how many
+    //! entries were filled.
+    //!
+    //! A helper rather than a transaction body, for the same reason
+    //! readTileDiagnostics is one: it writes only through its out parameter,
+    //! reads neither tileType_ nor tileId_ and never touches data_, so it
+    //! cannot disturb a word some other caller is about to hand back.
+    //!
+    //! It makes no driver call at all. Membership and order are derived from
+    //! the cached topology and the tile type and from nothing else, so a
+    //! cache that read back wrong can produce a strange walk but cannot
+    //! reach the converter: every tile the walk yields still passes the
+    //! enable probe before any driver call is made against it.
+    //!
+    //! walk must have room for eight entries, which is every tile on the
+    //! part. The caller supplies it on its own frame, so nothing allocates
+    //! on a path the driver may already be reporting an error from.
+    uint32_t buildOwnedTileWalk(uint32_t type, uint32_t *walk) const;
+
     void MetalLogLevel();
     void IgnoreMetalError();
     void ScratchPad();

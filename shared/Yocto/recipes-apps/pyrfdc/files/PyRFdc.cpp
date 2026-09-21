@@ -568,6 +568,10 @@ void PyRFdc::Reset(int Tile_Id) {
     int status = XRFDC_SUCCESS;
     int i, j, k;
     int diagType, diagTile;
+    int entryType = tileType_;
+    uint32_t walk[8];
+    uint32_t walkLen = 0;
+    uint32_t w;
     bool sweepFailed = false;
 
     // Check if read
@@ -585,31 +589,60 @@ void PyRFdc::Reset(int Tile_Id) {
             // the end of it.
             clearTileDiag();
 
-            // Init the i variable
-            i = tileType_;
+            // The tiles this call owns, in the order it has to visit them.
+            //
+            // Not the four tiles of tileType_ any more. This call takes the
+            // distribution groups whose master is of its own tile type, in
+            // full and master first, including edge tiles of the other
+            // type, and then its own tiles that belong to no group. It
+            // takes no group whose master is of the other type.
+            //
+            // On this carrier the ADC entry point therefore covers ADC 0, 1
+            // and 2, which have their own clock pins and are ungrouped, and
+            // declines to touch ADC 3. The DAC entry point covers DAC 0 as
+            // the master of the distribution and then ADC 3, DAC 1, DAC 2
+            // and DAC 3 as its edges. ADC 3 has no clock pin of its own, so
+            // it cannot be restarted in isolation from DAC 0, and an ADC
+            // reset declining to touch it is the property this division is
+            // for rather than a tile it forgot.
+            //
+            // The list is built on this frame and the helper makes no
+            // driver call, so nothing allocates and a cache that read back
+            // wrong cannot reach a converter: every tile below still passes
+            // the enable probe before any driver call is made against it.
+            entryType = tileType_;
+            walkLen = buildOwnedTileWalk(uint32_t(entryType), walk);
 
             // Clear the cycle counts for exactly the tiles this sweep is
-            // about to cover, which today is the four tiles of tileType_.
+            // about to cover, which is the walk above and nothing else.
             //
             // Deliberately not all eight. The two global resets are separate
             // transactions, so clearing the other type's counts here would
             // erase what the earlier call recorded and a host reading the
-            // count after both resets would see only the second. That is the
-            // invariant to preserve if a later change makes one call cover a
-            // tile of the other type: widen this clear to exactly the tiles
-            // that call covers, and no further.
-            for(j=0; j<4; j++) {
-                resetCycles_[i][j] = 0;
+            // count after both resets would see only the second. On this
+            // carrier that means the ADC call clears ADC 0, 1 and 2 and
+            // leaves ADC 3 alone, and the DAC call clears DAC 0 through 3
+            // and ADC 3, so the pair reads one per tile.
+            for(w=0; w<walkLen; w++) {
+                resetCycles_[walk[w] >> 2][walk[w] & 0x3] = 0;
             }
 
             // Init the MTS configurations
-            XRFdc_MultiConverter_Init(&mtsConfig_[i], 0, 0, XRFDC_TILE_ID0);
-            mtsConfig_[i].Tiles = 0;
+            XRFdc_MultiConverter_Init(&mtsConfig_[entryType], 0, 0, XRFDC_TILE_ID0);
+            mtsConfig_[entryType].Tiles = 0;
 
-            // Loop through tile indexes
-            for(j=0; j<4; j++) {
+            // Walk the owned tiles. i and j are the walked tile's own type
+            // and id, which on the group path is not always this call's own
+            // tile type, and everything inside the loop is per tile and
+            // unchanged.
+            for(w=0; w<walkLen; w++) {
+                i = int(walk[w] >> 2);
+                j = int(walk[w] & 0x3);
 
-                // Init the MTS factor status
+                // Init the MTS factor status. Cleared for the tiles this
+                // call resets and no others, for the reason the cycle count
+                // clear above states: a cached factor for a tile this call
+                // did not restart is still the factor that tile is running.
                 mtsfactor_[i][j] = 0;
 
                 // Check if tile is enabled
@@ -3910,6 +3943,23 @@ void PyRFdc::cacheClkDistribution(const XRFdc_Distribution_System_Settings *dist
             uint32_t tile = 0;
             ClkDistTypeTile(pkg, &type, &tile);
 
+            // First slot wins. A tile an earlier slot already placed keeps
+            // that placement, and a later slot whose package range also
+            // covers it does not take it over.
+            //
+            // Stated as a rule rather than left to chance because two slots
+            // with overlapping ranges would otherwise give one tile two
+            // masters depending on the order the slots are read in. A tile
+            // holding two masters is walked by two groups and cycled twice
+            // inside one pair of global resets, which is the defect this
+            // driver is removing wearing a different hat. The same rule
+            // keeps a tile that is an edge of an earlier group from being
+            // turned into the master of a later one, so no tile ever holds
+            // two roles either.
+            if (clkDist_[type][tile].role != PYRFDC_CLKDIST_UNGROUPED) {
+                continue;
+            }
+
             clkDist_[type][tile].masterType = uint8_t(entry->SourceType);
             clkDist_[type][tile].masterTile = uint8_t(entry->SourceTileId);
 
@@ -4059,6 +4109,89 @@ void PyRFdc::decodeClkDistributionRaw() {
     // nothing stays distinguishable from one that was never attempted, and
     // clkDistGroups_ is what says whether anything was found.
     clkDistSource_ = PYRFDC_CLKDIST_SRC_RAW_DECODE;
+}
+
+bool PyRFdc::tileIsOwnedBy(uint32_t type, uint32_t idx) const {
+    const TileClkDist &tile = clkDist_[idx >> 2][idx & 0x3];
+
+    // A tile in no group belongs to the reset of its own type, which is
+    // what every tile on a board with no distribution at all is.
+    if (tile.role == PYRFDC_CLKDIST_UNGROUPED) {
+        return ((idx >> 2) == type);
+    }
+
+    // A tile in a group belongs to the reset of its master's type, whatever
+    // its own type is. Both decodes record a master's own master as itself,
+    // so this covers a master and an edge with one rule rather than two.
+    return (uint32_t(tile.masterType) == type);
+}
+
+// The tiles one global reset owns, in the order it has to visit them.
+//
+// Both the group order and the within group order are specified here rather
+// than left to the shape of a loop, so two runs against the same board
+// produce the same recorded sequence and an ordering claim means something.
+//
+// Groups first, in ascending order of the master's tile index, and inside a
+// group the master before every one of its edge tiles, those in ascending
+// tile index order. Then the remaining tiles this call owns, in ascending
+// tile index order, which on a consistent topology is exactly this type's
+// ungrouped tiles in ascending tile id.
+//
+// That last pass is written as "the remaining tiles this call owns" and not
+// as "this type's ungrouped tiles" on purpose. A cache describing an edge
+// whose master was never marked as one, which is what a distribution slot
+// naming a source outside its own edge range looks like, would otherwise
+// leave that tile in no walk at all and silently unreset by either entry
+// point. Membership is total by construction this way: every tile is owned
+// by exactly one of the two calls, and every tile a call owns is walked.
+uint32_t PyRFdc::buildOwnedTileWalk(uint32_t type, uint32_t *walk) const {
+    bool taken[8] = {false, false, false, false, false, false, false, false};
+    uint32_t count = 0;
+    uint32_t master, idx;
+
+    if (walk == nullptr) {
+        return 0;
+    }
+
+    for (master = 0; master < 8; master++) {
+        // Only the groups this call masters. A group mastered by the other
+        // type is that call's work, in full.
+        if ((master >> 2) != type) {
+            continue;
+        }
+        if (clkDist_[master >> 2][master & 0x3].role != PYRFDC_CLKDIST_MASTER) {
+            continue;
+        }
+
+        walk[count++] = master;
+        taken[master] = true;
+
+        for (idx = 0; idx < 8; idx++) {
+            const TileClkDist &tile = clkDist_[idx >> 2][idx & 0x3];
+
+            if (taken[idx] || (tile.role != PYRFDC_CLKDIST_EDGE)) {
+                continue;
+            }
+            if (((uint32_t(tile.masterType) * 4) + uint32_t(tile.masterTile)) != master) {
+                continue;
+            }
+
+            walk[count++] = idx;
+            taken[idx] = true;
+        }
+    }
+
+    for (idx = 0; idx < 8; idx++) {
+        if (taken[idx] || !tileIsOwnedBy(type, idx)) {
+            continue;
+        }
+
+        walk[count++] = idx;
+        taken[idx] = true;
+    }
+
+    return count;
 }
 
 // Where the cached topology came from, which IP generation the driver
