@@ -2945,6 +2945,37 @@ void scriptThisCarriersDistribution() {
 }
 
 /*
+ * The same carrier, in the clock detect register's own terms.
+ *
+ * One register per tile at offset 0x80. No new fixture field is needed: the
+ * XRFdc_RDReg stub returns the scripted value masked by the caller's mask,
+ * and the production decode's mask keeps every bit used here.
+ *
+ * The arithmetic is written out so a reader can check these eight values
+ * rather than trust them. A tile's source package index is 7 - i, where i
+ * is the index of the bit pair carrying the single set bit. So:
+ *
+ *   ADC 0 sits at package 7 and takes its own clock, so i is 0:  0x0001
+ *   ADC 1 sits at package 6 and takes its own clock, so i is 1:  0x0004
+ *   ADC 2 sits at package 5 and takes its own clock, so i is 2:  0x0010
+ *   every tile on the distribution names DAC 0 at package 3,
+ *   so i is 4:                                                   0x0100
+ *
+ * and the tiles on the distribution are ADC 3, DAC 0, DAC 1, DAC 2 and
+ * DAC 3, with DAC 0 naming itself because a master sources its own clock.
+ */
+void scriptThisCarriersClockDetect() {
+    gScript.scriptRegister(XRFDC_ADC_TILE, 0, 0x80, 0x0001);
+    gScript.scriptRegister(XRFDC_ADC_TILE, 1, 0x80, 0x0004);
+    gScript.scriptRegister(XRFDC_ADC_TILE, 2, 0x80, 0x0010);
+    gScript.scriptRegister(XRFDC_ADC_TILE, 3, 0x80, 0x0100);
+    gScript.scriptRegister(XRFDC_DAC_TILE, 0, 0x80, 0x0100);
+    gScript.scriptRegister(XRFDC_DAC_TILE, 1, 0x80, 0x0100);
+    gScript.scriptRegister(XRFDC_DAC_TILE, 2, 0x80, 0x0100);
+    gScript.scriptRegister(XRFDC_DAC_TILE, 3, 0x80, 0x0100);
+}
+
+/*
  * A scripted Gen3 topology travels from the driver shim into two registers.
  *
  * The two words are asserted literally rather than rebuilt from the same
@@ -3001,6 +3032,16 @@ void checkClockDistributionTopologyIsCapturedAtConstruction() {
  * on the console of every first and second generation board at every bridge
  * start, and this claim is what stops that being reintroduced by someone who
  * reads the gate as redundant with the failure fallback.
+ *
+ * The expected status word moved from 0x00000100 to 0x00000102 when the raw
+ * clock detect decode landed, and the move is deliberate rather than a
+ * number that drifted. A pre-Gen3 driver no longer stops at the gate: it
+ * reaches the raw decode, which records itself as the topology source
+ * whatever it finds, so the source field now reads 2 instead of 0. Nothing
+ * was found here, because this claim scripts no clock detect register, so
+ * the group count is still zero and the map is still every tile ungrouped.
+ * The load-bearing half of this claim is unchanged and is the zero call
+ * count on the documented query.
  */
 void checkPreGen3DriverIsNeverAskedForTheDistribution() {
     gScript.reset();
@@ -3015,8 +3056,8 @@ void checkPreGen3DriverIsNeverAskedForTheDistribution() {
     bool ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 0);
     if (ok) ok = status->doneCalled() && !status->errorStrCalled();
     if (ok) ok = map->doneCalled() && !map->errorStrCalled();
-    // No source, an IPType of 1 and no groups.
-    if (ok) ok = (status->getWord(0) == 0x00000100u);
+    // The raw decode as the source, an IPType of 1 and no groups.
+    if (ok) ok = (status->getWord(0) == 0x00000102u);
     // Every tile ungrouped.
     if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
 
@@ -3063,6 +3104,135 @@ void checkRefusedDistributionQueryLeavesEveryTileUngrouped() {
     }
 
     runCheck("a refused distribution query leaves every tile ungrouped", ok);
+}
+
+/*
+ * The two topology sources produce the same map for the same board.
+ *
+ * This is the cross-check, and it is why this claim is worth its lines.
+ * 0x44444FFF is the same literal the documented-API claim above asserts, so
+ * the two sources are pinned against one shared expected word rather than
+ * against two expectations chosen independently. A raw decode that got the
+ * bit-pair direction backwards, took a different mask, or mapped package
+ * indices the other way round would produce a different map and would be
+ * caught here rather than on a board, where the only instrument is a
+ * register read that costs an exclusive hold of the carrier.
+ *
+ * The IPType is zero, so the documented call is never issued and the map can
+ * only have come from the raw decode. That is asserted directly as well.
+ */
+void checkRawDecodeNamesTheSameMasterAsTheDocumentedApi() {
+    gScript.reset();
+    gScript.ipType = 0;
+    scriptThisCarriersClockDetect();
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    bool ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // The same word the documented API produced for the same carrier.
+    if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+    // The raw decode as the source, an IPType of 0 and one group.
+    if (ok) ok = (status->getWord(0) == 0x00010002u);
+    if (ok) ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 0);
+
+    if (!ok) {
+        fprintf(stderr,
+                "raw decode cross-check: status=0x%08X map=0x%08X, %zu query call(s)\n",
+                status->getWord(0), map->getWord(0),
+                gScript.countCalls("XRFdc_GetClkDistribution"));
+    }
+
+    runCheck("the raw decode names the same master as the documented api", ok);
+}
+
+/*
+ * A clock detect register nothing ever programmed yields no distribution.
+ *
+ * This is the fallback guarantee, and it is the outcome this phase gets if
+ * the IP turns out never to initialize that register on a board whose
+ * software never called the distribution setter. Every tile stays ungrouped,
+ * so the reset path behaves exactly as it does today, and the source field
+ * still records that a decode was attempted. A board with no distribution
+ * and a board that was never asked stay different facts.
+ */
+void checkUnprogrammedClockDetectRegisterYieldsNoDistribution() {
+    gScript.reset();
+    gScript.ipType = 0;
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    bool ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // The raw decode as the source, an IPType of 0 and no groups.
+    if (ok) ok = (status->getWord(0) == 0x00000002u);
+    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+    if (!ok) {
+        fprintf(stderr, "unprogrammed clock detect: status=0x%08X map=0x%08X\n",
+                status->getWord(0), map->getWord(0));
+    }
+
+    runCheck("an unprogrammed clock detect register yields no distribution", ok);
+}
+
+/*
+ * A driver that answered the documented call is never given a second opinion.
+ *
+ * The clock detect registers are scripted with the real values from the
+ * cross-check above, so they are perfectly willing to answer and the only
+ * reason they are not read is the layering. The documented call is scripted
+ * to fail, which is the case that would tempt a fall-through: a board that
+ * answered the documented question and answered it with an error is telling
+ * the driver something, and a raw register read cannot correct that.
+ *
+ * Asserted over the recorded call list rather than over a return value,
+ * because the recorded form of a register primitive carries the offset in
+ * its fourth field, so absence at one offset is a fact the list can state
+ * and a return value cannot.
+ */
+void checkGen3DriverIsNeverGivenTheRawDecode() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersClockDetect();
+    gScript.scriptFailure("XRFdc_GetClkDistribution", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    // Taken before any transaction is driven, so the absence is a statement
+    // about construction and not about what a read happened to do after it.
+    const size_t recorded = gScript.calls.size();
+    bool ok = true;
+
+    for (uint32_t type = 0; ok && (type < 2); type++) {
+        for (uint32_t tile = 0; ok && (tile < 4); tile++) {
+            ok = (firstCallAt("XRFdc_RDReg", type, tile, 0x80) == recorded);
+        }
+    }
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    if (ok) ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // No source at all, an IPType of 2 and no groups. Not the raw decode's
+    // source value, which is the whole claim.
+    if (ok) ok = (status->getWord(0) == 0x00000200u);
+    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+    if (!ok) {
+        fprintf(stderr, "gen3 layering: status=0x%08X map=0x%08X, %zu recorded call(s)\n",
+                status->getWord(0), map->getWord(0), recorded);
+    }
+
+    runCheck("a gen3 driver is never given the raw decode", ok);
 }
 
 /*
@@ -3248,7 +3418,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 65;
+const int kClaimsBeforeCountCheck = 68;
 
 /*
  * Every claim this file defines actually ran.
@@ -3342,6 +3512,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkClockDistributionTopologyIsCapturedAtConstruction();
     checkPreGen3DriverIsNeverAskedForTheDistribution();
     checkRefusedDistributionQueryLeavesEveryTileUngrouped();
+    checkRawDecodeNamesTheSameMasterAsTheDocumentedApi();
+    checkUnprogrammedClockDetectRegisterYieldsNoDistribution();
+    checkGen3DriverIsNeverGivenTheRawDecode();
     checkDistributionRegistersDoNotCollideAndAnswerADeadDriver();
 
     checkFixtureResetEmptiesRecordedState();
