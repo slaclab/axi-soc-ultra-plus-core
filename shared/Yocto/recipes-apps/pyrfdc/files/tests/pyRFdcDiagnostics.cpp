@@ -147,6 +147,12 @@ rim::TransactionPtr driveWriteWords(PyRFdcPtr device, uint64_t addr, uint32_t wo
 //! and the one Init() reaches first.
 const uint64_t kResetAllAdc = 0x10010;
 
+//! Address of the global DAC reset, the one _Rfdc.py exposes as ResetAllDac
+//! and the one Init() reaches second. The two are separate transactions, so
+//! a claim about what one global reset leaves behind has to drive exactly
+//! the one it means.
+const uint64_t kResetAllDac = 0x10014;
+
 //! The register offsets the diagnostic read is expected to use, taken from
 //! the four existing accessor bodies in PyRFdc.cpp rather than restated from
 //! any other source.
@@ -768,8 +774,18 @@ void checkOtherTypeIsDiagnosedButNotReset() {
     if (ok) {
         ok = gScript.sawCall("XRFdc_ReadReg", XRFDC_DAC_TILE, 0, kOffsetCurrentState);
     }
-    // The sweep's own four resets against the ADC group are unchanged.
+    // Four resets against the ADC group, and the number has stayed at four
+    // for a completely different reason than it used to hold. It used to be
+    // one unconditional post-reset per enabled tile in a second sweep loop
+    // that no longer exists. It is now one compensating reset per enabled
+    // tile, fired because this fixture's power-up status read returns zero
+    // for every tile, so the PLL reconfigure performed no internal cycle for
+    // any of them and each tile needs its one cycle issued explicitly.
     if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 4);
+    // And the per-tile shape is pinned rather than only the total, so this
+    // claim cannot go on passing on a number that happened to stay the same
+    // while the sweep underneath it changed again.
+    if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE) == 4);
 
     if (!ok) {
         fprintf(stderr,
@@ -934,35 +950,34 @@ void runStepCheck(const char *site, bool ok) {
 }
 
 /*
- * Each of the six driver calls the sweep makes before its final reset is
- * attributed to its own name when it is the call that failed.
+ * Each of the six driver calls the sweep makes is attributed to its own name
+ * when it is the call that failed.
  *
- * Two pairs of these sites are the same driver function reached twice, and
- * each pair needs a discriminator or a claim about one member would be
- * satisfied by the other:
- *
- *   the two XRFdc_Reset sites take identical arguments, so no selector can
- *   separate them and the recorded order is the only discriminator there
- *   is: the first runs before the tile's PLL reconfigure and the second
- *   runs after every block of every tile has been visited
+ * One pair of these sites is the same driver function reached twice, and it
+ * needs a discriminator or a claim about one member would be satisfied by
+ * the other:
  *
  *   the two XRFdc_UpdateEvent sites differ only in the event they raise,
  *   which the fixture's detail selector can key on, so each is scripted to
  *   fail on its own event and the recorded order is asserted as well
+ *
+ * XRFdc_Reset was such a pair and is no longer one. The sweep held two reset
+ * sites taking identical arguments, one before the tile's PLL reconfigure
+ * and one in a second loop after every block of every tile had been visited,
+ * and recorded order was the only thing that could tell them apart. The
+ * global branch now holds exactly one reset site, the compensating reset,
+ * and the ordering assertion on site 1 pins it to its position after the
+ * reconfigure rather than separating it from a sibling that no longer
+ * exists.
  */
 void checkSweepStepsAreAttributedByName() {
-    /* Site 1: the first XRFdc_Reset, guarded on the tile's PLL being
-     * enabled, which is why this one sub-check has to script that field
-     * before the device is constructed. */
+    /* Site 1: the compensating XRFdc_Reset, issued after the tile's PLL
+     * reconfigure for a tile that reconfigure did not cycle. On this fixture
+     * the power-up status read returns zero, so it fires for every tile. */
     {
-        gScript.reset();
-        gScript.pllEnabled = 1;
         PyRFdcPtr device = PyRFdc::create();
 
-        // Only the recorded and scripted state is cleared here, not
-        // pllEnabled, which the constructor above has already consumed.
-        gScript.calls.clear();
-        gScript.logErrors.clear();
+        gScript.reset();
         gScript.scriptFailure("XRFdc_Reset", XRFDC_ADC_TILE, kStepTile, XRFDC_SCRIPT_ANY,
                               XRFDC_FAILURE);
 
@@ -970,25 +985,27 @@ void checkSweepStepsAreAttributedByName() {
         const std::string record = recordFor(tran->errorStrValue(), kStepLabel);
 
         bool ok = (record.find("XRFdc_Reset") != std::string::npos);
-        // Attributed at this site and not only at the later one: the tile's
-        // diagnostics were taken before its PLL reconfigure ran.
+        // The ordering is inverted from what this sub-check used to assert,
+        // and the inversion is the point: the tile's diagnostics are now
+        // taken after its reconfigure, because the only reset left in the
+        // global branch runs after it rather than before it.
         if (ok) {
-            ok = firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
+            ok = firstCallAt("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, kStepTile,
                              XRFDC_SCRIPT_ANY) <
-                 firstCallAt("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, kStepTile,
+                 firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
                              XRFDC_SCRIPT_ANY);
         }
 
         if (!ok) {
-            fprintf(stderr, "step site 1: record '%s', diag at %zu, reconfigure at %zu\n",
+            fprintf(stderr, "step site 1: record '%s', reconfigure at %zu, diag at %zu\n",
                     record.c_str(),
-                    firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
-                                XRFDC_SCRIPT_ANY),
                     firstCallAt("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, kStepTile,
+                                XRFDC_SCRIPT_ANY),
+                    firstCallAt("XRFdc_GetPLLLockStatus", XRFDC_ADC_TILE, kStepTile,
                                 XRFDC_SCRIPT_ANY));
         }
 
-        runStepCheck("XRFdc_Reset before the PLL reconfigure", ok);
+        runStepCheck("XRFdc_Reset after the PLL reconfigure", ok);
     }
 
     /* Site 2: the per-tile PLL reconfigure. */
@@ -2064,13 +2081,33 @@ void checkLiveDriverIsUnaffectedByTheGuard() {
     rim::TransactionPtr clean = driveWrite(device, kResetAllAdc, 1);
 
     bool ok = clean->doneCalled() && !clean->errorStrCalled();
+    // Still four, and deliberately left at four rather than adjusted. The
+    // four used to be the unconditional post-reset of the second sweep loop,
+    // once per enabled tile. They are now the compensating reset, once per
+    // enabled tile, fired because this fixture's power-up status read
+    // returns zero so no tile was cycled by its PLL reconfigure. Same
+    // number, different reason, and the reason is written down because a
+    // claim that keeps passing for an unexamined reason is how a regression
+    // hides.
     if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 4);
-    if (ok) ok = (countCallsForType("XRFdc_CheckTileEnabled", XRFDC_ADC_TILE) == 8);
+    // Moved from 8 to 4: the second sweep loop is gone and it took its own
+    // per-tile enable probe with it, so a global reset now walks the tiles
+    // once rather than twice.
+    if (ok) ok = (countCallsForType("XRFdc_CheckTileEnabled", XRFDC_ADC_TILE) == 4);
     if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE) == 4);
     if (ok) ok = (countCallsForType("XRFdc_SetQMCSettings", XRFDC_ADC_TILE) == 16);
     if (ok) ok = (countCallsForType("XRFdc_SetMixerSettings", XRFDC_ADC_TILE) == 16);
     if (ok) ok = (countCallsForType("XRFdc_UpdateEvent", XRFDC_ADC_TILE) == 32);
+    // Still zero, and it is worth a line because the sweep did gain a raw
+    // register read. The power-up status read the compensating reset is
+    // gated on is XRFdc_RDReg, which the fixture records under that name.
+    // XRFdc_ReadReg is a different recorded name and the two are one
+    // character apart, so this zero is a statement about the diagnostic
+    // reads and not an accident of spelling.
     if (ok) ok = (gScript.countCalls("XRFdc_ReadReg") == 0);
+    // The raw read really did happen, once per enabled tile, so the line
+    // above cannot be passing because the gate read was never issued.
+    if (ok) ok = (countCallsForType("XRFdc_RDReg", XRFDC_ADC_TILE) == 4);
 
     // A failing reset still reports through the diagnostic path and not
     // through the rejection path.
@@ -2660,10 +2697,11 @@ void checkLiveDriverStillClosesItsDeviceOnTeardown() {
 //! for the claim that the bypass still clears what it legitimately should.
 //!
 //! It was 0x12010 until the two clock distribution registers took 0x12010
-//! and 0x12014, so it moved up to the first address past them that no
-//! branch decodes. The claims below need an address that decodes to nothing
-//! at all, and a published register that merely refuses a write is not that.
-const uint64_t kUndecodedGlobal = 0x12018;
+//! and 0x12014, then 0x12018 until the per-tile cycle count took that, so it
+//! moves up again to the first address past the published set that no branch
+//! decodes. The claims below need an address that decodes to nothing at all,
+//! and a published register that merely refuses a write is not that.
+const uint64_t kUndecodedGlobal = 0x1201C;
 
 /*
  * With the bypass set, a failing global reset still reports its tiles.
@@ -3330,6 +3368,183 @@ void checkDistributionRegistersDoNotCollideAndAnswerADeadDriver() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* One IPSM cycle per enabled tile, and the count published as a register.   */
+/*                                                                           */
+/* A global reset used to drive an enabled tile through its state machine    */
+/* more than once: a conditional reset before the tile's PLL reconfigure, a  */
+/* cycle the reconfigure performs internally through the same restart        */
+/* primitive, and an unconditional reset in a second sweep loop afterwards.  */
+/* Both explicit resets are gone. One compensating reset takes their place,  */
+/* issued only when the reconfigure cannot have cycled the tile, which is    */
+/* when the tile was not powered up or when the call did not return success. */
+/*                                                                           */
+/* The three claims below drive both sides of that predicate. A tile must    */
+/* never come out of a global reset with zero cycles, and the only way to    */
+/* state that as a fact rather than as an untested hope is to assert the     */
+/* fire case and the no-fire case separately.                                */
+/* ------------------------------------------------------------------------ */
+
+//! The read-only per-tile cycle count. Four bits per tile at tile index
+//! type * 4 + tile, so the four ADC nibbles are the low half of the word and
+//! the four DAC nibbles the high half.
+const uint64_t kResetCycleCount = 0x12018;
+
+//! The tile common status register, whose power-up status bit is what the
+//! compensating reset is gated on. Written as the bare offset here for the
+//! same reason the three diagnostic offsets above are: the harness states
+//! the register it means rather than importing a name from the code it is
+//! asserting about.
+const uint32_t kOffsetCommonStatus = 0x0228;
+
+//! The power-up status value the fixture scripts into the register above to
+//! make the masked read come back non-zero. The production read masks with
+//! 0x00000004, so this is that bit and nothing else.
+const uint32_t kPoweredUpStatus = 0x4;
+
+/*
+ * Every enabled tile gets exactly one cycle on the path a cold boot takes.
+ *
+ * The default fixture answers every power-up status read with zero, which is
+ * how a board whose tiles have not been brought up reads, so the compensating
+ * reset fires for all eight tiles across the two global resets. The four
+ * resets per type here are that compensating reset and not the deleted
+ * post-reset, which is worth saying because the count is the same as the
+ * count the deleted code produced.
+ */
+void checkOneIpsmCyclePerEnabledTileOnTheHealthyPath() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    // One per tile, all eight, and exactly one: a nibble of 2 would mean a
+    // tile was cycled twice and a nibble of 0 would mean a tile a global
+    // reset covered came out of it never having been cycled at all.
+    if (ok) ok = (counts->getWord(0) == 0x11111111u);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 4);
+    // The second global reset did not clear what the first one recorded.
+    // The two are separate transactions and each clears only the tiles it
+    // covers, which is the invariant the low half of the word above rests
+    // on.
+    if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_DAC_TILE) == 4);
+
+    if (!ok) {
+        fprintf(stderr, "healthy path cycles: counts=0x%08X, ADC reset=%zu DAC reset=%zu\n",
+                counts->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE));
+    }
+
+    runCheck("one ipsm cycle per enabled tile on the healthy path", ok);
+}
+
+/*
+ * A tile the PLL reconfigure already cycled receives no explicit reset, and
+ * is still counted as having been cycled.
+ *
+ * This is the claim that makes the counter mean cycles rather than calls. A
+ * counter incremented only where XRFdc_Reset is called would read zero here,
+ * and a claim that asserted only the absence of the reset would pass against
+ * such a counter while proving nothing about whether the tile was cycled at
+ * all. The zero call count and the non-zero cycle count are therefore
+ * asserted together in one claim rather than in two.
+ */
+void checkPoweredUpTileWithSucceedingReconfigureGetsNoExplicitReset() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    // Powered up, on all four ADC tiles, so the masked power-up read comes
+    // back non-zero. The PLL reconfigure is left succeeding, which is the
+    // other half of the condition under which the driver performs its own
+    // internal cycle.
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCommonStatus, kPoweredUpStatus);
+    }
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    // Not one explicit reset anywhere in the sweep.
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 0);
+    // And yet every ADC tile is counted as cycled, because the reconfigure
+    // cycled it. Only the ADC nibbles are set, because only the ADC group
+    // was swept.
+    if (ok) ok = (counts->getWord(0) == 0x00001111u);
+    // The gate read really was taken, once per tile, so the zero above
+    // cannot be a sweep that skipped the tiles entirely.
+    if (ok) ok = (countCallsForType("XRFdc_RDReg", XRFDC_ADC_TILE) == 4);
+    if (ok) ok = (countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE) == 4);
+
+    if (!ok) {
+        fprintf(stderr, "powered up tiles: counts=0x%08X, reset=%zu rdreg=%zu pll=%zu\n",
+                counts->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_RDReg", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE));
+    }
+
+    runCheck("a powered up tile whose pll reconfigure succeeded gets no explicit reset", ok);
+}
+
+/*
+ * The tile that was not powered up still gets its one cycle.
+ *
+ * Three tiles read as powered up and one does not, so the compensating reset
+ * has to fire for exactly one of the four and for the right one. The tile
+ * that is not powered up is the tile a literal removal of both explicit
+ * resets would have left with zero cycles, and it is the wedged tile this
+ * work exists to recover: the driver performs no internal cycle for a tile
+ * whose initial power-up state reads zero.
+ */
+void checkWedgedTileStillGetsItsOneCycle() {
+    const uint32_t wedged = 3;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCommonStatus,
+                               (tile == wedged) ? 0x0 : kPoweredUpStatus);
+    }
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 1);
+    // And it is the tile that was not powered up, not merely some tile.
+    if (ok) ok = gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, wedged, XRFDC_SCRIPT_ANY);
+    // All four nibbles read one: three tiles cycled by their reconfigure and
+    // one by the compensating reset.
+    if (ok) ok = (counts->getWord(0) == 0x00001111u);
+
+    if (!ok) {
+        fprintf(stderr, "wedged tile: counts=0x%08X, reset=%zu, saw tile %u=%d\n",
+                counts->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE), wedged,
+                gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, wedged, XRFDC_SCRIPT_ANY) ? 1 : 0);
+    }
+
+    runCheck("a wedged tile still gets its one cycle", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -3405,6 +3620,12 @@ void checkRecordedCallListIsNotEmpty() {
 
     bool ok = !gScript.calls.empty();
     // And it records the sweep in particular, not merely something.
+    //
+    // The reset count stays above zero for a different reason than it used
+    // to. It used to be the second sweep loop's unconditional post-reset.
+    // It is now the compensating reset, which fires here because this
+    // fixture's power-up status read returns zero for every tile, so no
+    // tile was cycled by its PLL reconfigure.
     if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) > 0);
     if (ok) ok = (countCallsForType("XRFdc_CheckTileEnabled", XRFDC_ADC_TILE) > 0);
 
@@ -3418,7 +3639,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 68;
+const int kClaimsBeforeCountCheck = 71;
 
 /*
  * Every claim this file defines actually ran.
@@ -3516,6 +3737,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkUnprogrammedClockDetectRegisterYieldsNoDistribution();
     checkGen3DriverIsNeverGivenTheRawDecode();
     checkDistributionRegistersDoNotCollideAndAnswerADeadDriver();
+
+    checkOneIpsmCyclePerEnabledTileOnTheHealthyPath();
+    checkPoweredUpTileWithSucceedingReconfigureGetsNoExplicitReset();
+    checkWedgedTileStillGetsItsOneCycle();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
