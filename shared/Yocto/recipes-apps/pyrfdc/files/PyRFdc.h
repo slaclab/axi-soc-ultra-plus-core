@@ -261,6 +261,23 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     uint32_t clkDistGroups_ = 0;
     uint32_t ipType_ = 0xFF;
 
+    //! How many IPSM cycles the last global reset issued per tile, indexed
+    //! by tile type then tile id, the same way every shadow array above is
+    //! indexed.
+    //!
+    //! A count of cycles and not of XRFdc_Reset calls. A tile whose PLL
+    //! reconfigure performed the cycle internally receives no explicit
+    //! reset and is still counted here, because what a reader needs is how
+    //! many times the tile was driven through its state machine.
+    //!
+    //! Initialized here at its declaration and not only in the constructor,
+    //! for the reason stated on the members above: every one of the
+    //! constructor's early returns happens before its local variable block,
+    //! and this array is read by a register the dead-driver guard admits,
+    //! so on exactly the paths that guard exists for it would otherwise
+    //! hand a host the contents of this process's memory.
+    uint32_t resetCycles_[2][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}};
+
     //! Application functions
     void StartUp(int Tile_Id);
     void Shutdown(int Tile_Id);
@@ -451,6 +468,14 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
 
     //! The per-tile distribution map, four bits per tile, at 0x12014.
     void ClkDistMap();
+
+    //! How many IPSM cycles the last global reset issued per tile, four
+    //! bits per tile, at 0x12018.
+    //!
+    //! A transaction body of the same shape as the two above: a read hands
+    //! back members and a write is refused, and it names RFdcInstPtr_
+    //! nowhere, which is what lets the dead-driver guard admit it on read.
+    void ResetCycleCount();
     void DoubleTestReg(bool upper);
     uint32_t DoubleToUint32(double value, bool upper);
     double RemapDoubleWithUint32(double original, uint32_t newPart, bool upper);

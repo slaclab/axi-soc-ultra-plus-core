@@ -588,6 +588,20 @@ void PyRFdc::Reset(int Tile_Id) {
             // Init the i variable
             i = tileType_;
 
+            // Clear the cycle counts for exactly the tiles this sweep is
+            // about to cover, which today is the four tiles of tileType_.
+            //
+            // Deliberately not all eight. The two global resets are separate
+            // transactions, so clearing the other type's counts here would
+            // erase what the earlier call recorded and a host reading the
+            // count after both resets would see only the second. That is the
+            // invariant to preserve if a later change makes one call cover a
+            // tile of the other type: widen this clear to exactly the tiles
+            // that call covers, and no further.
+            for(j=0; j<4; j++) {
+                resetCycles_[i][j] = 0;
+            }
+
             // Init the MTS configurations
             XRFdc_MultiConverter_Init(&mtsConfig_[i], 0, 0, XRFDC_TILE_ID0);
             mtsConfig_[i].Tiles = 0;
@@ -601,19 +615,66 @@ void PyRFdc::Reset(int Tile_Id) {
                 // Check if tile is enabled
                 if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) == XRFDC_SUCCESS) {
 
-                    // Reset all the Tiles that have their PLL's enabled
-                    if (pllDefault_[i][j].Enabled > 0) {
-                        uint32_t preResetStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
-                        if (preResetStatus != XRFDC_SUCCESS) {
-                            recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_Reset");
-                        }
-                    }
+                    // Read the tile's power-up status, before the PLL
+                    // reconfigure below and not after it, because the
+                    // reconfigure is what changes that status.
+                    //
+                    // A read is being added to the healthy path on purpose.
+                    // It is the only way to know whether the reconfigure
+                    // performed an IPSM cycle of its own, which it does
+                    // only for a tile that was already powered up, and that
+                    // is the fact the cycle decision further down turns on.
+                    // The cost is one masked register read per tile per
+                    // global reset.
+                    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/RF-DAC/RF-ADC-Tile-n-Common-Status-Register-0x0228
+                    uint32_t pwrUpStatus = XRFdc_RDReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(i, j), XRFDC_STATUS_OFFSET, XRFDC_PWR_UP_STAT_MASK);
 
                     // Restore default configuration
                     uint32_t pllStatus = XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
                     if (pllStatus != XRFDC_SUCCESS) {
                         recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_DynamicPLLConfig");
                     }
+
+                    // Decide this tile's one IPSM cycle.
+                    //
+                    // The reconfigure above performs a cycle of its own,
+                    // through the same restart primitive an explicit reset
+                    // reaches, but only when the tile was already powered up
+                    // and only when the call returned success. When both
+                    // held, that internal cycle is the tile's one cycle and
+                    // nothing further is issued here. When either did not,
+                    // one compensating reset is issued, which covers exactly
+                    // the tile that was not powered up and the tile whose
+                    // reconfigure failed its reference frequency check. Those
+                    // are the tiles a bare removal of the explicit resets
+                    // would have left with no cycle at all.
+                    //
+                    // The count below counts IPSM cycles and not XRFdc_Reset
+                    // calls. A counter placed only at the call site would
+                    // read zero for a healthy powered-up tile, and a claim
+                    // written against it would pass while proving nothing.
+                    //
+                    // A non-success from the compensating reset is recorded
+                    // under the literal step name XRFdc_Reset, the same
+                    // literal the two removed sites used, so every message
+                    // and every log grep that names that step keeps working.
+                    if ((pwrUpStatus != 0) && (pllStatus == XRFDC_SUCCESS)) {
+                        resetCycles_[i][j]++;
+
+                    } else {
+                        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
+                        uint32_t resetStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
+                        if (resetStatus != XRFDC_SUCCESS) {
+                            recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_Reset");
+                        }
+
+                        // Counted whether or not the reset returned success,
+                        // because the tile was driven at its state machine
+                        // either way and the count is a record of what was
+                        // issued rather than of what worked.
+                        resetCycles_[i][j]++;
+                    }
+
                     clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
                     pllConfig_[i][j] = pllDefault_[i][j];
 
@@ -673,27 +734,6 @@ void PyRFdc::Reset(int Tile_Id) {
                         }
                     }
                 }
-            }
-
-            // Loop through tile indexes
-            for(j=0; j<4; j++) {
-
-                // Check if tile is enabled
-                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) == XRFDC_SUCCESS) {
-
-                    // Execute reset again after restoring the settings
-                    uint32_t tileStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
-
-                    // Record this tile's result in its own slot. One
-                    // variable shared by the whole loop keeps only the last
-                    // tile iterated, so a failure on tile 0, 1 or 2 left no
-                    // trace of which tile it was, or that it happened at all
-                    // when a later tile succeeded.
-                    if (tileStatus != XRFDC_SUCCESS) {
-                        recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_Reset");
-                    }
-                }
-
             }
 
             // A sweep failed when any tile recorded a failure. Derived from
@@ -4080,6 +4120,51 @@ void PyRFdc::ClkDistMap() {
     }
 }
 
+// How many IPSM cycles the last global reset issued per tile, as one word at
+// offset 0x12018.
+//
+// Four bits per tile at tile index type * 4 + tile, so ADC 0 occupies bits 3
+// down to 0 and DAC 3 occupies bits 31 down to 28. The encoding is part of
+// this driver's address space contract and is fixed here. A nibble saturates
+// at 15 rather than wrapping, for the reason the status register above
+// states: an unexpectedly large value should read as out of range and not as
+// a plausible small one.
+//
+// A cycle is counted whether the tile was cycled by an explicit reset or by
+// the PLL reconfigure's own internal restart. A count of explicit calls would
+// read zero for every tile of a healthy global reset, which is exactly the
+// case a host most wants to confirm, so it would publish a number that means
+// nothing on the path it exists to describe.
+//
+// The two global resets are separate transactions and each clears only the
+// tiles it covers, so a host that has driven both reads a word describing all
+// eight tiles and a host that has driven one reads that type's nibbles.
+//
+// Same shape as the two registers above: a read hands back members and a
+// write is refused, and it names RFdcInstPtr_ nowhere, which is what lets the
+// dead-driver guard admit it on read. Deliberately not polled, for the reason
+// the reason register states.
+void PyRFdc::ResetCycleCount() {
+    // Check for a write
+    if (!rdTxn_) {
+        errMsg_ = "ResetCycleCount(): read only\n";
+    } else {
+        uint32_t counts = 0;
+
+        for (uint32_t type = 0; type < 2; type++) {
+            for (uint32_t tile = 0; tile < 4; tile++) {
+                const uint32_t index = (type * 4) + tile;
+                const uint32_t cycles =
+                    (resetCycles_[type][tile] > 0xF) ? 0xF : resetCycles_[type][tile];
+
+                counts |= (cycles & 0xF) << (4 * index);
+            }
+        }
+
+        data_ = counts;
+    }
+}
+
 void PyRFdc::DoubleTestReg(bool upper) {
     // Check for a write
     if (!rdTxn_) {
@@ -4145,13 +4230,15 @@ bool PyRFdc::rejectIfDriverDead(uint32_t addr) {
         return false;
     }
     //
-    // The two clock distribution registers are admitted on read by that same
-    // rule rather than as an exception to it: both bodies read members and
-    // neither dereferences the driver instance, and the IP generation a host
-    // reads at 0x12010 is exactly what someone trying to find out why this
-    // driver is dead needs to see.
+    // The two clock distribution registers and the per-tile reset cycle
+    // count are admitted on read by that same rule rather than as an
+    // exception to it: all three bodies read members and none dereferences
+    // the driver instance, and the IP generation a host reads at 0x12010 is
+    // exactly what someone trying to find out why this driver is dead needs
+    // to see. The cycle count answers zero on such an instance, which is the
+    // truth: a driver that never came up ran no sweep and cycled no tile.
     if (rdTxn_ && ((addr == 0x12000) || (addr == 0x1200C) ||
-                   ((addr >= 0x12010) && (addr <= 0x12014)))) {
+                   ((addr >= 0x12010) && (addr <= 0x12018)))) {
         return false;
     }
 
@@ -4394,6 +4481,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x12014) {
                 ClkDistMap();
+
+            } else if (addr==0x12018) {
+                ResetCycleCount();
 
             } else if ( (addr >= 0x13000) && (addr <= 0x13004) ) {
                 DoubleTestReg(bool((addr>>2)&0x1));

@@ -115,4 +115,29 @@
 #define XRFDC_CLOCK_DETECT_OFFSET 0x80U
 #define XRFDC_CLOCK_DETECT_SRC_MASK 0x00005555U
 
+/*
+ * NOT opaque. The tile common status register carries the tile's power-up
+ * status, and the global reset sweep reads it through XRFdc_RDReg with the
+ * mask below to decide whether the PLL reconfigure that follows can have
+ * performed an IPSM cycle of its own. A wrong offset or a wrong mask makes
+ * that decision on the wrong bits, which either fires a compensating reset
+ * on a tile that was already cycled or leaves a tile with no cycle at all.
+ *
+ * readTileDiagnostics already reads this same register at PyRFdc.cpp:807 and
+ * again at :3713, both times as the bare literal 0x0228. Those two literals
+ * are deliberately left alone: this change adds a named constant for the new
+ * call site rather than editing two lines it is not otherwise touching.
+ *
+ * The shift is declared for completeness of the field definition and is not
+ * consumed by the production code, which tests the masked read against zero
+ * rather than normalizing it to the field's own value.
+ *
+ * Source: xrfdc_hw.h at upstream tag xilinx_v2026.1, the release the
+ * installed image was built from, in the same reading that produced the two
+ * clock detect constants above.
+ */
+#define XRFDC_STATUS_OFFSET 0x228U
+#define XRFDC_PWR_UP_STAT_MASK 0x00000004U
+#define XRFDC_PWR_UP_STAT_SHIFT 2U
+
 #endif  /* __XRFDC_HW_H__ */
