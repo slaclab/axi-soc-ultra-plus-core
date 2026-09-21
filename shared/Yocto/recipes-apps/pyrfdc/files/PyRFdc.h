@@ -63,6 +63,30 @@ enum PyRFdcInitFailReason {
     PYRFDC_INIT_FAIL_REGISTER_METAL   = 5   //!< libmetal device registration failed
 };
 
+//! What one tile is to its clock distribution group.
+//!
+//! Declared outside every conditional compilation block for the same reason
+//! the failure reasons above are: the values are read back over the register
+//! at offset 0x12014 and are part of this driver's address space contract,
+//! so they are assigned explicitly rather than left to declaration order.
+enum PyRFdcClkDistRole {
+    PYRFDC_CLKDIST_UNGROUPED = 0,  //!< Takes its own clock, or nothing said otherwise
+    PYRFDC_CLKDIST_MASTER    = 1,  //!< Sources the distribution its group runs on
+    PYRFDC_CLKDIST_EDGE      = 2   //!< Takes its clock from another tile
+};
+
+//! Where the cached clock distribution topology came from.
+//!
+//! Read back over the register at offset 0x12010 and part of the same
+//! address space contract, so these are assigned explicitly too. A host
+//! reading a topology needs to know which layer answered, because the
+//! layers do not carry the same confidence.
+enum PyRFdcClkDistSource {
+    PYRFDC_CLKDIST_SRC_NONE       = 0,  //!< No topology was obtained
+    PYRFDC_CLKDIST_SRC_API        = 1,  //!< The documented distribution getter answered
+    PYRFDC_CLKDIST_SRC_RAW_DECODE = 2   //!< A raw clock-detect decode answered
+};
+
 //! Memory interface Emlator device
 /** This memory will respond to transactions, emilator hardware by responding to read
  * and write transactions.
@@ -189,6 +213,53 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! One record per tile, indexed by tile type then tile id, the same way
     //! every shadow array above is indexed.
     TileDiag tileDiag_[2][4];
+
+    //! What one tile is to the board's clock distribution.
+    //!
+    //! Plain old data, for the same reason TileDiag is: it is filled once at
+    //! construction and read on a path that may be running while the driver
+    //! is already reporting an error, so nothing here allocates.
+    //!
+    //! masterType and masterTile are the tile that sources this tile's
+    //! clock, and they mean nothing when role is ungrouped. They are 0xFF
+    //! rather than 0 for exactly that case: a zero pair reads as mastered by
+    //! ADC tile 0, which is a real tile and a false statement.
+    struct TileClkDist {
+        uint8_t role;        //!< One of the PyRFdcClkDistRole values
+        uint8_t masterType;  //!< Tile type of this tile's distribution master
+        uint8_t masterTile;  //!< Tile id of this tile's distribution master
+    };
+
+    //! One record per tile, indexed by tile type then tile id, the same way
+    //! every shadow array above is indexed.
+    //!
+    //! Initialized here at its declaration and not only in the constructor,
+    //! for the reason stated on the four members further up: every one of
+    //! the constructor's early returns happens before its local variable
+    //! block, and this array is read by a register the dead-driver guard
+    //! admits, so on exactly the paths that guard exists for it would
+    //! otherwise hand a host the contents of this process's memory.
+    TileClkDist clkDist_[2][4] = {
+        {{PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF},
+         {PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF},
+         {PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF},
+         {PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF}},
+        {{PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF},
+         {PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF},
+         {PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF},
+         {PYRFDC_CLKDIST_UNGROUPED, 0xFF, 0xFF}}};
+
+    //! Which layer produced the cached topology, how many distribution
+    //! groups it described, and the IP generation the driver reported.
+    //!
+    //! Declared with values here for the same reason clkDist_ is. No source
+    //! and no groups is the no-distribution answer, which is what every path
+    //! that obtains no topology has to leave behind. 0xFF for the IP
+    //! generation means never captured, which is distinguishable from every
+    //! generation the driver can report.
+    uint32_t clkDistSource_ = PYRFDC_CLKDIST_SRC_NONE;
+    uint32_t clkDistGroups_ = 0;
+    uint32_t ipType_ = 0xFF;
 
     //! Application functions
     void StartUp(int Tile_Id);
@@ -344,10 +415,26 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! exactly as it did.
     bool rejectIfDriverDead(uint32_t addr);
 
+    //! Decode a queried distribution topology into the per-tile cache.
+    //!
+    //! A helper rather than a transaction body, for the same reason
+    //! readTileDiagnostics is one: it is called from the constructor, where
+    //! there is no transaction in flight, and it writes only members of its
+    //! own. It reads neither tileType_ nor tileId_ and never touches data_,
+    //! so it cannot disturb a word some other caller is about to hand back.
+    void cacheClkDistribution(const XRFdc_Distribution_System_Settings *dist);
+
     void MetalLogLevel();
     void IgnoreMetalError();
     void ScratchPad();
     void InitFailReason();
+
+    //! Where the topology came from, which IP generation the driver
+    //! reported and how many groups were found, as one word at 0x12010.
+    void ClkDistStatus();
+
+    //! The per-tile distribution map, four bits per tile, at 0x12014.
+    void ClkDistMap();
     void DoubleTestReg(bool upper);
     uint32_t DoubleToUint32(double value, bool upper);
     double RemapDoubleWithUint32(double original, uint32_t newPart, bool upper);

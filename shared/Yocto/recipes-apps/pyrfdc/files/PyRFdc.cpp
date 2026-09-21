@@ -11,7 +11,10 @@
  * ----------------------------------------------------------------------------
  * TODO: Add support for the following in the future....
  * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetClkDistribution-Gen-3/DFE
- * https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
+ *
+ * The getter half is no longer outstanding. The constructor queries the
+ * clock distribution topology once and caches it, and the call site carries
+ * the documentation link for it.
  * ----------------------------------------------------------------------------
  * This file is part of the 'axi-soc-ultra-plus-core'. It is subject to
  * the license terms in the LICENSE.txt file found in the top-level directory
@@ -336,6 +339,35 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                 mixerDefault_[i][j][k].MixerType = XRFDC_MIXER_TYPE_OFF;
                 mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
             }
+        }
+    }
+
+    // The board's clock distribution topology, captured here for the same
+    // reasons clkSrcDefault_ and pllDefault_ are captured below: it costs
+    // nothing per reset, the topology is fixed by the IP so it cannot change
+    // at runtime, and it keeps a query that can fail off the path that has
+    // to keep working when the board is already degraded.
+    //
+    // The IP generation is captured unconditionally and the query is issued
+    // only when the driver reports at least a third generation part, because
+    // the driver refuses the call below that and prints a console error every
+    // time it is asked. This file is consumed by every SLAC RFSoC project, so
+    // an unguarded call would add a permanent error line at every bridge
+    // start on boards this work is not trying to change.
+    //
+    // The guard shape is the one the two captures below use: the cache is
+    // written only inside an XRFDC_SUCCESS test, so a refused or failed query
+    // writes nothing and every tile keeps the ungrouped values PyRFdc.h
+    // declares. That is the no-distribution fallback, with no branch of its
+    // own to forget.
+    ipType_ = RFdcInstPtr_->RFdc_Config.IPType;
+    if (ipType_ >= XRFDC_GEN3) {
+        // The structure is roughly three kilobytes, so it lives in a block of
+        // its own rather than being carried through the tile loops below.
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
+        XRFdc_Distribution_System_Settings clkDist;
+        if (XRFdc_GetClkDistribution(RFdcInstPtr_, &clkDist) == XRFDC_SUCCESS) {
+            cacheClkDistribution(&clkDist);
         }
     }
 
@@ -3735,6 +3767,157 @@ void PyRFdc::InitFailReason() {
     }
 }
 
+// The package tile index of one tile, on a four-ADC four-DAC part.
+//
+// The distribution chain is numbered by package tile rather than by tile
+// type and tile id: the DAC tiles occupy the low half of the chain in
+// descending tile order and the ADC tiles the high half, so DAC n sits at
+// 3 - n and ADC n sits at 7 - n. That is what puts DAC 0 and ADC 3 next to
+// each other, which is the adjacency a distribution between them needs.
+// This rule comes from driver source that is not present on this host, so
+// it is written down here rather than left to be re-derived.
+static uint32_t ClkDistPackageIndex(uint32_t type, uint32_t tile) {
+    return (type == XRFDC_DAC_TILE) ? (3 - tile) : (7 - tile);
+}
+
+// The inverse of the rule above, so a walk over package indices can name
+// the tiles it visited.
+static void ClkDistTypeTile(uint32_t pkg, uint32_t *type, uint32_t *tile) {
+    if (pkg <= 3) {
+        *type = XRFDC_DAC_TILE;
+        *tile = 3 - pkg;
+    } else {
+        *type = XRFDC_ADC_TILE;
+        *tile = 7 - pkg;
+    }
+}
+
+void PyRFdc::cacheClkDistribution(const XRFdc_Distribution_System_Settings *dist) {
+    if (dist == nullptr) {
+        return;
+    }
+
+    for (uint32_t slot = 0; slot < 8; slot++) {
+        const XRFdc_Distribution_Settings *entry = &dist->Distributions[slot];
+
+        // An unused slot is marked by its source tile id and not by a zero
+        // fill, because tile 0 is a real tile.
+        if (entry->SourceTileId == XRFDC_CLK_DST_INVALID) {
+            continue;
+        }
+
+        // Every index below reaches a fixed [2][4] member array, so a slot
+        // naming a tile outside that range is skipped rather than trusted.
+        // The values come from a driver reading hardware registers, and a
+        // register that read back as something unexpected is exactly the
+        // case this driver is being taught to survive.
+        if ((entry->SourceType > XRFDC_DAC_TILE) ||
+            (entry->SourceTileId > XRFDC_TILE_ID_MAX) ||
+            (entry->EdgeTypes[0] > XRFDC_DAC_TILE) ||
+            (entry->EdgeTypes[1] > XRFDC_DAC_TILE) ||
+            (entry->EdgeTileIds[0] > XRFDC_TILE_ID_MAX) ||
+            (entry->EdgeTileIds[1] > XRFDC_TILE_ID_MAX)) {
+            continue;
+        }
+
+        const uint32_t edge0 = ClkDistPackageIndex(entry->EdgeTypes[0], entry->EdgeTileIds[0]);
+        const uint32_t edge1 = ClkDistPackageIndex(entry->EdgeTypes[1], entry->EdgeTileIds[1]);
+        const uint32_t lower = (edge0 < edge1) ? edge0 : edge1;
+        const uint32_t upper = (edge0 < edge1) ? edge1 : edge0;
+
+        // Both edges on one package index is a distribution of a single
+        // tile, which is a tile on its own clock however the slot is filled
+        // in. It contributes no group and leaves that tile ungrouped, which
+        // is how the driver itself treats a tile whose source is itself.
+        if (lower == upper) {
+            continue;
+        }
+
+        // The group is every tile between the two edges inclusive.
+        for (uint32_t pkg = lower; pkg <= upper; pkg++) {
+            uint32_t type = 0;
+            uint32_t tile = 0;
+            ClkDistTypeTile(pkg, &type, &tile);
+
+            clkDist_[type][tile].masterType = uint8_t(entry->SourceType);
+            clkDist_[type][tile].masterTile = uint8_t(entry->SourceTileId);
+
+            if ((type == entry->SourceType) && (tile == entry->SourceTileId)) {
+                clkDist_[type][tile].role = PYRFDC_CLKDIST_MASTER;
+            } else {
+                clkDist_[type][tile].role = PYRFDC_CLKDIST_EDGE;
+            }
+        }
+
+        clkDistGroups_++;
+    }
+
+    // Recorded whatever the decode found, including nothing. This says which
+    // layer answered the question, not whether the answer had a group in it,
+    // and a board with no distribution is a different fact from a board that
+    // was never asked.
+    clkDistSource_ = PYRFDC_CLKDIST_SRC_API;
+}
+
+// Where the cached topology came from, which IP generation the driver
+// reported and how many distribution groups were found, as one word at
+// offset 0x12010.
+//
+// Same shape as the reason register above: a read hands back members and a
+// write is refused, and it names RFdcInstPtr_ nowhere, which is what lets
+// the dead-driver guard admit it. The IP generation is the load-bearing
+// field for a host trying to work out why this driver is behaving oddly,
+// because nothing else on the board publishes it.
+//
+// Deliberately not polled, for the reason the reason register states.
+void PyRFdc::ClkDistStatus() {
+    // Check for a write
+    if (!rdTxn_) {
+        errMsg_ = "ClkDistStatus(): read only\n";
+    } else {
+        // Both fields are one byte wide in this encoding and both are
+        // saturated rather than truncated, so an unexpectedly large value
+        // reads as out of range instead of wrapping into a plausible one.
+        const uint32_t ipType = (ipType_ > 0xFF) ? 0xFF : ipType_;
+        const uint32_t groups = (clkDistGroups_ > 0xFF) ? 0xFF : clkDistGroups_;
+
+        data_ = (clkDistSource_ & 0xFF) | (ipType << 8) | (groups << 16);
+    }
+}
+
+// The per-tile distribution map, as one word at offset 0x12014.
+//
+// Four bits per tile at tile index type * 4 + tile, so ADC 0 occupies bits
+// 3 down to 0 and DAC 3 occupies bits 31 down to 28. A nibble holds 0xF when
+// the tile is ungrouped, and otherwise the tile index of that tile's
+// distribution master, so a master's own nibble holds its own index.
+//
+// Read only and not polled, for the same reasons as the register above.
+void PyRFdc::ClkDistMap() {
+    // Check for a write
+    if (!rdTxn_) {
+        errMsg_ = "ClkDistMap(): read only\n";
+    } else {
+        uint32_t map = 0;
+
+        for (uint32_t type = 0; type < 2; type++) {
+            for (uint32_t tile = 0; tile < 4; tile++) {
+                const uint32_t index = (type * 4) + tile;
+                uint32_t nibble = 0xF;
+
+                if (clkDist_[type][tile].role != PYRFDC_CLKDIST_UNGROUPED) {
+                    nibble = (uint32_t(clkDist_[type][tile].masterType) * 4) +
+                             uint32_t(clkDist_[type][tile].masterTile);
+                }
+
+                map |= (nibble & 0xF) << (4 * index);
+            }
+        }
+
+        data_ = map;
+    }
+}
+
 void PyRFdc::DoubleTestReg(bool upper) {
     // Check for a write
     if (!rdTxn_) {
@@ -3799,7 +3982,14 @@ bool PyRFdc::rejectIfDriverDead(uint32_t addr) {
         ((addr >= 0x13000) && (addr <= 0x13004))) {
         return false;
     }
-    if (rdTxn_ && ((addr == 0x12000) || (addr == 0x1200C))) {
+    //
+    // The two clock distribution registers are admitted on read by that same
+    // rule rather than as an exception to it: both bodies read members and
+    // neither dereferences the driver instance, and the IP generation a host
+    // reads at 0x12010 is exactly what someone trying to find out why this
+    // driver is dead needs to see.
+    if (rdTxn_ && ((addr == 0x12000) || (addr == 0x1200C) ||
+                   ((addr >= 0x12010) && (addr <= 0x12014)))) {
         return false;
     }
 
@@ -4036,6 +4226,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x1200C) {
                 InitFailReason();
+
+            } else if (addr==0x12010) {
+                ClkDistStatus();
+
+            } else if (addr==0x12014) {
+                ClkDistMap();
 
             } else if ( (addr >= 0x13000) && (addr <= 0x13004) ) {
                 DoubleTestReg(bool((addr>>2)&0x1));
