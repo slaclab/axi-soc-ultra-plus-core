@@ -87,10 +87,22 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! transaction, so the two cannot drift apart.
     bool errMsgProtected_ = false;
 
-    uint32_t scratchPad_;
-    double doubleTestReg_;
-    bool metalLogLevel_;
-    bool ignoreMetalError_;
+    //! The four members behind the offsets the guard keeps answerable on an
+    //! instance whose construction did not complete.
+    //!
+    //! Initialized here at their declaration for the same reason the two
+    //! members below are. They are also assigned in the constructor's local
+    //! variable block, but every one of the constructor's early returns
+    //! happens before that block, so on exactly the paths the guard exists
+    //! for they would otherwise hold whatever the storage contained. An
+    //! offset the guard was extended to keep askable has to answer with a
+    //! declared value, because the caller asking it is a host trying to find
+    //! out why the driver is dead, and the alternative is handing that caller
+    //! the contents of this process's memory.
+    uint32_t scratchPad_ = 0;
+    double doubleTestReg_ = 0.0;
+    bool metalLogLevel_ = false;
+    bool ignoreMetalError_ = false;
 
     //! Whether the constructor left a usable driver instance behind, and if
     //! not, which step it died at.

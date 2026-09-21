@@ -255,6 +255,11 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     initFailReason_ = PYRFDC_INIT_OK;
 
     // Init local variables
+    //
+    // The next four are the reset a completed construction performs, not the
+    // initialization anything relies on: the declarations in PyRFdc.h carry
+    // the same values and are what every construction path, including the
+    // ones that return above this block, actually depends on.
     errMsg_.clear();
     scratchPad_ = 0;
     doubleTestReg_ = 0.0;
