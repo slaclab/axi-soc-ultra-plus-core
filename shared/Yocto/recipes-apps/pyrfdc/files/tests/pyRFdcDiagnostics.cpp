@@ -3555,6 +3555,63 @@ void checkWedgedTileStillGetsItsOneCycle() {
     runCheck("a wedged tile still gets its one cycle", ok);
 }
 
+/*
+ * A powered up tile whose PLL reconfigure failed still gets its one cycle.
+ *
+ * The fire predicate is a conjunction of two facts, the power-up status and
+ * the reconfigure's return, and the two claims above move only the first of
+ * them. A predicate simplified to the power-up bit alone would satisfy both
+ * of them and would leave this tile with no cycle at all, which is the row
+ * of the per-tile table a board whose clock source reads external sits in:
+ * the reconfigure fails its reference frequency check, performs no internal
+ * cycle, and the tile needs the compensating reset exactly as much as a tile
+ * that was never powered up does.
+ *
+ * Asserted on the reset call count and the tile it names rather than on the
+ * cycle count, because a predicate that dropped the reconfigure status would
+ * still increment the count for this tile while issuing nothing, so the
+ * count alone cannot tell the two apart and the call list can.
+ */
+void checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle() {
+    const uint32_t failing = 1;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCommonStatus, kPoweredUpStatus);
+    }
+    gScript.scriptFailure("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+    const std::string msg = adc->errorStrValue();
+
+    // One reset, and only for the tile whose reconfigure failed. The other
+    // three were powered up and reconfigured cleanly, so their one cycle
+    // came from the reconfigure and they need nothing issued.
+    bool ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 1);
+    if (ok) ok = gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY);
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    if (ok) ok = (counts->getWord(0) == 0x00001111u);
+    // The tile is still reported, and under the call that actually went
+    // wrong rather than under the reset that followed it.
+    if (ok) ok = adc->errorStrCalled() && !adc->doneCalled();
+    if (ok) ok = (recordFor(msg, "ADC1").find("XRFdc_DynamicPLLConfig") != std::string::npos);
+
+    if (!ok) {
+        fprintf(stderr, "failing reconfigure: counts=0x%08X, reset=%zu, record '%s'\n",
+                counts->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                recordFor(msg, "ADC1").c_str());
+    }
+
+    runCheck("a powered up tile whose pll reconfigure failed still gets its one cycle", ok);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
@@ -3650,7 +3707,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 71;
+const int kClaimsBeforeCountCheck = 72;
 
 /*
  * Every claim this file defines actually ran.
@@ -3752,6 +3809,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkOneIpsmCyclePerEnabledTileOnTheHealthyPath();
     checkPoweredUpTileWithSucceedingReconfigureGetsNoExplicitReset();
     checkWedgedTileStillGetsItsOneCycle();
+    checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();
