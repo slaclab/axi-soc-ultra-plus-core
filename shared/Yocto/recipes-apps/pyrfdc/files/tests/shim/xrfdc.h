@@ -60,6 +60,45 @@
  * No sysroot copy of the real xrfdc.h is reachable on this host, so none of
  * the five could be cross-checked against the header itself.
  *
+ * The clock distribution symbols have stronger provenance than those five.
+ * Every one of them was read out of xrfdc.h and xrfdc_hw.h at upstream tag
+ * xilinx_v2026.1, which is the release the installed image was built from,
+ * and those files were confirmed byte-identical to master when they were
+ * read. Listed with the value used and where it came from:
+ *
+ *   XRFDC_GEN3              2      xrfdc.h. The constructor issues the
+ *                                  distribution query only when
+ *                                  RFdc_Config.IPType is at least this, and
+ *                                  PyRFdc.cpp carries a static_assert on the
+ *                                  number for the reason stated there.
+ *   XRFDC_CLK_DST_TILE_231  0      xrfdc.h. The distribution chain's package
+ *   .. _TILE_224            .. 7   tile indices, highest numbered tile
+ *                                  first. The production decode maps a tile
+ *                                  type and tile id onto this index space,
+ *                                  so the span and the direction are load
+ *                                  bearing even where the names are not
+ *                                  referenced individually.
+ *   XRFDC_CLK_DST_INVALID   0xFF   xrfdc.h. Marks a slot carrying no
+ *                                  distribution. Compared against by the
+ *                                  production decode.
+ *   XRFDC_DIST_OUT_NONE     0      xrfdc.h. Opaque to the harness today:
+ *   XRFDC_DIST_OUT_RX       1      the production code neither assigns nor
+ *   XRFDC_DIST_OUT_OUTDIV   2      compares any of the three.
+ *
+ * Two structural facts about the distribution types belong here as well.
+ *
+ * XRFdc_Distribution_System_Settings hard-codes eight distribution slots.
+ * The real header hard-codes the same eight, because the driver's own loop
+ * bound XRFDC_MAX_DISTRS is defined privately inside xrfdc_clock.c and is
+ * not exported, so neither the real header nor this shim can borrow it.
+ *
+ * The four distribution structures carry members the production code never
+ * reads. That is deliberate and is the one place this file departs from its
+ * own rule of carrying only what the production code touches: the
+ * constructor declares one of these on its frame, and a trimmed structure
+ * would make that frame a small fraction of its real size and would make
+ * the scoped block it sits in look like caution about nothing.
+ *
  * Every other declaration in this file is shaped to satisfy the compiler
  * rather than copied from the real header. Argument types are widened to u32
  * where the real driver uses a narrower type, parameter names are the

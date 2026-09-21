@@ -63,6 +63,19 @@ static_assert(XRFDC_ADC_TILE == 0 && XRFDC_DAC_TILE == 1,
               "PyRFdc.h indexes its [2][4] shadow arrays by tile type: "
               "XRFDC_ADC_TILE must be 0 and XRFDC_DAC_TILE must be 1");
 
+// The constructor gates its clock distribution query on
+// RFdc_Config.IPType >= XRFDC_GEN3, so a header defining this differently
+// silently flips which boards take the query path rather than failing: a
+// lower value asks boards the driver will refuse and print an error for, a
+// higher one stops asking boards that can answer.
+//
+// Like the tile-type assertion above, this one compiles in the Yocto build
+// as well as in the host harness, so it pins the real xrfdc.h and not only
+// the shim.
+static_assert(XRFDC_GEN3 == 2,
+              "PyRFdc.cpp gates the clock distribution query on "
+              "RFdc_Config.IPType >= XRFDC_GEN3: XRFDC_GEN3 must be 2");
+
 // Names of the sixteen states of the tile IPSM, indexed by the low four bits
 // of the current state register at offset 0x000C.
 // https://docs.amd.com/r/en-US/pg269-rf-data-converter/Current-State-Register-0x000C
