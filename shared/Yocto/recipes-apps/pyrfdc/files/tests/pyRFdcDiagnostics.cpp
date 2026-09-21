@@ -4353,6 +4353,70 @@ void checkTwoFailingEdgesInOneGroupArmOneRecovery() {
 }
 
 /*
+ * The recovery counter refuses a write, mutates nothing, and answers an
+ * instance whose construction never produced a driver.
+ *
+ * The three registers beside this one were published with the write
+ * refusal and the dead-driver read admission implemented in the same shape
+ * and argued for rather than driven, and one of them still is. That
+ * argument is worth less here than anywhere else in the block: this
+ * register is the only evidence that a recovery ever fired, so a host that
+ * cannot read it on a driver that is already in trouble has lost the one
+ * thing it came for. Zero is the honest answer on such an instance, and it
+ * is the truth rather than a placeholder: a driver that never came up ran
+ * no sweep and armed no recovery.
+ *
+ * The scratchpad is written before and read after, so a refused word is
+ * shown to have left the rest of the block alone rather than merely to
+ * have reported an error.
+ */
+void checkRecoveryCounterIsReadOnlyAndAnswersADeadDriver() {
+    const uint32_t pattern = 0x5AC33C5Au;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    driveWrite(device, kScratchPad, pattern);
+
+    rim::TransactionPtr refused = driveWrite(device, kRecoveryCount, 0xDEADBEEFu);
+
+    bool ok = refused->errorStrCalled() && !refused->doneCalled();
+    if (ok) ok = (refused->errorStrValue().find("RecoveryCount") != std::string::npos);
+
+    if (ok) {
+        rim::TransactionPtr scratch = driveRead(device, kScratchPad);
+
+        ok = scratch->doneCalled() && !scratch->errorStrCalled();
+        if (ok) ok = (scratch->getWord(0) == pattern);
+    }
+
+    // And the read is admitted on an instance that never got a driver.
+    if (ok) {
+        PyRFdcPtr dead = createDeadDevice("metal_init");
+
+        rim::TransactionPtr armed = driveRead(dead, kRecoveryCount);
+
+        ok = armed->doneCalled() && !armed->errorStrCalled();
+        if (ok) ok = (armed->getWord(0) == 0x00000000u);
+
+        // The write stays refused there too, and by the register rather
+        // than by the guard, so the refusal still names itself.
+        if (ok) {
+            rim::TransactionPtr deadWrite = driveWrite(dead, kRecoveryCount, 1);
+
+            ok = deadWrite->errorStrCalled() && !deadWrite->doneCalled();
+        }
+    }
+
+    if (!ok) {
+        fprintf(stderr, "recovery counter read only: refusal '%s'\n",
+                refused->errorStrValue().c_str());
+    }
+
+    runCheck("the recovery counter is read only and answers a dead driver", ok);
+}
+
+/*
  * The recovery pass re-runs the group master before the edge tile that
  * armed it, and starts only after the walk has finished.
  *
@@ -4499,7 +4563,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 86;
+const int kClaimsBeforeCountCheck = 87;
 
 /*
  * Every claim this file defines actually ran.
@@ -4616,6 +4680,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkEdgeTileFailingAtAnotherStepArmsNoRecovery();
     checkRecoveryThatSucceededIsStillCounted();
     checkTwoFailingEdgesInOneGroupArmOneRecovery();
+    checkRecoveryCounterIsReadOnlyAndAnswersADeadDriver();
     checkRecoveryRerunsTheGroupMasterFirst();
 
     checkFixtureResetEmptiesRecordedState();
