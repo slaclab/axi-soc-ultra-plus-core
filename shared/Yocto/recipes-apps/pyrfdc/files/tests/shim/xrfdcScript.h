@@ -14,7 +14,7 @@
  * object that every stub consults keeps the scripted failure, the recorded
  * call list and the register contents consistent by construction.
  *
- * It carries seven things:
+ * It carries nine things:
  *
  *   calls        an ordered record of every driver call, each formatted as
  *                name/type/tile/block, so a check can assert the sequence a
@@ -35,6 +35,12 @@
  *                XRFdc_Reset per tile at all. Zero by default, matching the
  *                zero-filled output every other getter stub produces, so a
  *                claim that wants that call site reached has to say so.
+ *   ipType       the IP generation the configuration lookup reports. The
+ *                production constructor gates its clock distribution query
+ *                on it, and zero by default is pre-Gen3, so the query is
+ *                unreachable unless a claim asks for it.
+ *   distributions the clock distribution topology the getter hands back,
+ *                empty by default so the default board has none.
  *   cfgInstance  the driver instance pointer XRFdc_CfgInitialize was handed.
  *                Recorded because the constructor writes two fields of that
  *                instance per tile directly rather than through a call, so
@@ -104,6 +110,17 @@ struct XRFdcScriptFailure {
     int status;
 };
 
+//! One scripted clock distribution, named in the real structure's own terms
+//! so a reader can put this side by side with XRFdc_Distribution_Settings.
+//! Only the four fields the production decode reads are here: which tile
+//! sources the distribution, and which two tiles bound it.
+struct XRFdcScriptDistribution {
+    uint32_t sourceType;
+    uint32_t sourceTileId;
+    uint32_t edgeTypes[2];
+    uint32_t edgeTileIds[2];
+};
+
 //! Key for a scripted register value.
 struct XRFdcScriptRegKey {
     uint32_t type;
@@ -137,6 +154,21 @@ class XRFdcScript {
     //! PyRFdc::create(), because the constructor is where it is consulted.
     uint32_t pllEnabled = 0;
 
+    //! The IPType the configuration lookup reports, which the production
+    //! constructor gates its clock distribution query on. Zero by default,
+    //! which is pre-Gen3, so the query is not issued unless a claim says so
+    //! and every claim written before this field existed keeps its meaning.
+    //! Set it before PyRFdc::create(), because the constructor is where it
+    //! is consulted.
+    uint32_t ipType = 0;
+
+    //! The clock distribution topology XRFdc_GetClkDistribution hands back.
+    //! Empty by default, which is no distribution at all, so the production
+    //! cache keeps the ungrouped values it was declared with unless a claim
+    //! pushes a topology here. Set it before PyRFdc::create(), for the same
+    //! reason ipType has to be set there.
+    std::vector<XRFdcScriptDistribution> distributions;
+
     //! The driver instance pointer XRFdc_CfgInitialize was handed. The
     //! constructor writes two fields of that instance per tile without
     //! making a call, so this is the only handle a claim has on a write the
@@ -161,6 +193,8 @@ class XRFdcScript {
         failures_.clear();
         registers_.clear();
         pllEnabled = 0;
+        ipType = 0;
+        distributions.clear();
         cfgInstance = nullptr;
         closedDevice = nullptr;
     }

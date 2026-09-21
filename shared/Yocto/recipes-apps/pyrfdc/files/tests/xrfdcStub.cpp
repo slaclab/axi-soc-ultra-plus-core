@@ -147,6 +147,11 @@ XRFdc_Config *XRFdc_LookupConfig(u16 DeviceId) {
     //! A scripted failure makes this return null, which is the one condition
     //! the production constructor tests it for.
     if (rec("XRFdc_LookupConfig", DeviceId, ANY, ANY) != XRFDC_SUCCESS) return nullptr;
+    // The one field of this structure the production code branches on. The
+    // constructor issues its clock distribution query only when this is at
+    // least XRFDC_GEN3, so a configuration that never carried it would leave
+    // that call site unreachable and any claim about it unprovable.
+    gConfig.IPType = gScript.ipType;
     return &gConfig;
 }
 
@@ -613,6 +618,45 @@ u32 XRFdc_GetPLLLockStatus(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 *LockS
     (void)InstancePtr;
     zero(LockStatus);
     return rec("XRFdc_GetPLLLockStatus", Type, Tile_Id, ANY);
+}
+
+u32 XRFdc_GetClkDistribution(XRFdc *InstancePtr,
+                             XRFdc_Distribution_System_Settings *DistributionArrayPtr) {
+    (void)InstancePtr;
+
+    // The selector is consulted before anything is written rather than after,
+    // which inverts the order the file header states for every other body.
+    // The reason is the one the registration stub gives: the driver's own
+    // refusal path returns without touching the out parameter, so a stub that
+    // filled it and then reported a failure would be kinder than the driver
+    // and would hide the ungrouped fallback that the whole of this work rests
+    // on. Recording still happens through rec below, so the call list is
+    // unchanged either way.
+    if (static_cast<u32>(gScript.statusFor("XRFdc_GetClkDistribution", ANY, ANY, ANY)) ==
+            XRFDC_SUCCESS &&
+        DistributionArrayPtr != nullptr) {
+        zero(DistributionArrayPtr);
+
+        // A memset alone would leave every slot reading as sourced by tile 0,
+        // which is a real tile, so every unused slot is marked explicitly.
+        for (size_t slot = 0; slot < 8; slot++) {
+            DistributionArrayPtr->Distributions[slot].SourceTileId = XRFDC_CLK_DST_INVALID;
+        }
+
+        for (size_t slot = 0; slot < gScript.distributions.size() && slot < 8; slot++) {
+            const XRFdcScriptDistribution &src = gScript.distributions[slot];
+            XRFdc_Distribution_Settings &dst = DistributionArrayPtr->Distributions[slot];
+
+            dst.SourceType = src.sourceType;
+            dst.SourceTileId = src.sourceTileId;
+            dst.EdgeTypes[0] = src.edgeTypes[0];
+            dst.EdgeTypes[1] = src.edgeTypes[1];
+            dst.EdgeTileIds[0] = src.edgeTileIds[0];
+            dst.EdgeTileIds[1] = src.edgeTileIds[1];
+        }
+    }
+
+    return rec("XRFdc_GetClkDistribution", ANY, ANY, ANY);
 }
 
 u32 XRFdc_DynamicPLLConfig(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u8 Source, double RefClkFreq,

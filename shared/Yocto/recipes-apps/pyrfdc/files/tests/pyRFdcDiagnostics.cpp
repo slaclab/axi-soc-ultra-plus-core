@@ -2658,7 +2658,12 @@ void checkLiveDriverStillClosesItsDeviceOnTeardown() {
 //! reaches its terminal undefined-memory assignment. That message is not a
 //! diagnostic this work protects, which is what makes it the right input
 //! for the claim that the bypass still clears what it legitimately should.
-const uint64_t kUndecodedGlobal = 0x12010;
+//!
+//! It was 0x12010 until the two clock distribution registers took 0x12010
+//! and 0x12014, so it moved up to the first address past them that no
+//! branch decodes. The claims below need an address that decodes to nothing
+//! at all, and a published register that merely refuses a write is not that.
+const uint64_t kUndecodedGlobal = 0x12018;
 
 /*
  * With the bypass set, a failing global reset still reports its tiles.
@@ -2901,6 +2906,90 @@ void checkFailureConstantStillStopsTheCall() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* The board's clock distribution topology.                                  */
+/*                                                                           */
+/* A tile with no clock pin of its own takes its clock from another tile,    */
+/* and nothing in this driver has ever known which tile that is. The         */
+/* constructor now asks the driver once, decodes the answer into a per-tile  */
+/* record, and publishes it through two read-only registers, so a host can   */
+/* read the grouping the reset path is about to be built on rather than      */
+/* infer it from the wizard configuration.                                   */
+/* ------------------------------------------------------------------------ */
+
+//! The two read-only registers the cached topology is published through.
+const uint64_t kClkDistStatus = 0x12010;
+const uint64_t kClkDistMap = 0x12014;
+
+/*
+ * Push this carrier's own topology onto the fixture, in the structure's own
+ * terms.
+ *
+ * DAC 0 sources the distribution and the two edges are DAC 3 and ADC 3. In
+ * package tile indices, where DAC n is 3 - n and ADC n is 7 - n, DAC 3 is 0
+ * and ADC 3 is 4, so the inclusive range between the two edges is DAC 3,
+ * DAC 2, DAC 1, DAC 0 and ADC 3, with DAC 0 the source. That is five tiles
+ * on one clock and three ADC tiles on their own pins, which is what the IP
+ * configuration on this carrier describes.
+ */
+void scriptThisCarriersDistribution() {
+    XRFdcScriptDistribution dist;
+
+    dist.sourceType = XRFDC_DAC_TILE;
+    dist.sourceTileId = 0;
+    dist.edgeTypes[0] = XRFDC_DAC_TILE;
+    dist.edgeTypes[1] = XRFDC_ADC_TILE;
+    dist.edgeTileIds[0] = 3;
+    dist.edgeTileIds[1] = 3;
+
+    gScript.distributions.push_back(dist);
+}
+
+/*
+ * A scripted Gen3 topology travels from the driver shim into two registers.
+ *
+ * The two words are asserted literally rather than rebuilt from the same
+ * arithmetic the driver uses, because a check that recomputed the encoding
+ * would agree with whatever the encoding happened to be. 0x00010201 is the
+ * documented API as the topology source, an IPType of 2 and one group.
+ * 0x44444FFF is ADC 0, 1 and 2 ungrouped and ADC 3 plus all four DAC tiles
+ * mastered by tile index 4, which is DAC 0.
+ */
+void checkClockDistributionTopologyIsCapturedAtConstruction() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    bool ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    if (ok) ok = (status->getWord(0) == 0x00010201u);
+    if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+    if (ok) ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 1);
+
+    // Asked once at construction and not again per reset. The topology is
+    // fixed by the IP, so a query on the reset path would cost a call that
+    // can fail on a path that has to keep working when the board is already
+    // degraded.
+    if (ok) {
+        driveWrite(device, kResetAllAdc, 1);
+        ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 1);
+    }
+
+    if (!ok) {
+        fprintf(stderr,
+                "clock distribution capture: status=0x%08X map=0x%08X, %zu query call(s)\n",
+                status->getWord(0), map->getWord(0),
+                gScript.countCalls("XRFdc_GetClkDistribution"));
+    }
+
+    runCheck("the clock distribution topology is captured at construction", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -2989,7 +3078,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 61;
+const int kClaimsBeforeCountCheck = 62;
 
 /*
  * Every claim this file defines actually ran.
@@ -3079,6 +3168,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkThirdReturnValueStopsTheCall();
     checkSuccessStillProceeds();
     checkFailureConstantStillStopsTheCall();
+
+    checkClockDistributionTopologyIsCapturedAtConstruction();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();

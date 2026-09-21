@@ -156,6 +156,50 @@ typedef int32_t s32;
 //! compared. Value from AMD PG269.
 #define XRFDC_UPDATE_THRESHOLD_BOTH 0x3U
 
+//! The IP generation at which the clock distribution API becomes available.
+//! Compared against at the constructor's topology capture, which issues
+//! XRFdc_GetClkDistribution only when RFdc_Config.IPType is at least this
+//! value. PyRFdc.cpp carries a static_assert on the exact number, because a
+//! header that defined it differently would silently flip which boards take
+//! the query path rather than failing.
+//! Source: xrfdc.h at upstream tag xilinx_v2026.1, the release the installed
+//! image was built from, confirmed byte-identical to master.
+#define XRFDC_GEN3 2U
+
+//! Package tile indices of the clock distribution chain, highest numbered
+//! tile first. The production decode maps a tile type and tile id onto this
+//! index space and walks the inclusive range between a distribution's two
+//! edges, so the span and the direction of these values are load bearing even
+//! though not every name below is referenced by name.
+//! Source: xrfdc.h at upstream tag xilinx_v2026.1, confirmed byte-identical
+//! to master.
+#define XRFDC_CLK_DST_TILE_231 0U
+#define XRFDC_CLK_DST_TILE_230 1U
+#define XRFDC_CLK_DST_TILE_229 2U
+#define XRFDC_CLK_DST_TILE_228 3U
+#define XRFDC_CLK_DST_TILE_227 4U
+#define XRFDC_CLK_DST_TILE_226 5U
+#define XRFDC_CLK_DST_TILE_225 6U
+#define XRFDC_CLK_DST_TILE_224 7U
+
+//! Marks a distribution slot that carries no distribution. Compared against
+//! by the production decode, which skips a slot whose SourceTileId reads this
+//! value, and written into every slot by the stub so an unfilled slot cannot
+//! be mistaken for a slot sourced by tile 0.
+//! Source: xrfdc.h at upstream tag xilinx_v2026.1, confirmed byte-identical
+//! to master.
+#define XRFDC_CLK_DST_INVALID 0xFFU
+
+//! Distribution output modes. Opaque to the harness: the production code
+//! assigns none of them and compares against none of them today. They are
+//! declared here because they are part of the same structure family and a
+//! later decode that names one should not have to reopen this shim.
+//! Source: xrfdc.h at upstream tag xilinx_v2026.1, confirmed byte-identical
+//! to master.
+#define XRFDC_DIST_OUT_NONE 0U
+#define XRFDC_DIST_OUT_RX 1U
+#define XRFDC_DIST_OUT_OUTDIV 2U
+
 /* ------------------------------------------------------------------------ */
 /* libmetal surface. The real declarations live in <metal/init.h>,           */
 /* <metal/device.h> and <metal/log.h>, none of which is installed here.      */
@@ -197,6 +241,10 @@ typedef struct {
 typedef struct {
     XRFdc_Tile_Config ADCTile_Config[4];
     XRFdc_Tile_Config DACTile_Config[4];
+    //! The IP generation the driver believes this part is. The only field of
+    //! this structure the production code branches on, and the one the
+    //! topology capture gates its query on.
+    u32 IPType;
 } XRFdc_Config;
 
 /* Tagged rather than anonymous, so xrfdcScript.h can forward declare it and
@@ -242,6 +290,58 @@ typedef struct {
     u64 FractionalData;
     u32 FractWidth;
 } XRFdc_PLL_Settings;
+
+//! Per-tile clock settings carried inside a distribution's info block. The
+//! production code reads none of these members today, so they exist only to
+//! give the enclosing structures the size and layout the real header gives
+//! them.
+typedef struct {
+    u8 SourceType;
+    u8 SourceTile;
+    u32 PLLEnable;
+    double RefClkFreq;
+    double SampleRate;
+    u8 DivisionFactor;
+    u8 DistributedClock;
+    u8 Delay;
+} XRFdc_Tile_Clock_Settings;
+
+//! What the driver worked out about one distribution while it was reading
+//! the registers. The production code reads nothing from here either.
+typedef struct {
+    u8 MaxDelay;
+    u8 MinDelay;
+    u8 IsDelayBalanced;
+    u8 Source;
+    u8 UpperBound;
+    u8 LowerBound;
+    XRFdc_Tile_Clock_Settings ClkSettings[2][4];
+} XRFdc_Distribution_Info;
+
+//! One distribution: which tile sources it and which two tiles bound it.
+//! The four members the production decode reads are SourceType,
+//! SourceTileId, EdgeTileIds and EdgeTypes. The rest are present so this
+//! structure and the array of eight below have the real footprint, which is
+//! what makes the constructor's scoped block a fair test of the real cost.
+typedef struct {
+    u32 SourceType;
+    u32 SourceTileId;
+    u32 EdgeTileIds[2];
+    u32 EdgeTypes[2];
+    double DistRefClkFreq;
+    u32 DistributedClock;
+    double SampleRates[2][4];
+    u32 ShutdownMode;
+    XRFdc_Distribution_Info Info;
+} XRFdc_Distribution_Settings;
+
+//! Every distribution the part can carry. The eight is a literal here
+//! because it is a literal in the real header too: the driver's own loop
+//! bound XRFDC_MAX_DISTRS is defined privately inside xrfdc_clock.c and is
+//! not exported, so this shim cannot borrow it and has to state it.
+typedef struct {
+    XRFdc_Distribution_Settings Distributions[8];
+} XRFdc_Distribution_System_Settings;
 
 typedef struct {
     u32 EnablePhase;
@@ -423,6 +523,8 @@ u32 XRFdc_GetPLLConfig(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, XRFdc_PLL_Sett
 u32 XRFdc_GetPLLLockStatus(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 *LockStatus);
 u32 XRFdc_DynamicPLLConfig(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u8 Source, double RefClkFreq,
                            double SampleRate);
+u32 XRFdc_GetClkDistribution(XRFdc *InstancePtr,
+                             XRFdc_Distribution_System_Settings *DistributionArrayPtr);
 
 u32 XRFdc_GetCoupling(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id, u32 *Mode);
 u32 XRFdc_GetDSA(XRFdc *InstancePtr, u32 Tile_Id, u32 Block_Id, XRFdc_DSA_Settings *Settings);
