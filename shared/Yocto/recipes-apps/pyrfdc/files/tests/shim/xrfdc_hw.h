@@ -91,4 +91,28 @@
  */
 #define XRFDC_DAC_INT_MODE_FULL_BW_BYPASS 0x2u
 
+/*
+ * NOT opaque, and NOT the register the diagnostic reads already take.
+ *
+ * The clock distribution source lives at offset 0x0080. The register
+ * readTileDiagnostics already reads is 0x0084, the clock detector status.
+ * Both are per tile, both answer, and only one of them names the tile that
+ * sources this tile's clock. Confusing the two is the single most likely
+ * way the distribution decode goes silently wrong, which is why the
+ * difference is written here rather than left to the reader.
+ *
+ * The mask keeps the low bit of each two bit field. The production decode
+ * shifts the masked value right by two bits per step and compares the
+ * result against XRFDC_ENABLED, which is the driver's own decode, so the
+ * value of the mask decides which bits that comparison can ever see.
+ *
+ * Source: xrfdc_hw.h at upstream tag xilinx_v2026.1, the release the
+ * installed image was built from. XRFDC_CLOCK_DETECT_OFFSET is defined at
+ * line 327 of that header and XRFDC_CLOCK_DETECT_SRC_MASK at line 1907.
+ * Unlike the five PG269-only constants above, these two were read out of
+ * the upstream header itself.
+ */
+#define XRFDC_CLOCK_DETECT_OFFSET 0x80U
+#define XRFDC_CLOCK_DETECT_SRC_MASK 0x00005555U
+
 #endif  /* __XRFDC_HW_H__ */

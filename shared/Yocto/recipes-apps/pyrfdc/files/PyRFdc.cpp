@@ -361,18 +361,34 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // at runtime, and it keeps a query that can fail off the path that has
     // to keep working when the board is already degraded.
     //
-    // The IP generation is captured unconditionally and the query is issued
-    // only when the driver reports at least a third generation part, because
-    // the driver refuses the call below that and prints a console error every
-    // time it is asked. This file is consumed by every SLAC RFSoC project, so
-    // an unguarded call would add a permanent error line at every bridge
-    // start on boards this work is not trying to change.
+    // The IP generation is captured unconditionally, and it decides which of
+    // two sources answers. The order below is the rule, and the rule matters
+    // more than either source does on its own.
     //
-    // The guard shape is the one the two captures below use: the cache is
-    // written only inside an XRFDC_SUCCESS test, so a refused or failed query
-    // writes nothing and every tile keeps the ungrouped values PyRFdc.h
-    // declares. That is the no-distribution fallback, with no branch of its
-    // own to forget.
+    // A driver reporting at least a third generation part is asked the
+    // documented question and is asked nothing else. If that call returns
+    // non-success the cache stays at the no-distribution values PyRFdc.h
+    // declares, and this code deliberately does not fall through to the raw
+    // decode. A board that answered the documented call and answered it with
+    // an error is telling the driver something, and a raw register read
+    // cannot correct that. Falling through would also mean one board could
+    // report two different topologies depending on whether a transient
+    // failure happened to land on that one call at construction.
+    //
+    // A driver reporting anything below that refuses the documented call at
+    // its first branch, without reading hardware, and prints a console error
+    // every time it is asked. This file is consumed by every SLAC RFSoC
+    // project, so an unguarded call would add a permanent error line at every
+    // bridge start on boards this work is not trying to change. Such a driver
+    // is therefore never asked, and gets the raw clock detect decode instead,
+    // which no IP generation gate can block.
+    //
+    // The no-distribution fallback needs no branch of its own on either path.
+    // The documented path writes the cache only inside an XRFDC_SUCCESS test,
+    // which is the guard shape the two captures below use, and the raw decode
+    // leaves a tile ungrouped when its register names no source. So a board
+    // with no distribution keeps every tile at the ungrouped values PyRFdc.h
+    // declares and its reset path is what it is today.
     ipType_ = RFdcInstPtr_->RFdc_Config.IPType;
     if (ipType_ >= XRFDC_GEN3) {
         // The structure is roughly three kilobytes, so it lives in a block of
@@ -382,6 +398,8 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
         if (XRFdc_GetClkDistribution(RFdcInstPtr_, &clkDist) == XRFDC_SUCCESS) {
             cacheClkDistribution(&clkDist);
         }
+    } else {
+        decodeClkDistributionRaw();
     }
 
     // Loop through type indexes
@@ -3870,6 +3888,137 @@ void PyRFdc::cacheClkDistribution(const XRFdc_Distribution_System_Settings *dist
     // and a board with no distribution is a different fact from a board that
     // was never asked.
     clkDistSource_ = PYRFDC_CLKDIST_SRC_API;
+}
+
+// Decode the distribution topology out of the per-tile clock detect
+// register, for a driver that refuses the documented query.
+//
+// The decode is not invented here. It is the one the driver itself performs
+// inside XRFdc_GetClkDistribution, reproduced step for step: the search for
+// the source package tile is the loop at xrfdc_clock.c:944-947, and turning
+// a package tile index back into a tile type and tile id is
+// XRFdc_DistTile2TypeTile at xrfdc_clock.c:2040-2053, both read at upstream
+// tag xilinx_v2026.1. Reproducing rather than paraphrasing is deliberate:
+// the two topology sources have to agree about the same board, and the only
+// way to be sure they do is to run the same arithmetic.
+//
+// Every index that reaches the fixed [2][4] member array is bounded by
+// construction and not by a range check, which is the same protection
+// cacheClkDistribution gets from its explicit checks and is worth stating
+// because the unsigned package arithmetic underflows on an out of range
+// tile id. The two tile loops below run over 0..1 and 0..3, so a package
+// index formed from them is in 0..7. A decoded source index is
+// XRFDC_CLK_DST_TILE_224 minus a loop variable bounded by
+// XRFDC_CLK_DST_TILE_224, so it is in 0..7 as well, and ClkDistTypeTile
+// maps 0..7 onto a tile id in 0..3 on both halves.
+void PyRFdc::decodeClkDistributionRaw() {
+    uint32_t srcPkg[2][4];
+    bool hasSrc[2][4];
+    uint32_t type, tile;
+
+    // First pass: what each tile says its own clock comes from.
+    for (type = 0; type < 2; type++) {
+        for (tile = 0; tile < 4; tile++) {
+            uint32_t i;
+
+            srcPkg[type][tile] = 0;
+            hasSrc[type][tile] = false;
+
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CheckTileEnabled
+            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, type, tile) != XRFDC_SUCCESS) {
+                continue;
+            }
+
+            // The per tile clock detect register at offset 0x0080, which
+            // carries the distribution source. This is not the clock
+            // detector status at 0x0084 that readTileDiagnostics reads.
+            // https://docs.amd.com/r/en-US/pg269-rf-data-converter
+            const uint32_t detect = XRFdc_RDReg(RFdcInstPtr_,
+                                                XRFDC_CTRL_STS_BASE(type, tile),
+                                                XRFDC_CLOCK_DETECT_OFFSET,
+                                                XRFDC_CLOCK_DETECT_SRC_MASK);
+
+            // Walk the two bit fields from the lowest upwards. The first
+            // one whose shifted value equals XRFDC_ENABLED names the
+            // source, and the package index counts down from
+            // XRFDC_CLK_DST_TILE_224 as the field index counts up, because
+            // the package tile constants are numbered highest tile first.
+            for (i = 0; i <= XRFDC_CLK_DST_TILE_224; i++) {
+                if ((detect >> (i << 1)) == XRFDC_ENABLED) {
+                    srcPkg[type][tile] = XRFDC_CLK_DST_TILE_224 - i;
+                    hasSrc[type][tile] = true;
+                    break;
+                }
+            }
+
+            // A register that reads zero names no source at all, and this
+            // tile contributes nothing. The driver's own equivalent path
+            // calls that a distribution system misconfiguration and warns.
+            // Here it is simply no distribution: the tile stays ungrouped
+            // and the reset path for it is bit identical to today, which is
+            // the fallback this driver has to keep for every board with no
+            // distribution at all.
+        }
+    }
+
+    // Second pass: which of the tiles that name themselves are masters.
+    //
+    // A tile whose decoded source is itself is not automatically ungrouped,
+    // and its own register cannot settle which it is. It is a master when at
+    // least one other tile decoded to it and ungrouped when no other tile
+    // did, so the answer depends on what every other tile said. That is why
+    // this is a second pass rather than more work inside the first.
+    for (type = 0; type < 2; type++) {
+        for (tile = 0; tile < 4; tile++) {
+            uint32_t masterType = 0;
+            uint32_t masterTile = 0;
+            uint32_t ownPkg;
+
+            if (!hasSrc[type][tile]) {
+                continue;
+            }
+
+            ownPkg = ClkDistPackageIndex(type, tile);
+            ClkDistTypeTile(srcPkg[type][tile], &masterType, &masterTile);
+
+            if (srcPkg[type][tile] == ownPkg) {
+                uint32_t followers = 0;
+                uint32_t t, n;
+
+                for (t = 0; t < 2; t++) {
+                    for (n = 0; n < 4; n++) {
+                        if ((t == type) && (n == tile)) {
+                            continue;
+                        }
+                        if (hasSrc[t][n] && (srcPkg[t][n] == ownPkg)) {
+                            followers++;
+                        }
+                    }
+                }
+
+                // Nobody follows it, so it is a tile on its own clock,
+                // which is ungrouped and contributes no group.
+                if (followers == 0) {
+                    continue;
+                }
+
+                clkDist_[type][tile].role = PYRFDC_CLKDIST_MASTER;
+                clkDistGroups_++;
+            } else {
+                clkDist_[type][tile].role = PYRFDC_CLKDIST_EDGE;
+            }
+
+            clkDist_[type][tile].masterType = uint8_t(masterType);
+            clkDist_[type][tile].masterTile = uint8_t(masterTile);
+        }
+    }
+
+    // Recorded whatever the decode found, including nothing, for the same
+    // reason the documented decode records its own source. This says that a
+    // decode ran, not that it found a group, so a decode that ran and found
+    // nothing stays distinguishable from one that was never attempted, and
+    // clkDistGroups_ is what says whether anything was found.
+    clkDistSource_ = PYRFDC_CLKDIST_SRC_RAW_DECODE;
 }
 
 // Where the cached topology came from, which IP generation the driver

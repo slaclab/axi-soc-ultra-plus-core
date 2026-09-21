@@ -424,6 +424,22 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! so it cannot disturb a word some other caller is about to hand back.
     void cacheClkDistribution(const XRFdc_Distribution_System_Settings *dist);
 
+    //! Decode the distribution topology out of the per-tile clock detect
+    //! register, without asking the driver for it.
+    //!
+    //! It exists because a raw register read is not IPType gated. The
+    //! documented getter refuses every call on a driver that reports a part
+    //! below the third generation, and it refuses it at its first branch
+    //! without reading anything, so on such a board the documented source
+    //! can answer nothing at all however healthy the hardware is.
+    //!
+    //! A helper rather than a transaction body, for the same reason
+    //! readTileDiagnostics is one: it runs from the constructor, where no
+    //! transaction is in flight, and it writes only members of its own. It
+    //! reads neither tileType_ nor tileId_ and never touches data_, so it
+    //! cannot disturb a word some other caller is about to hand back.
+    void decodeClkDistributionRaw();
+
     void MetalLogLevel();
     void IgnoreMetalError();
     void ScratchPad();

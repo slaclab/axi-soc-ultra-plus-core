@@ -84,6 +84,18 @@
  *   XRFDC_DIST_OUT_NONE     0      xrfdc.h. Opaque to the harness today:
  *   XRFDC_DIST_OUT_RX       1      the production code neither assigns nor
  *   XRFDC_DIST_OUT_OUTDIV   2      compares any of the three.
+ *   XRFDC_ENABLED           1      xrfdc.h. The value a shifted clock
+ *                                  detect register equals at the bit pair
+ *                                  naming a tile's clock source. Compared
+ *                                  against by the production raw decode,
+ *                                  which copies the driver's own
+ *                                  comparison, so the number is load
+ *                                  bearing.
+ *
+ * Two more distribution symbols live in the companion shim rather than
+ * here, because the real driver puts them in the register-level header:
+ * XRFDC_CLOCK_DETECT_OFFSET and XRFDC_CLOCK_DETECT_SRC_MASK are defined in
+ * shim/xrfdc_hw.h, with their own provenance at the definition site.
  *
  * Two structural facts about the distribution types belong here as well.
  *
@@ -228,6 +240,15 @@ typedef int32_t s32;
 //! Source: xrfdc.h at upstream tag xilinx_v2026.1, confirmed byte-identical
 //! to master.
 #define XRFDC_CLK_DST_INVALID 0xFFU
+
+//! The value a shifted clock detect register equals when the bit pair at
+//! that position names the source of a tile's clock. Load bearing rather
+//! than opaque: the driver's own distribution decode performs exactly this
+//! comparison, and the production raw decode copies it, so a different
+//! value here would silently name a different source tile.
+//! Source: xrfdc.h at upstream tag xilinx_v2026.1, confirmed byte-identical
+//! to master.
+#define XRFDC_ENABLED 1U
 
 //! Distribution output modes. Opaque to the harness: the production code
 //! assigns none of them and compares against none of them today. They are
