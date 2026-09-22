@@ -1032,6 +1032,15 @@ void PyRFdc::Reset(int Tile_Id) {
             // reset as a failure on every boot of every board that has a
             // distribution at all.
             //
+            // The warning level and not the error level the recovery
+            // report uses. That difference is deliberate and it is the
+            // routineness that decides it: a deferral happens on every
+            // reset of every board that has a distribution, while a
+            // recovery means a reset failed and had to be retried. The
+            // cost is that a reader who needs this line has to raise the
+            // host side log level before the boot in question, which is
+            // written down on the return code reference page.
+            //
             // The line is emitted only when something was deferred, so a
             // board with no distribution gains no per reset log output.
             const std::string deferral = buildDeferralMessage(uint32_t(entryType));
@@ -4606,9 +4615,22 @@ std::string PyRFdc::buildDeferralMessage(uint32_t type) const {
 // counters say that an attempt happened and what it returned. Neither they
 // nor this line are evidence that a recovery repairs anything.
 //
-// log_->warning and not setDiagError. On the success path there is no error
-// to report and the transaction completes, so routing this through the
-// error channel would turn a recovered reset into a reported failure.
+// log_->error and not setDiagError. These are two different mechanisms and
+// keeping them apart is the whole of this paragraph. setDiagError is what
+// makes a transaction report a failure to its caller, and a recovery that
+// succeeded has no failure to report, so it is not used here and the
+// transaction still completes clean. log_->error only selects the level
+// the line is printed at, and printing at that level does not turn a
+// recovered reset into a reported failure.
+//
+// The level is the point. The host side log is filtered by a global level
+// whose default admits errors and discards warnings, so a report below it
+// does not reach a console at all, and this is the report that has to
+// survive the boot where the counter register cannot be read. A recovery
+// that fired means a reset failed and had to be retried, which is never a
+// routine outcome, so the level is proportionate. The deferral report in
+// the global reset branch stays on the warning channel for the opposite
+// reason, and the two are deliberately not on one channel.
 //
 // Built with std::string concatenation and HexValue, matching the rest of
 // the message assembly in this file. No <iomanip> and no snprintf, so the
@@ -4733,14 +4755,14 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
         }
     }
 
-    log_->warning((std::string("clock group recovery armed by ")
-                   + typeName[(armingIdx >> 2) & 0x1] + std::to_string(armingIdx & 0x3)
-                   + ", group master " + typeName[(masterIdx >> 2) & 0x1]
-                   + std::to_string(masterIdx & 0x3)
-                   + ", tiles reset " + std::to_string(groupLen)
-                   + ", outcome " + (attemptOk ? "succeeded" : "failed")
-                   + ", armed/succeeded so far " + HexValue(recoveriesArmed_)
-                   + "/" + HexValue(recoveriesSucceeded_) + "\n").c_str());
+    log_->error((std::string("clock group recovery armed by ")
+                 + typeName[(armingIdx >> 2) & 0x1] + std::to_string(armingIdx & 0x3)
+                 + ", group master " + typeName[(masterIdx >> 2) & 0x1]
+                 + std::to_string(masterIdx & 0x3)
+                 + ", tiles reset " + std::to_string(groupLen)
+                 + ", outcome " + (attemptOk ? "succeeded" : "failed")
+                 + ", armed/succeeded so far " + HexValue(recoveriesArmed_)
+                 + "/" + HexValue(recoveriesSucceeded_) + "\n").c_str());
 }
 
 // Where the cached topology came from, which IP generation the driver

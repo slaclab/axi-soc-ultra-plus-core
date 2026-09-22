@@ -4034,11 +4034,14 @@ void checkBothEntryPointsTogetherGiveEveryTileOneCycle() {
  * that shows an ADC reset quietly passing over one of its four tiles sees
  * something indistinguishable from the fault this whole change is removing.
  *
- * The warning channel and not the error channel. A deferral is a correct
- * outcome, the transaction completes, and routing it through the diagnostic
- * error path would report a healthy reset as a failure on every boot. The
- * empty error list and the completed transaction are asserted here so that
- * cannot happen without a claim going red.
+ * The warning channel and not the error channel, which is the opposite of
+ * where the recovery report goes. A deferral is a correct outcome that
+ * occurs on every reset of every board with a distribution, so raising it
+ * to the level the host side log admits by default would print a line per
+ * reset on a healthy board. The empty error list and the completed
+ * transaction are asserted here so it cannot drift up a level, and so that
+ * routing it through the diagnostic error path, which would report a
+ * healthy reset as a failure, cannot happen without a claim going red.
  */
 void checkDeferredTileIsNamedInTheLog() {
     gScript.reset();
@@ -4861,7 +4864,14 @@ void checkEdgeTileFailingAtAnotherStepArmsNoRecovery() {
  * Without this claim a silent retry would be indistinguishable from a reset
  * that never needed one, and twenty clean reboots could be twenty
  * recoveries. What remains is the counter, reading one armed and one
- * succeeded, and one warning line naming the tile and its master.
+ * succeeded, and one error level line naming the tile and its master.
+ *
+ * The error list and not the warning list, which is where the deferral
+ * report goes. The recovery report is emitted at the level the host side
+ * log admits by default, because it is the half of the evidence that has
+ * to survive the boot where the counter cannot be read. The empty warning
+ * list is asserted here so the line cannot drift back down a level without
+ * a claim going red.
  */
 void checkRecoveryThatSucceededIsStillCounted() {
     gScript.reset();
@@ -4870,7 +4880,7 @@ void checkRecoveryThatSucceededIsStillCounted() {
 
     PyRFdcPtr device = PyRFdc::create();
     gScript.calls.clear();
-    gScript.logWarnings.clear();
+    gScript.logErrors.clear();
 
     gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
                                XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
@@ -4881,17 +4891,17 @@ void checkRecoveryThatSucceededIsStillCounted() {
     bool ok = armed->doneCalled() && !armed->errorStrCalled();
     if (ok) ok = (armed->getWord(0) == 0x00010001u);
     if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
-    if (ok) ok = gScript.logErrors.empty();
-    if (ok) ok = (gScript.logWarnings.size() == 1);
-    if (ok) ok = (gScript.logWarnings[0].find("ADC3") != std::string::npos);
-    if (ok) ok = (gScript.logWarnings[0].find("DAC0") != std::string::npos);
+    if (ok) ok = gScript.logWarnings.empty();
+    if (ok) ok = (gScript.logErrors.size() == 1);
+    if (ok) ok = (gScript.logErrors[0].find("ADC3") != std::string::npos);
+    if (ok) ok = (gScript.logErrors[0].find("DAC0") != std::string::npos);
 
     if (!ok) {
         fprintf(stderr,
-                "recovery counted: recoveries=0x%08X, done=%u err=%u, %zu warning(s) '%s'\n",
+                "recovery counted: recoveries=0x%08X, done=%u err=%u, %zu error(s) '%s'\n",
                 armed->getWord(0), dac->doneCalls(), dac->errorStrCalls(),
-                gScript.logWarnings.size(),
-                gScript.logWarnings.empty() ? "" : gScript.logWarnings[0].c_str());
+                gScript.logErrors.size(),
+                gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
     }
 
     runCheck("a recovery that succeeded is still counted", ok);
