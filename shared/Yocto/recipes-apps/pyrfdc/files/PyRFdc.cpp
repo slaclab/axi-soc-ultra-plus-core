@@ -686,8 +686,14 @@ void PyRFdc::Reset(int Tile_Id) {
             // carrier that means the ADC call clears ADC 0, 1 and 2 and
             // leaves ADC 3 alone, and the DAC call clears DAC 0 through 3
             // and ADC 3, so the pair reads one per tile.
+            //
+            // The exactness flag is cleared in this same loop and for the
+            // same tiles, because it qualifies the count beside it. Two
+            // parallel arrays cleared in two places is a defect waiting to
+            // happen, so they are cleared together.
             for(w=0; w<walkLen; w++) {
                 resetCycles_[walk[w] >> 2][walk[w] & 0x3] = 0;
+                resetCyclesInexact_[walk[w] >> 2][walk[w] & 0x3] = false;
             }
 
             // Init the MTS configurations
@@ -731,19 +737,42 @@ void PyRFdc::Reset(int Tile_Id) {
                         recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_DynamicPLLConfig");
                     }
 
-                    // Decide this tile's one IPSM cycle.
+                    // Decide this tile's IPSM cycles, and decide separately
+                    // whether the figure can be stood behind.
                     //
                     // The reconfigure above performs a cycle of its own,
                     // through the same restart primitive an explicit reset
                     // reaches, but only when the tile was already powered up
                     // and only when the call returned success. When both
                     // held, that internal cycle is the tile's one cycle and
-                    // nothing further is issued here. When either did not,
-                    // one compensating reset is issued, which covers exactly
-                    // the tile that was not powered up and the tile whose
-                    // reconfigure failed its reference frequency check. Those
-                    // are the tiles a bare removal of the explicit resets
-                    // would have left with no cycle at all.
+                    // nothing further is issued here.
+                    //
+                    // A call that returns non-success is two different
+                    // events wearing one return value. It may have refused
+                    // before it touched the tile, which is what the
+                    // reference frequency check does, or it may have driven
+                    // the tile down and back up and then failed at the end.
+                    // The first performed no cycle. The second performed one
+                    // and then the compensating reset performs another.
+                    //
+                    // Re-reading the power-up status separates only one of
+                    // those: a tile reading not powered up after the call
+                    // was measurably driven down by it, so that tile is
+                    // counted as two. A tile still reading powered up is a
+                    // refusal and a completed late failure alike, which from
+                    // here are indistinguishable, so the count is recorded
+                    // as not exact rather than guessed at. The re-read costs
+                    // one masked register access and is reachable only on a
+                    // tile whose reconfigure already failed, so the healthy
+                    // path costs exactly what it did before.
+                    //
+                    // The compensating reset is issued in every non-success
+                    // case regardless of which of the two it was, and no new
+                    // condition guards it. The failure this carrier actually
+                    // produces is the early reference frequency refusal on
+                    // its five external clock tiles, and withholding the
+                    // reset from them would leave those tiles with no cycle
+                    // at all.
                     //
                     // The count below counts IPSM cycles and not XRFdc_Reset
                     // calls. A counter placed only at the call site would
@@ -758,6 +787,19 @@ void PyRFdc::Reset(int Tile_Id) {
                         resetCycles_[i][j]++;
 
                     } else {
+                        bool leftDown = false;
+                        bool cannotTell = false;
+
+                        if (pwrUpStatus != 0) {
+                            // Same base address, same offset and same mask
+                            // as the read before the reconfigure, so the two
+                            // answers are comparable.
+                            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/RF-DAC/RF-ADC-Tile-n-Common-Status-Register-0x0228
+                            uint32_t pwrUpAfter = XRFdc_RDReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(i, j), XRFDC_STATUS_OFFSET, XRFDC_PWR_UP_STAT_MASK);
+                            leftDown = (pwrUpAfter == 0);
+                            cannotTell = !leftDown;
+                        }
+
                         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
                         uint32_t resetStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
                         if (resetStatus != XRFDC_SUCCESS) {
@@ -767,8 +809,16 @@ void PyRFdc::Reset(int Tile_Id) {
                         // Counted whether or not the reset returned success,
                         // because the tile was driven at its state machine
                         // either way and the count is a record of what was
-                        // issued rather than of what worked.
+                        // issued rather than of what worked. Two for a tile
+                        // the reconfigure left down, because that tile was
+                        // driven twice.
                         resetCycles_[i][j]++;
+                        if (leftDown) {
+                            resetCycles_[i][j]++;
+                        }
+                        if (cannotTell) {
+                            resetCyclesInexact_[i][j] = true;
+                        }
                     }
 
                     clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
@@ -4786,8 +4836,19 @@ void PyRFdc::ResetCycleCount() {
         for (uint32_t type = 0; type < 2; type++) {
             for (uint32_t tile = 0; tile < 4; tile++) {
                 const uint32_t index = (type * 4) + tile;
+
+                // The reserved value for a tile the driver cannot stand a
+                // number for, and otherwise a real count capped one below
+                // it. The cap moved down by one so counting can never
+                // produce the reserved value, and a tile that somehow
+                // issued more cycles than the cap reads as the cap rather
+                // than wrapping back to a small and plausible number.
                 const uint32_t cycles =
-                    (resetCycles_[type][tile] > 0xF) ? 0xF : resetCycles_[type][tile];
+                    resetCyclesInexact_[type][tile]
+                        ? PYRFDC_RESET_CYCLES_NOT_EXACT
+                        : ((resetCycles_[type][tile] > PYRFDC_RESET_CYCLES_MAX_REPORTED)
+                               ? PYRFDC_RESET_CYCLES_MAX_REPORTED
+                               : resetCycles_[type][tile]);
 
                 counts |= (cycles & 0xF) << (4 * index);
             }

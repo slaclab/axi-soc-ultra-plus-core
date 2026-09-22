@@ -109,6 +109,15 @@ enum PyRFdcClkDistSource {
 //! tree node whose parameter property was zero bytes.
 #define PYRFDC_IPTYPE_MAX_KNOWN 3U
 
+//! The cycle count nibble value reserved for a tile whose count is not
+//! exact, and the highest value a real count is allowed to report.
+//!
+//! 0xF is reserved so a reader can tell a record the driver cannot stand
+//! behind from a number, and a real count is capped one below it so counting
+//! can never reach the reserved value.
+#define PYRFDC_RESET_CYCLES_NOT_EXACT 0xFU
+#define PYRFDC_RESET_CYCLES_MAX_REPORTED 0xEU
+
 //! Memory interface Emlator device
 /** This memory will respond to transactions, emilator hardware by responding to read
  * and write transactions.
@@ -299,6 +308,20 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! so on exactly the paths that guard exists for it would otherwise
     //! hand a host the contents of this process's memory.
     uint32_t resetCycles_[2][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}};
+
+    //! Whether the count beside it is a figure this driver can stand behind,
+    //! indexed the same way.
+    //!
+    //! Set for a tile whose PLL reconfigure returned non-success at a point
+    //! where this code cannot tell whether the call had already cycled the
+    //! tile. The true figure for such a tile is one or two, and the register
+    //! publishes the reserved nibble rather than picking one of them.
+    //!
+    //! Declared with values here for the reason the array above is: this one
+    //! is read by the same register on the same paths the dead-driver guard
+    //! exists for.
+    bool resetCyclesInexact_[2][4] = {{false, false, false, false},
+                                      {false, false, false, false}};
 
     //! How many clock group recoveries have been armed since construction,
     //! and how many of those succeeded.
@@ -634,6 +657,17 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! A transaction body of the same shape as the two above: a read hands
     //! back members and a write is refused, and it names RFdcInstPtr_
     //! nowhere, which is what lets the dead-driver guard admit it on read.
+    //!
+    //! A nibble counts IPSM cycles and not XRFdc_Reset calls, so a tile the
+    //! PLL reconfigure cycled internally is counted here even though no
+    //! explicit reset was issued for it.
+    //!
+    //! A nibble reading the reserved value means the tile's reconfigure
+    //! returned non-success at a point where this code cannot tell whether
+    //! the call had already cycled the tile, so the true figure for that
+    //! tile is one or two and the driver declines to pick. A real count
+    //! saturates one below the reserved value, so the two readings are
+    //! disjoint by construction.
     void ResetCycleCount();
 
     //! How many clock group recoveries were armed and how many succeeded,

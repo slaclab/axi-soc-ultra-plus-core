@@ -3762,6 +3762,14 @@ void checkWedgedTileStillGetsItsOneCycle() {
  * cycle count, because a predicate that dropped the reconfigure status would
  * still increment the count for this tile while issuing nothing, so the
  * count alone cannot tell the two apart and the call list can.
+ *
+ * The failing tile's own nibble is the reserved not-exact value and not a
+ * one. This tile reads powered up both before the reconfigure and after it
+ * failed, so from the driver a refusal that never touched the tile and a
+ * late failure that had already cycled it are the same observation, and the
+ * register declines to pick between one and two. That is a statement about
+ * what the count may claim and not about the reset, which still fires here
+ * and is what this claim exists to hold in place.
  */
 void checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle() {
     const uint32_t failing = 1;
@@ -3788,7 +3796,7 @@ void checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle() {
     bool ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 1);
     if (ok) ok = gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY);
     if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
-    if (ok) ok = (counts->getWord(0) == 0x00001111u);
+    if (ok) ok = (counts->getWord(0) == 0x000011F1u);
     // The tile is still reported, and under the call that actually went
     // wrong rather than under the reset that followed it.
     if (ok) ok = adc->errorStrCalled() && !adc->doneCalled();
