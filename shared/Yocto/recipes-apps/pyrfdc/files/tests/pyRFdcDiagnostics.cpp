@@ -3134,6 +3134,21 @@ void checkClockDistributionTopologyIsCapturedAtConstruction() {
     runCheck("the clock distribution topology is captured at construction", ok);
 }
 
+//! The two words a driver reporting generation 1 publishes when the raw
+//! clock detect decode finds nothing, which is the reading a board with no
+//! clock distribution produces: the raw decode as the topology source, an
+//! IPType of 1 and a group count of zero, beside every nibble of the map at
+//! the ungrouped sentinel.
+//!
+//! Named once and read by every claim that expects that reading, so that
+//! when two claims say two different constructions publish the same pair,
+//! they compare against one shared value rather than two literals that
+//! happen to match. They are defined here rather than beside the cyclic pair
+//! words further down because the first claim that reads them is the one
+//! directly below.
+const uint32_t kNoDistributionStatusWord = 0x00000102u;
+const uint32_t kNoDistributionMapWord = 0xFFFFFFFFu;
+
 /*
  * A driver that reports a pre-Gen3 part is never asked for the distribution.
  *
@@ -3171,9 +3186,9 @@ void checkPreGen3DriverIsNeverAskedForTheDistribution() {
     if (ok) ok = status->doneCalled() && !status->errorStrCalled();
     if (ok) ok = map->doneCalled() && !map->errorStrCalled();
     // The raw decode as the source, an IPType of 1 and no groups.
-    if (ok) ok = (status->getWord(0) == 0x00000102u);
+    if (ok) ok = (status->getWord(0) == kNoDistributionStatusWord);
     // Every tile ungrouped.
-    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+    if (ok) ok = (map->getWord(0) == kNoDistributionMapWord);
 
     if (!ok) {
         fprintf(stderr, "pre-Gen3 gate: status=0x%08X map=0x%08X, %zu query call(s)\n",
@@ -5087,12 +5102,15 @@ const uint32_t kCyclicPairMapWord = 0xFFFFFFFFu;
 //!
 //! The group count is deliberately left at what the decode counted, so this
 //! literal carries a non-zero count sitting beside an all-ungrouped map. That
-//! pairing is not a disagreement a reader has to work out for themselves: it
-//! is the register-only signature of a withdrawn grouping, and both documents
-//! that publish these registers now say so, the ClkDistStatus description
-//! naming the signature and the ClkDistMap description naming the register
-//! pair alongside the console report as what tells the two readings of an
-//! all-ungrouped map apart.
+//! pairing is not a disagreement a reader has to work out for themselves: on
+//! the documented getter path it is the register-only signature of a
+//! withdrawn grouping, and both documents that publish these registers name
+//! it as that. The claim "the register pair is a sufficient signature of a
+//! withdrawal and not a complete one", beside this one, shows the signature
+//! is sufficient and not complete: the raw decode path can withdraw a
+//! grouping with the count left at zero, and that reading publishes the same
+//! two words a board with no clock distribution publishes, so only the
+//! console report separates those two.
 //!
 //! What the count field ought to count is a separate open question with four
 //! answers already on record, and nothing here answers it. This literal and
@@ -5285,6 +5303,154 @@ void checkACyclicMasterPairLeavesBothTilesUngrouped() {
                 countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
 
         runCyclicPairCheck("dac sequence by own type", ok);
+    }
+}
+
+/*
+ * Two tiles whose clock detect registers name each other, and no other tile
+ * naming anything.
+ *
+ * The same arithmetic scriptThisCarriersClockDetect works out above. A value
+ * whose single set bit pair sits at index i decodes to source package 7 - i,
+ * and ADC n sits at package 7 - n while DAC n sits at package 3 - n. So:
+ *
+ *   ADC 3 sits at package 4 and names package 3, which is DAC 0,
+ *   so i is 4:                                                   0x0100
+ *   DAC 0 sits at package 3 and names package 4, which is ADC 3,
+ *   so i is 3:                                                   0x0040
+ *
+ * Each names the other and neither names itself, so the raw decode's second
+ * pass marks both as edges and finds no tile that names its own package,
+ * which is the only place that decode marks a master and counts a group.
+ * The other six tiles read zero and are left ungrouped by the first pass.
+ */
+void scriptARawDecodeCycle() {
+    gScript.scriptRegister(XRFDC_ADC_TILE, 3, 0x80, 0x0100);
+    gScript.scriptRegister(XRFDC_DAC_TILE, 0, 0x80, 0x0040);
+}
+
+/*
+ * One sub-check of the register pair signature claim, labelled so a single
+ * red one says which of the two halves moved.
+ */
+void runRegisterPairSignatureCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("the register pair is a sufficient signature of a withdrawal and not a "
+                    "complete one [") +
+        site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * A non-zero group count beside an all-ungrouped map is a sufficient
+ * signature of a withdrawn grouping and not a complete one.
+ *
+ * The raw clock detect decode counts a group only inside its self-naming
+ * test and only behind a non-zero follower count, so a topology in which two
+ * tiles name each other is counted as no group at all. The normalization's
+ * promote pass promotes nothing either, because each edge names a tile that
+ * is itself an edge rather than an ungrouped one, and pass three then
+ * withdraws both tiles as edges that name no marked master. The count is
+ * left at zero beside an all-ungrouped map.
+ *
+ * What the two sub-checks measure. The first constructs that withdrawal and
+ * a driver with nothing scripted at all, which is a board with no clock
+ * distribution, and shows the two publish the same status word and the same
+ * map word on the raw decode path, so the register pair cannot separate
+ * them. The second shows the construction-time console report is present in
+ * the first reading and absent in the second, so on this path the report is
+ * what separates them and nothing else does.
+ *
+ * What this claim does not assert, stated so nobody credits it with more: it
+ * says nothing about whether any board presents a cyclic clock detect
+ * topology. No reading taken on this carrier has ever carried one.
+ */
+void checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne() {
+    {
+        gScript.reset();
+        gScript.ipType = 1;
+        scriptARawDecodeCycle();
+
+        PyRFdcPtr cycle = PyRFdc::create();
+        rim::TransactionPtr cycleStatus = driveRead(cycle, kClkDistStatus);
+        rim::TransactionPtr cycleMap = driveRead(cycle, kClkDistMap);
+        const size_t cycleLines = gScript.logErrors.size();
+
+        bool ok = cycleStatus->doneCalled() && !cycleStatus->errorStrCalled();
+        if (ok) ok = cycleMap->doneCalled() && !cycleMap->errorStrCalled();
+
+        // The shift and the mask PyRFdc::ClkDistStatus packs this field with.
+        const uint32_t cycleGroups = (cycleStatus->getWord(0) >> 16) & 0xFFu;
+
+        if (ok) ok = (cycleStatus->getWord(0) == kNoDistributionStatusWord);
+        if (ok) ok = (cycleMap->getWord(0) == kNoDistributionMapWord);
+        if (ok) ok = (cycleGroups == 0);
+
+        gScript.reset();
+        gScript.ipType = 1;
+
+        PyRFdcPtr none = PyRFdc::create();
+        rim::TransactionPtr noneStatus = driveRead(none, kClkDistStatus);
+        rim::TransactionPtr noneMap = driveRead(none, kClkDistMap);
+        const size_t noneLines = gScript.logErrors.size();
+        const uint32_t noneGroups = (noneStatus->getWord(0) >> 16) & 0xFFu;
+
+        if (ok) ok = noneStatus->doneCalled() && !noneStatus->errorStrCalled();
+        if (ok) ok = noneMap->doneCalled() && !noneMap->errorStrCalled();
+        if (ok) ok = (noneStatus->getWord(0) == kNoDistributionStatusWord);
+        if (ok) ok = (noneMap->getWord(0) == kNoDistributionMapWord);
+
+        if (!ok) {
+            fprintf(stderr,
+                    "register pair, cycle vs none: status=0x%08X/0x%08X map=0x%08X/0x%08X "
+                    "groups=%u/%u lines=%zu/%zu\n",
+                    cycleStatus->getWord(0), noneStatus->getWord(0), cycleMap->getWord(0),
+                    noneMap->getWord(0), cycleGroups, noneGroups, cycleLines, noneLines);
+        }
+
+        runRegisterPairSignatureCheck("a raw decode withdrawal reads as no distribution", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 1;
+        scriptARawDecodeCycle();
+
+        PyRFdcPtr cycle = PyRFdc::create();
+        const std::vector<std::string> cycleErrors = gScript.logErrors;
+        rim::TransactionPtr cycleStatus = driveRead(cycle, kClkDistStatus);
+        rim::TransactionPtr cycleMap = driveRead(cycle, kClkDistMap);
+
+        // The pieces PyRFdc::normalizeClkDistCache assembles its withdrawal
+        // report from: the withdrawn tile count ahead of "tile(s)", and each
+        // tile named as its type name followed by its tile id.
+        bool ok = (cycleErrors.size() == 1);
+        if (ok) ok = (cycleErrors[0].find("withdrawn from 2 tile(s)") != std::string::npos);
+        if (ok) ok = (cycleErrors[0].find("ADC3") != std::string::npos);
+        if (ok) ok = (cycleErrors[0].find("DAC0") != std::string::npos);
+
+        gScript.reset();
+        gScript.ipType = 1;
+
+        PyRFdcPtr none = PyRFdc::create();
+        const std::vector<std::string> noneErrors = gScript.logErrors;
+        rim::TransactionPtr noneStatus = driveRead(none, kClkDistStatus);
+        rim::TransactionPtr noneMap = driveRead(none, kClkDistMap);
+
+        if (ok) ok = noneErrors.empty();
+
+        if (!ok) {
+            fprintf(stderr,
+                    "register pair, report: status=0x%08X/0x%08X map=0x%08X/0x%08X "
+                    "groups=%u/%u lines=%zu/%zu '%s'\n",
+                    cycleStatus->getWord(0), noneStatus->getWord(0), cycleMap->getWord(0),
+                    noneMap->getWord(0), (cycleStatus->getWord(0) >> 16) & 0xFFu,
+                    (noneStatus->getWord(0) >> 16) & 0xFFu, cycleErrors.size(),
+                    noneErrors.size(), cycleErrors.empty() ? "" : cycleErrors[0].c_str());
+        }
+
+        runRegisterPairSignatureCheck("only the report separates them", ok);
     }
 }
 
@@ -6717,7 +6883,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 126;
+const int kClaimsBeforeCountCheck = 128;
 
 /*
  * Every claim this file defines actually ran.
@@ -6844,6 +7010,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkSlotWhoseSourceWasAlreadyTakenIsOrderedBehindAMaster();
     checkEveryNamedClockMasterNamesItself();
     checkACyclicMasterPairLeavesBothTilesUngrouped();
+    checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne();
     checkPublishedGroupCountHasMoreThanOneProducer();
 
     checkFailingEdgeTileArmsExactlyOneRecovery();
