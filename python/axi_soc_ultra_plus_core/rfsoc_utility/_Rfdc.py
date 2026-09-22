@@ -654,7 +654,7 @@ class Rfdc(pr.Device):
         # halves are read off directly, which is the point of publishing them.
         self.add(pr.RemoteVariable(
             name         = 'ClkDistStatus',
-            description  = 'Where the cached clock distribution topology came from. Bits 7:0 report the source (0 nothing was obtained, 1 the documented distribution getter answered, 2 a raw clock detect decode answered), bits 15:8 report the IP generation the driver holds for this part, and bits 23:16 report how many distribution groups the cached topology holds',
+            description  = 'Where the cached clock distribution topology came from. Bits 7:0 report the source (0 nothing was obtained, 1 the documented distribution getter answered, 2 a raw clock detect decode answered, 3 the reported IP generation was outside the range this driver knows how to ask so no source was consulted at all), bits 15:8 report the IP generation the driver holds for this part, and bits 23:16 report how many distribution groups the cached topology holds. Both byte fields saturate rather than wrap, so a generation byte reading 0xFF is either a true 255 or a field that was never set and the two cannot be told apart from that byte alone, which is what the fourth source value exists to resolve',
             offset       = 0x12010,
             bitSize      = 32,
             mode         = 'RO',
@@ -664,7 +664,7 @@ class Rfdc(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'ClkDistMap',
-            description  = 'Cached clock distribution map, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble reads 0xF when the tile is ungrouped, and otherwise the tile index (tile type times four plus tile id) of the master that tile takes its clock from',
+            description  = 'Cached clock distribution map, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble reads 0xF when the tile is ungrouped, and otherwise the tile index (tile type times four plus tile id) of the master that tile takes its clock from. A nibble naming a master always names a tile whose own nibble equals its own index, which is an invariant of the cache rather than an accident of a decode, so a word violating it indicates a driver older than this one',
             offset       = 0x12014,
             bitSize      = 32,
             mode         = 'RO',
@@ -674,7 +674,7 @@ class Rfdc(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'ResetCycleCount',
-            description  = 'IPSM cycles the last global reset issued per tile, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble counts the cycles that reset issued for that tile, whether from an explicit reset or from the internal restart the PLL reconfigure performs, and one per tile is the expected reading on a healthy boot',
+            description  = 'IPSM cycles the last global reset issued per tile, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble counts the cycles that reset issued for that tile, whether from an explicit reset or from the internal restart the PLL reconfigure performs, and one per tile is the expected reading on a healthy boot. A nibble reading 0xF means the count for that tile is not exact, because the tile PLL reconfigure returned non-success at a point where the driver cannot tell whether the call had already cycled it, so the true figure is one or two; a real count is capped at 0xE so it can never be confused with the reserved value; and a nibble of 2 on the failing path means the tile was measurably left unpowered by the reconfigure and then reset',
             offset       = 0x12018,
             bitSize      = 32,
             mode         = 'RO',
