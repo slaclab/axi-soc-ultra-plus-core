@@ -446,7 +446,10 @@ is the enclosing function together with the driver call named beside it.
        of the tiles it reset and of no others, so the transaction completes reporting no error
        while a tile that failed outside this group still reports, and it remains visible in
        three places: the armed and succeeded halves of ``0x1201C``, a second cycle in the per
-       tile cycle count, and one warning line naming the arming tile and the master.
+       tile cycle count, and one ``log_->error`` line naming the arming tile and the master.
+       That line is emitted at the error level and the deferral line above is emitted at the
+       warning level, which is deliberate and is explained under
+       `Reading the two reports on a board`_.
      - No. Arming requires the cached topology to call the tile a distribution edge, so on a
        board reporting no distribution no tile ever qualifies, the arming pass finds nothing,
        and the reset path is identical to the one before this was added.
@@ -518,6 +521,38 @@ instance. On an instance whose construction never produced a usable driver they 
 values their members were declared with, which is the truth for a driver that ran no sweep. All
 four are exposed on the host side as read-only variables with no polling interval, for the reason
 recorded above for the initialization failure reason register.
+
+Reading the two reports on a board
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The reset path emits two reports and they are deliberately not at the same level. A board owner
+looking for either one needs to know which, because the host side log is filtered by a global
+level whose default admits errors and discards warnings, so a report emitted below that level
+does not reach a console at all however carefully it is worded.
+
+The clock group recovery report, the line beginning ``clock group recovery armed by``, is
+emitted through ``log_->error``. It is readable on a bridge running the default level with no
+configuration of any kind. That is the level it is at because a recovery that fired means a
+reset failed and had to be retried, which is never a routine outcome, and because it is the
+half of the recovery evidence that has to survive the boot where the register path itself is
+degraded and ``0x1201C`` cannot be read.
+
+The tile deferral report, the line beginning ``ADC global reset deferred`` or
+``DAC global reset deferred``, is emitted through ``log_->warning`` and is **not** readable at
+the default level. A deferral is a correct outcome that occurs on every global reset of every
+board that has a clock distribution at all, so emitting it at the error level would print a
+line per reset on a healthy board and train a reader to skip it.
+
+**What an operator has to do to read the deferral report.** Lower the rogue log level to
+warning on the process that hosts this memory slave, before the boot or the reset whose
+deferral is wanted. In a rogue application that is a ``rogue.Logging.setLevel`` call taking
+``rogue.Logging.Warning``, issued during bridge construction rather than afterwards, since a
+reset the bridge performs at startup has already happened by the time a later call takes
+effect. The setting is not retroactive: a session that did not lower the level before the
+reset cannot recover the line afterwards, and the deferral has to be evidenced instead from
+``0x12014``, which reports which tile each group is mastered by, together with which of the two
+global reset entry points raised. Neither report's absence at the default level says anything
+about whether the deferral or the recovery happened.
 
 What this change is not proven to do
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
