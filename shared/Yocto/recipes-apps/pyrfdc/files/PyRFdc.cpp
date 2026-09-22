@@ -4855,12 +4855,21 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     // arrays. Tested here so the bound is a property of this function
     // rather than of its caller's arming predicate.
     //
-    // Placed ahead of everything, and that placement is the point. An
-    // impossible call must increment no published counter and must emit no
-    // report, because both are evidence a host reads and an inflated armed
-    // count with no line beside it would be a worse artifact than the
-    // corruption this test exists to prevent.
+    // Placed ahead of every write, and that placement is kept: a call that
+    // issued nothing must move no published counter, because the armed
+    // count is evidence a host reads and an inflated one is evidence of an
+    // attempt that did not happen. The refusal itself is not silent. It is
+    // announced on the error channel the report at the end of this function
+    // uses, because a path that discards a recovery whole must not have to
+    // be inferred from the absence of a line, which is the same reason the
+    // documented getter's refusal in the constructor has a report of its
+    // own. No caller in this file can pass such an index today, so the line
+    // is expected never to be emitted, and that is why it costs one literal
+    // rather than a counter. A plain literal because the text has no runtime
+    // parts, so the compiler can check it as a format.
     if (masterIdx > 7) {
+        log_->error("clock group recovery refused because the master index is out of range;"
+                    " no tile was reset and no recovery counter moved\n");
         return;
     }
 
