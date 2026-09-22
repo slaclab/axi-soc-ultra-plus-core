@@ -541,9 +541,15 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! decoder would also mean a third source, whenever one arrives, has to
     //! rediscover the same rule rather than inherit it.
     //!
-    //! It only ever marks a master and re-points an edge. Nothing is
-    //! demoted and a tile already marked as a master is left untouched, so a
-    //! cache that already satisfied the invariant comes out byte identical.
+    //! A tile whose master chain cannot reach a marked master has its
+    //! grouping withdrawn and is left ungrouped, because a tile whose clock
+    //! source the cache cannot resolve to an orderable master is honestly
+    //! ungrouped, and the alternative of naming a master picked by tile index
+    //! or by visit order would publish an ordering the registers do not
+    //! support. Nothing else is demoted and a tile already marked as a master
+    //! is left untouched, and the withdrawal fires only on a cache that
+    //! violated the invariant, so a cache that already satisfied it comes out
+    //! byte identical.
     //!
     //! A helper rather than a transaction body, for the same reason
     //! readTileDiagnostics is one: it runs from the constructor, where no

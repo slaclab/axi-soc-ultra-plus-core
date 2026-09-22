@@ -4451,6 +4451,97 @@ void PyRFdc::normalizeClkDistCache() {
         clkDist_[named >> 2][named & 0x3].masterTile = uint8_t(named & 0x3);
         clkDistGroups_++;
     }
+
+    // Pass three, withdraw. An edge still naming a tile that is not a marked
+    // master names a master this cache cannot order, and the honest answer
+    // for such a tile is that it is in no group at all.
+    //
+    // What that buys is that the postcondition holds for every input rather
+    // than for every input the two decoders happen to produce. The
+    // alternative, naming a master picked by tile index or by the order the
+    // resolve pass walked the chain, would publish an ordering the registers
+    // do not support, on a word a host reads as evidence of what this driver
+    // did.
+    //
+    // One forward pass, with no repetition and no bound of its own. The test
+    // is whether the named tile is a marked master, and this pass never
+    // demotes a marked master: it only turns an edge into an ungrouped tile.
+    // So the test's outcome is monotone across the pass. A tile that fails it
+    // when its own index comes up would fail it just as surely later, and a
+    // tile that passes it cannot be made to fail it by anything this pass
+    // does. Every tile that has to be withdrawn is therefore withdrawn at its
+    // own inspection, in one sweep of eight.
+    //
+    // The out of range arm and the unresolvable chain arm are the same case
+    // and are treated identically on purpose. Neither is reachable from
+    // either decoder today, since the documented path range checks every
+    // field of a slot before it uses one and the raw decode's indices are
+    // bounded by construction, but the postcondition is published with no
+    // proviso, so this makes it total rather than conditional.
+    //
+    // The group count is deliberately left exactly as the decode set it, so a
+    // cache whose slots were counted and whose grouping was then withdrawn
+    // publishes a non-zero count beside an all-ungrouped map. That
+    // disagreement belongs to the separate question of what that field
+    // counts, which the two decoders and the promote pass above already
+    // answer three different ways. Redefining it here would be a fourth
+    // answer and would move the meaning of a published register as a side
+    // effect of a different fix.
+    {
+        static const char* const typeName[2] = {"ADC", "DAC"};
+        std::string tiles;
+        uint32_t withdrawn = 0;
+
+        for (idx = 0; idx < 8; idx++) {
+            uint32_t named;
+
+            if (clkDist_[idx >> 2][idx & 0x3].role != PYRFDC_CLKDIST_EDGE) {
+                continue;
+            }
+
+            named = (uint32_t(clkDist_[idx >> 2][idx & 0x3].masterType) * 4) +
+                    uint32_t(clkDist_[idx >> 2][idx & 0x3].masterTile);
+
+            if ((named <= 7) &&
+                (clkDist_[named >> 2][named & 0x3].role == PYRFDC_CLKDIST_MASTER)) {
+                continue;
+            }
+
+            // Both master fields go back to the sentinel the header declares
+            // for an ungrouped tile, not to zero, so the tile becomes
+            // indistinguishable from one no decode ever touched rather than
+            // reading as mastered by ADC tile 0, which is a real tile and a
+            // false statement.
+            clkDist_[idx >> 2][idx & 0x3].role = PYRFDC_CLKDIST_UNGROUPED;
+            clkDist_[idx >> 2][idx & 0x3].masterType = 0xFF;
+            clkDist_[idx >> 2][idx & 0x3].masterTile = 0xFF;
+
+            withdrawn++;
+            tiles += " " + std::string(typeName[idx >> 2]) + std::to_string(idx & 0x3);
+        }
+
+        // Emitted only when something was withdrawn, so a board whose cache
+        // already held the invariant gains no console output at all.
+        //
+        // Through the log channel and never through setDiagError or errMsg_.
+        // A cache that cannot be ordered is a topology outcome and not a
+        // transaction failure, so the verdict a caller gets back must not
+        // move. At the error level and not the warning level, for the reason
+        // the recovery report above is at the error level: the host side
+        // bridge filters by a global level whose default admits errors and
+        // discards warnings, and a boot that lost the ordering guarantee has
+        // to be visible without anyone knowing to read a register for it.
+        //
+        // At most eight tile names, which sits far inside the console budget
+        // the failure report is held to, so there is no omission counter here.
+        if (withdrawn > 0) {
+            log_->error((std::string("clock distribution grouping withdrawn from ")
+                         + std::to_string(withdrawn)
+                         + " tile(s) because the cached topology named no orderable"
+                           " master:" + tiles
+                         + "; reset falls back to per type ordering\n").c_str());
+        }
+    }
 }
 
 bool PyRFdc::tileIsOwnedBy(uint32_t type, uint32_t idx) const {
