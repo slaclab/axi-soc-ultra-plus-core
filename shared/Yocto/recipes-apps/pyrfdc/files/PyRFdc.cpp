@@ -4738,13 +4738,42 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     uint32_t idx, g;
 
     // Whether every reset this call actually issued returned success, over
-    // the tiles the loop below did not skip. A group whose every member is
-    // disabled issues nothing and reports the attempt as successful with
-    // nothing done, which is the right answer rather than a loophole: the
-    // arming tile has to have been enabled for the sweep to have reached a
-    // reset against it and recorded the failure that armed this call at
-    // all, so a group with no enabled member cannot be armed.
+    // the tiles the loop below did not skip. On its own that says nothing
+    // about a group whose every member the enable probe refuses: such a
+    // call issues no reset at all and this flag is still true, so the
+    // accounting below would publish an attempt that did nothing as one
+    // that succeeded.
+    //
+    // The argument this comment used to make instead was that the case
+    // cannot arise, because the arming tile had to be enabled for the sweep
+    // to have reached a reset against it and recorded the failure that
+    // armed this call. That argument is sound about the vendor driver in
+    // front of this code today, and it is not a property of this code: it
+    // rests on the enable probe reading static configuration and therefore
+    // never changing answer inside one transaction, and a probe that did
+    // change answer would make the case reachable with no edit here. The
+    // driven count beside this flag is what makes the outcome a property of
+    // this code instead, and the success accounting consults both.
+    //
+    // A disabled tile's refusal still must not be counted against the
+    // attempt. Counting it would make the whole recovery unreachable on any
+    // board with a partially populated group, which is most of them, which
+    // is why the guard below skips such a tile rather than failing it.
     bool attemptOk = true;
+
+    // How many of this group's tiles this call actually drove, and which
+    // group slots they were. Both are written only after the enable guard
+    // below, so a tile the guard skipped is recorded as skipped by omission
+    // rather than by a second test that could come to disagree with the
+    // first.
+    //
+    // Indexed by the group loop's own subscript, the same subscript group[]
+    // is indexed by, and deliberately not by tile index. The clear loop
+    // further down already walks the group by that subscript, so guarding
+    // it from this array forms no new index. Eight entries because group[]
+    // holds eight and the loop bound is groupLen.
+    uint32_t drivenCount = 0;
+    bool driven[8] = {false, false, false, false, false, false, false, false};
 
     // The master, then every edge tile that names it, in ascending tile
     // index order. Derived from the cached topology rather than from the
@@ -4790,6 +4819,9 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
             continue;
         }
 
+        driven[g] = true;
+        drivenCount++;
+
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
         uint32_t resetStatus = XRFdc_Reset(RFdcInstPtr_, int(type), int(tile));
         if (resetStatus != XRFDC_SUCCESS) {
@@ -4809,7 +4841,12 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
         recoveriesArmed_++;
     }
 
-    if (attemptOk) {
+    // Both halves, so an attempt that issued nothing increments the armed
+    // counter above and not the succeeded one. The succeeded half of the
+    // published word is the only evidence a host has that a recovery ever
+    // worked, and a pass that drove no tile has nothing to report as having
+    // worked.
+    if (attemptOk && (drivenCount > 0)) {
         if (recoveriesSucceeded_ < 0xFFFF) {
             recoveriesSucceeded_++;
         }
@@ -4837,6 +4874,24 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
         for (g = 0; g < groupLen; g++) {
             TileDiag &d = tileDiag_[group[g] >> 2][group[g] & 0x3];
 
+            // Two tests, in this order, asking two different questions.
+            //
+            // This one asks whether the attempt addressed this tile at all.
+            // A tile the enable guard skipped had nothing re-run against
+            // it, so there is no re-run for a clear to be honest about.
+            //
+            // The step-name test below asks whether the attempt addressed
+            // the kind of failure the record names. The two come apart on
+            // exactly one input, and it is the input that matters: a tile
+            // that recorded a reset failure in the sweep and was skipped
+            // here failed at the step this attempt would have addressed and
+            // was nonetheless not addressed. It passes the test below and
+            // fails this one, and clearing it would report a reset that
+            // never ran as a clean one.
+            if (!driven[g]) {
+                continue;
+            }
+
             if (!d.failed || (d.step == nullptr) ||
                 (std::strcmp(d.step, "XRFdc_Reset") != 0)) {
                 continue;
@@ -4850,7 +4905,8 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
                  + typeName[(armingIdx >> 2) & 0x1] + std::to_string(armingIdx & 0x3)
                  + ", group master " + typeName[(masterIdx >> 2) & 0x1]
                  + std::to_string(masterIdx & 0x3)
-                 + ", tiles reset " + std::to_string(groupLen)
+                 + ", group size " + std::to_string(groupLen)
+                 + ", tiles reset " + std::to_string(drivenCount)
                  + ", outcome " + (attemptOk ? "succeeded" : "failed")
                  + ", armed/succeeded so far " + HexValue(recoveriesArmed_)
                  + "/" + HexValue(recoveriesSucceeded_) + "\n").c_str());
