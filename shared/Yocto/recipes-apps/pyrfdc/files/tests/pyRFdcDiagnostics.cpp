@@ -3682,6 +3682,169 @@ void checkOutOfRangeGenerationSaysSoOnAnAdmittedChannel() {
 }
 
 /*
+ * One sub-check of the refused topology claim, labelled so a single red one
+ * is identifiable. The same shape as the out of range channel helper above
+ * and for the same reason: four fixtures, each of which can break on its own.
+ *
+ * Named for what it asserts rather than filed under the neighbouring claim's
+ * label. A sub-check about a refused getter reported under a verdict line
+ * saying an out of range generation is a verdict naming the wrong cause,
+ * which is the failure this driver's reporting work keeps being about.
+ */
+void runRefusedTopologyChannelCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("a refused topology query says so on a channel a default"
+                    " bridge admits [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * A documented getter that was asked and refused says so on the error
+ * channel, and the two arms where a source answered say nothing new at all.
+ *
+ * The arm this covers caches nothing, so every tile stays ungrouped, the
+ * reset falls back to per type ordering, and until now the only trace of it
+ * was one field of a register at 0x12010, readable only by a host that
+ * already knows to look there, on a boot whose register path may itself have
+ * degraded. That is the same argument the out of range claim above is built
+ * on, and it always covered both arms. The error level and not the warning
+ * level, because the host side bridge filters by a global level whose
+ * default admits errors and discards warnings.
+ *
+ * Both list sizes are asserted in every sub-check and not only in the two the
+ * report is expected in. A line emitted on the wrong channel and a line
+ * emitted on a board that obtained a topology are the two failures this claim
+ * exists to catch, and a one sided assertion would miss both.
+ *
+ * The two quiet sub-checks are therefore not padding. The whole argument for
+ * the report is that it fires on an outcome that is not routine, so a fixture
+ * in which it must stay silent is half of that property rather than a
+ * restatement of the first sub-check.
+ *
+ * Both published words are asserted in every sub-check as well, so a pass
+ * cannot come from the cache having moved instead of the line having fired.
+ *
+ * The reported generation is inside the bound on all three fixtures where the
+ * documented getter is the arm under test, so the generation gate is not what
+ * explains any difference between them, and the below bound value is used
+ * only on the raw decode sub-check. That is the same convention the out of
+ * range claim's fixtures follow, read from the other direction.
+ *
+ * What this says nothing about: no reading taken on this carrier has ever
+ * carried the no topology source value from a refused getter, so this arm has
+ * no hardware evidence for or against it either and this line has never been
+ * seen on a board.
+ */
+void checkRefusedTopologyQuerySaysSoOnAnAdmittedChannel() {
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        gScript.scriptFailure("XRFdc_GetClkDistribution", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                              XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        // The cause in the line's own words, so a report that fired without
+        // naming the refusal is red rather than accepted.
+        bool ok = (gScript.logErrors.size() == 1);
+        if (ok) ok = (gScript.logErrors[0].find("documented getter returned non-success")
+                      != std::string::npos);
+        if (ok) ok = gScript.logWarnings.empty();
+        // No source, an IPType of 2 and no groups.
+        if (ok) ok = (status->getWord(0) == 0x00000200u);
+        if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+        if (!ok) fprintf(stderr, "refused channel: %zu error(s) %zu warning(s) '%s'\n",
+                         gScript.logErrors.size(), gScript.logWarnings.size(),
+                         gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runRefusedTopologyChannelCheck("refused", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+        gScript.distributionFillsOnRefusal = true;
+        gScript.scriptFailure("XRFdc_GetClkDistribution", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                              XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        // Identical in every respect to the sub-check above, because the
+        // production success test is what decides whether the cache is
+        // written and therefore what decides which arm was taken.
+        bool ok = (gScript.logErrors.size() == 1);
+        if (ok) ok = (gScript.logErrors[0].find("documented getter returned non-success")
+                      != std::string::npos);
+        if (ok) ok = gScript.logWarnings.empty();
+        if (ok) ok = (status->getWord(0) == 0x00000200u);
+        if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+        if (!ok) fprintf(stderr, "filled then refused channel: %zu error(s) %zu warning(s) '%s'\n",
+                         gScript.logErrors.size(), gScript.logWarnings.size(),
+                         gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runRefusedTopologyChannelCheck("filled then refused", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+        scriptThisCarriersClockDetect();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = gScript.logErrors.empty();
+        if (ok) ok = gScript.logWarnings.empty();
+        // The documented getter as the source, an IPType of 2 and one group.
+        if (ok) ok = (status->getWord(0) == 0x00010201u);
+        if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+
+        if (!ok) fprintf(stderr, "getter answered channel: %zu error(s) %zu warning(s) '%s'\n",
+                         gScript.logErrors.size(), gScript.logWarnings.size(),
+                         gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runRefusedTopologyChannelCheck("getter answered", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 1;
+        scriptThisCarriersDistribution();
+        scriptThisCarriersClockDetect();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = gScript.logErrors.empty();
+        if (ok) ok = gScript.logWarnings.empty();
+        // The raw decode as the source, an IPType of 1 and one group.
+        if (ok) ok = (status->getWord(0) == 0x00010102u);
+        if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+
+        if (!ok) fprintf(stderr, "raw decode answered channel: %zu error(s) %zu warning(s) '%s'\n",
+                         gScript.logErrors.size(), gScript.logWarnings.size(),
+                         gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runRefusedTopologyChannelCheck("raw decode answered", ok);
+    }
+}
+
+/*
  * The two new branches disturb nothing already in the chain, and both
  * answer on an instance whose construction never produced a driver.
  *
@@ -6383,7 +6546,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 119;
+const int kClaimsBeforeCountCheck = 123;
 
 /*
  * Every claim this file defines actually ran.
@@ -6484,6 +6647,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkGetterFillingFoundSlotsOnlyStillYieldsTheScriptedTopology();
     checkOutOfRangeGenerationIsAskedNothingAtAll();
     checkOutOfRangeGenerationSaysSoOnAnAdmittedChannel();
+    checkRefusedTopologyQuerySaysSoOnAnAdmittedChannel();
     checkDistributionRegistersDoNotCollideAndAnswerADeadDriver();
 
     checkOneIpsmCyclePerEnabledTileOnTheHealthyPath();
