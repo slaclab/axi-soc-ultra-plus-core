@@ -456,6 +456,15 @@ beside it.
        while a tile that failed outside this group still reports, and it remains visible in
        three places: the armed and succeeded halves of ``0x1201C``, a second cycle in the per
        tile cycle count, and one ``log_->error`` line naming the arming tile and the master.
+       The outcome word on that line and the succeeded half of the counter are derived from
+       the same test, so a reader who finds the two disagreeing is looking at a driver defect
+       rather than at a distinction the driver is drawing. That word has three values:
+       ``succeeded`` when the attempt drove at least one tile and every reset it issued
+       returned success, ``failed`` when it drove at least one tile and a reset did not, and
+       ``nothing driven`` when every member of the group answered not enabled so the attempt
+       issued no reset at all. On a ``nothing driven`` line the reset count of zero printed
+       beside the word is the corroborating figure rather than a contradiction, and the
+       succeeded half of the counter does not move either.
        The second of those three is not unique to a recovery, so a reader who finds a cycle
        count nibble of 2 should consult the ``PyRFdc::ResetCycleCount`` row below rather than
        assume the PLL reconfigure produced it. That row states both producers and names this

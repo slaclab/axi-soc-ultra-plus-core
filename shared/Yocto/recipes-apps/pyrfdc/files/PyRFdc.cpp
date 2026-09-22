@@ -4808,6 +4808,23 @@ std::string PyRFdc::buildDeferralMessage(uint32_t type) const {
 // nothing but ASCII. The line names two tiles and one word, so it is well
 // under the 960 character console budget and needs no omission counter.
 void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
+    // The two fixed arrays below hold eight, and the length that indexes
+    // them is bounded by eight only if the master is one of the eight
+    // indices the skip in the group scan can match. A master outside that
+    // range makes the skip never fire, lets the scan append eight entries
+    // on top of the master and writes one entry past the end of both
+    // arrays. Tested here so the bound is a property of this function
+    // rather than of its caller's arming predicate.
+    //
+    // Placed ahead of everything, and that placement is the point. An
+    // impossible call must increment no published counter and must emit no
+    // report, because both are evidence a host reads and an inflated armed
+    // count with no line beside it would be a worse artifact than the
+    // corruption this test exists to prevent.
+    if (masterIdx > 7) {
+        return;
+    }
+
     // The same two names and the same tile numbering the failure report and
     // the deferral line use, so a reader comparing the three is reading one
     // vocabulary.
@@ -4819,9 +4836,11 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     // Whether every reset this call actually issued returned success, over
     // the tiles the loop below did not skip. On its own that says nothing
     // about a group whose every member the enable probe refuses: such a
-    // call issues no reset at all and this flag is still true, so the
-    // accounting below would publish an attempt that did nothing as one
-    // that succeeded.
+    // call issues no reset at all and this flag is still vacuously true.
+    // Nothing below reads it alone for that reason. The success accounting
+    // consults the driven count beside it, and so does the outcome word in
+    // the report, which gives a pass that drove nothing a value of its own
+    // rather than borrowing the word for a pass whose every reset worked.
     //
     // The argument this comment used to make instead was that the case
     // cannot arise, because the arming tile had to be enabled for the sweep
@@ -4849,8 +4868,9 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     // Indexed by the group loop's own subscript, the same subscript group[]
     // is indexed by, and deliberately not by tile index. The clear loop
     // further down already walks the group by that subscript, so guarding
-    // it from this array forms no new index. Eight entries because group[]
-    // holds eight and the loop bound is groupLen.
+    // it from this array forms no new index. Eight entries because the
+    // entry test at the top of this function refuses a master index above
+    // seven, which is what bounds the length that subscripts both arrays.
     uint32_t drivenCount = 0;
     bool driven[8] = {false, false, false, false, false, false, false, false};
 
@@ -4873,7 +4893,13 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
             continue;
         }
 
-        group[groupLen++] = idx;
+        // Bounded on its own as well as by the entry test above, and the
+        // redundancy is deliberate: it keeps both arrays safe from an
+        // overrun even if a later edit removes that test on the grounds
+        // that the caller already range checks the master.
+        if (groupLen < 8) {
+            group[groupLen++] = idx;
+        }
     }
 
     for (g = 0; g < groupLen; g++) {
@@ -4986,7 +5012,8 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
                  + std::to_string(masterIdx & 0x3)
                  + ", group size " + std::to_string(groupLen)
                  + ", tiles reset " + std::to_string(drivenCount)
-                 + ", outcome " + (attemptOk ? "succeeded" : "failed")
+                 + ", outcome " + ((drivenCount == 0) ? "nothing driven"
+                                                      : (attemptOk ? "succeeded" : "failed"))
                  + ", armed/succeeded so far " + HexValue(recoveriesArmed_)
                  + "/" + HexValue(recoveriesSucceeded_) + "\n").c_str());
 }
