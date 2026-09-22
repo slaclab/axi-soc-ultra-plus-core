@@ -584,12 +584,22 @@ beside it.
        neither half of the withdrawal has anything to withdraw and neither fires. That
        all-ungrouped reading is also what distinguishes a grouping that did not engage from one
        that did, and on a board with a
-       distribution it is now additionally what a withdrawn grouping reads as. The two are told
-       apart in two ways. The error line is emitted only in the second case, and it is the only
-       one of the two that says which tiles. The register pair says as much without it: a
-       non-zero group count at ``0x12010`` beside this word is the register-only signature of a
-       withdrawn grouping, and unlike a construction-time console line it is still there for a
-       host attaching later, a host after a bridge restart and a host after a log rotation.
+       distribution it is now additionally what a withdrawn grouping reads as. A non-zero group
+       count at ``0x12010`` beside this word is the register-only signature of a withdrawn
+       grouping, and unlike a construction-time console line it is still there for a host
+       attaching later, a host after a bridge restart and a host after a log rotation. It is a
+       sufficient signature and not a complete one. The raw clock detect decode counts a group
+       only where it marks a master, which is only a tile that names itself and that at least
+       one other tile names, so a topology in which two tiles name each other, ADC 3 naming
+       DAC 0 and DAC 0 naming ADC 3, is counted as no group at all and is then withdrawn whole.
+       What that publishes is a zero count beside an all-ungrouped word, which reads exactly as a
+       board with no clock distribution reads, so a zero count beside ``0xFFFFFFFF`` does not
+       rule a withdrawal out. On that path the error line is the only evidence a withdrawal
+       happened at all, and on every path it is the only thing that says which tiles. Both
+       halves are asserted in tree rather than only written down: the board-free claim
+       ``the register pair is a sufficient signature of a withdrawal and not a complete one``
+       constructs that cycle and a board with nothing scripted, requires both to publish the same
+       two words, and requires the error line in the first and none in the second.
    * - ``PyRFdc::ResetCycleCount``, at offset ``0x12018``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
