@@ -5086,11 +5086,17 @@ const uint32_t kCyclicPairMapWord = 0xFFFFFFFFu;
 //! count of two.
 //!
 //! The group count is deliberately left at what the decode counted, so this
-//! literal records a non-zero count sitting beside an all-ungrouped map. That
-//! disagreement is asserted here rather than left for a later reader to
-//! discover, because what the count field counts is a separate open question
-//! and answering it as a side effect of this normalization would move the
-//! meaning of a published register.
+//! literal carries a non-zero count sitting beside an all-ungrouped map. That
+//! pairing is not a disagreement a reader has to work out for themselves: it
+//! is the register-only signature of a withdrawn grouping, and both documents
+//! that publish these registers now say so, the ClkDistStatus description
+//! naming the signature and the ClkDistMap description naming the register
+//! pair alongside the console report as what tells the two readings of an
+//! all-ungrouped map apart.
+//!
+//! What the count field ought to count is a separate open question with four
+//! answers already on record, and nothing here answers it. This literal and
+//! the sub-check below assert the state the driver publishes today.
 const uint32_t kCyclicPairStatusWord = 0x00020201u;
 
 /*
@@ -5141,6 +5147,57 @@ void checkACyclicMasterPairLeavesBothTilesUngrouped() {
                 map->getWord(0), status->getWord(0));
 
         runCyclicPairCheck("published word", ok);
+    }
+
+    // The same two words read as the signature the two published descriptions
+    // now carry, as two readings rather than as one conjunction.
+    //
+    // The whole-word literals above already cover the conjunction, so
+    // comparing the same two words again would add nothing. What this adds is
+    // that each half of the signature is independently true: the group count
+    // extracted by the shift and mask the driver's own packing uses is
+    // non-zero, and every nibble of the map reads the ungrouped sentinel. A
+    // production change that cleared the count when a grouping is withdrawn
+    // would leave two words that still agree with each other and no longer
+    // carry the signature, and this is the sub-check that sees it.
+    //
+    // It asserts the state and not an answer to what the count field ought to
+    // count. That question is open, has four answers already on record and
+    // owns its own ledger entry.
+    //
+    // The control that makes this a signature rather than a constant is
+    // already in the suite and is not duplicated here: this carrier's own
+    // topology publishes a non-zero count beside a map that names a master,
+    // pinned by the two whole-word literals of the claim
+    // "the clock distribution topology is captured at construction".
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptACyclicMasterPair();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = status->doneCalled() && !status->errorStrCalled();
+        if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+
+        // The shift and the mask PyRFdc::ClkDistStatus packs this field with,
+        // so the reading tracks the driver's own encoding rather than a
+        // second copy of it.
+        const uint32_t groups = (status->getWord(0) >> 16) & 0xFFu;
+        const uint32_t mapWord = map->getWord(0);
+
+        if (ok) ok = (groups != 0);
+        for (uint32_t idx = 0; ok && (idx < 8); idx++) {
+            ok = (((mapWord >> (4 * idx)) & 0xFu) == 0xFu);
+        }
+
+        if (!ok) fprintf(stderr, "cyclic pair signature: groups=%u map=0x%08X\n",
+                         groups, mapWord);
+
+        runCyclicPairCheck("withdrawn grouping signature", ok);
     }
 
     {
@@ -6546,7 +6603,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 123;
+const int kClaimsBeforeCountCheck = 124;
 
 /*
  * Every claim this file defines actually ran.
