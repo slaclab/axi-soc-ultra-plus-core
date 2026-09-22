@@ -4898,6 +4898,64 @@ void checkRecoveryThatSucceededIsStillCounted() {
 }
 
 /*
+ * A fired recovery is reported on a channel a default bridge admits.
+ *
+ * This is the report that has to survive the boot where the counter cannot
+ * be read, because the register path on this carrier has been measured
+ * degrading after a converter failure. The host side bridge filters log
+ * output by a global level whose default admits errors and discards
+ * warnings, so which channel the line goes out on is a property of the
+ * change rather than an incidental detail of the call site.
+ *
+ * Exactly one report in total across both lists, counted together rather
+ * than per list, so moving the line cannot quietly become emitting it
+ * twice. This fixture drives the DAC entry point, which owns the whole
+ * group and therefore defers nothing, so the recovery report is the only
+ * report the pass can produce.
+ *
+ * The transaction still completes with no error string. That is what makes
+ * the report the only evidence: from the caller's side a recovered reset is
+ * indistinguishable from one that never had a problem.
+ *
+ * What this claim deliberately proves nothing about: whether a board will
+ * print the line. The two lists are this harness's own capture of what the
+ * logging shim was asked to print, and the level a real bridge runs at is a
+ * runtime configuration this suite cannot observe.
+ */
+void checkFiredRecoveryIsReportedOnAnAdmittedChannel() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    // Construction emits on neither channel, so the total below belongs to
+    // the reset and to nothing else.
+    bool ok = gScript.logWarnings.empty() && gScript.logErrors.empty();
+
+    gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+    if (ok) ok = ((gScript.logErrors.size() + gScript.logWarnings.size()) == 1);
+    if (ok) ok = (gScript.logErrors.size() == 1);
+    if (ok) ok = (gScript.logErrors[0].find("ADC3") != std::string::npos);
+    if (ok) ok = (gScript.logErrors[0].find("DAC0") != std::string::npos);
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr,
+                "recovery channel: %zu error(s), %zu warning(s), first error '%s'\n",
+                gScript.logErrors.size(), gScript.logWarnings.size(),
+                gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+    }
+
+    runCheck("a fired recovery is reported on a channel a default bridge admits", ok);
+}
+
+/*
  * A recovery that worked clears the record it re-ran and no other.
  *
  * The claim above establishes that a successful attempt clears what it
@@ -5493,7 +5551,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 104;
+const int kClaimsBeforeCountCheck = 105;
 
 /*
  * Every claim this file defines actually ran.
@@ -5621,6 +5679,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkFailingTileThatIsNotAnEdgeArmsNoRecovery();
     checkEdgeTileFailingAtAnotherStepArmsNoRecovery();
     checkRecoveryThatSucceededIsStillCounted();
+    checkFiredRecoveryIsReportedOnAnAdmittedChannel();
     checkRecoveryClearsOnlyTheTileItReRan();
     checkDisabledTileInAGroupDoesNotDefeatTheRecovery();
     checkTwoFailingEdgesInOneGroupArmOneRecovery();
