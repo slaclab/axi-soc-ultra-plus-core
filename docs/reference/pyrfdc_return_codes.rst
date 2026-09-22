@@ -449,7 +449,7 @@ is the enclosing function together with the driver call named beside it.
        tile cycle count, and one ``log_->error`` line naming the arming tile and the master.
        That line is emitted at the error level and the deferral line above is emitted at the
        warning level, which is deliberate and is explained under
-       `Reading the two reports on a board`_.
+       `Reading the three reports on a board`_.
      - No. Arming requires the cached topology to call the tile a distribution edge, so on a
        board reporting no distribution no tile ever qualifies, the arming pass finds nothing,
        and the reset path is identical to the one before this was added.
@@ -476,9 +476,24 @@ is the enclosing function together with the driver call named beside it.
      - Four bits per tile at tile index type times four plus tile, so ADC 0 occupies bits 3:0 and
        DAC 3 occupies bits 31:28. A nibble reads ``0xF`` when the tile is ungrouped, and
        otherwise the tile index of that tile's distribution master, so a master's own nibble
-       holds its own index. A write is refused by name.
-     - Yes. Such a board reads ``0xFFFFFFFF``, which is every tile ungrouped, and that reading is
-       what distinguishes a grouping that did not engage from one that did.
+       holds its own index. A write is refused by name. That invariant, every nibble naming a
+       master naming a tile whose own nibble is its own index, holds without a proviso, because
+       the normalization now handles the one case that used to violate it. A cache whose edge
+       graph cannot be resolved to a marked master, whether because the graph contains a cycle
+       or because a named master index is out of range, has the grouping of those tiles
+       withdrawn, so their nibbles read ``0xF`` and none of them names a non-master. The reset
+       sequence for such a cache is the per type ordering, each global reset driving the four
+       tiles of its own type, and it is unchanged by the withdrawal in the sense that matters: a
+       topology no ordering can honor is not made orderable by publishing a master for it, so
+       what the withdrawal changes is what is published and reported rather than whether any
+       ordering guarantee is delivered. The withdrawal is announced once on the error channel,
+       described below.
+     - No, not the withdrawal case. Such a board reads ``0xFFFFFFFF`` already, which is every
+       tile ungrouped, because no tile is ever marked as an edge there, so the withdrawal has
+       nothing to withdraw and never fires. That all-ungrouped reading is also what
+       distinguishes a grouping that did not engage from one that did, and on a board with a
+       distribution it is now additionally what a withdrawn grouping reads as. The two are told
+       apart by the error line, which is emitted only in the second case.
    * - ``PyRFdc::ResetCycleCount``, line 4550, at offset ``0x12018``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
@@ -522,13 +537,13 @@ values their members were declared with, which is the truth for a driver that ra
 four are exposed on the host side as read-only variables with no polling interval, for the reason
 recorded above for the initialization failure reason register.
 
-Reading the two reports on a board
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reading the three reports on a board
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The reset path emits two reports and they are deliberately not at the same level. A board owner
-looking for either one needs to know which, because the host side log is filtered by a global
-level whose default admits errors and discards warnings, so a report emitted below that level
-does not reach a console at all however carefully it is worded.
+This driver emits three reports about the reset path and they are deliberately not all at the
+same level. A board owner looking for any one of them needs to know which, because the host side
+log is filtered by a global level whose default admits errors and discards warnings, so a report
+emitted below that level does not reach a console at all however carefully it is worded.
 
 The clock group recovery report, the line beginning ``clock group recovery armed by``, is
 emitted through ``log_->error``. It is readable on a bridge running the default level with no
@@ -536,6 +551,19 @@ configuration of any kind. That is the level it is at because a recovery that fi
 reset failed and had to be retried, which is never a routine outcome, and because it is the
 half of the recovery evidence that has to survive the boot where the register path itself is
 degraded and ``0x1201C`` cannot be read.
+
+The withdrawn grouping report, the line beginning
+``clock distribution grouping withdrawn from``, is emitted through ``log_->error`` for the same
+reason the recovery report is: it is readable on a bridge running the default level with no
+configuration of any kind, and a boot on which the driver could not resolve the cached topology
+to an orderable master has to be visible without anyone knowing to read ``0x12014`` for it. It
+fires once at construction and only when at least one tile's grouping was actually withdrawn,
+so a board whose cache already satisfied the map invariant gains no new console output at all.
+It names every tile it withdrew, as a tile type followed by a tile id, and states that the reset
+falls back to per type ordering. It is emitted through the log channel and never through the
+diagnostic error path, so no transaction verdict moves on account of it: a cache that cannot be
+ordered is a topology outcome and not a transaction failure, and a reset that then succeeds
+still reports success.
 
 The tile deferral report, the line beginning ``ADC global reset deferred`` or
 ``DAC global reset deferred``, is emitted through ``log_->warning`` and is **not** readable at
@@ -551,8 +579,8 @@ reset the bridge performs at startup has already happened by the time a later ca
 effect. The setting is not retroactive: a session that did not lower the level before the
 reset cannot recover the line afterwards, and the deferral has to be evidenced instead from
 ``0x12014``, which reports which tile each group is mastered by, together with which of the two
-global reset entry points raised. Neither report's absence at the default level says anything
-about whether the deferral or the recovery happened.
+global reset entry points raised. Neither the deferral's absence nor the recovery's absence at
+the default level says anything about whether that deferral or that recovery happened.
 
 What this change is not proven to do
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
