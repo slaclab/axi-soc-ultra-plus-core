@@ -30,8 +30,10 @@ Out of scope, and deliberately unchanged: the 118 assignments of the form
 way of marking an access invalid before any driver call is made, and the value is tested against
 ``XRFDC_SUCCESS`` afterwards, so converting one would be meaningless.
 
-Line numbers below are as of the commit that made the change. The durable anchor for each row is
-the enclosing function together with the driver call named in the same cell.
+This page cites no source line numbers, and that is deliberate rather than an omission: a number
+written beside prose in a file this size goes stale on the next change that moves the file, and a
+reader has no signal that it has. Every row below is located instead by its enclosing function
+together with the driver call named in the same cell.
 
 .. list-table:: Behavior change at each converted comparison site
    :header-rows: 1
@@ -41,7 +43,7 @@ the enclosing function together with the driver call named in the same cell.
      - Before the change
      - After the change
      - Can this arise on a board with no clock distribution
-   * - ``PyRFdc::PyRFdc``, line 317, ``XRFdc_CheckTileEnabled``
+   * - ``PyRFdc::PyRFdc``, ``XRFdc_CheckTileEnabled``
      - A status outside the documented pair is read as an enabled tile, so the tile's clock
        source and PLL configuration are read and its four blocks are walked.
      - Only a success reads the tile. Any other status leaves the tile's shadow configuration at
@@ -49,56 +51,57 @@ the enclosing function together with the driver call named in the same cell.
      - Undetermined here. This repository has one carrier and that carrier has clock
        distribution. This row runs on every construction on every board, so it is one of the
        seven to check first.
-   * - ``PyRFdc::PyRFdc``, line 320, ``XRFdc_GetClockSource``
+   * - ``PyRFdc::PyRFdc``, ``XRFdc_GetClockSource``
      - A status outside the documented pair stores whatever the call left in the output
        argument as the tile's default clock source.
      - Only a success stores it. The default clock source keeps its initialized value otherwise.
      - Undetermined here, for the same reason. Runs on every construction. The stored value is
        later passed back to ``XRFdc_DynamicPLLConfig`` in the reset sweep, so a wrong value
        persists past construction.
-   * - ``PyRFdc::PyRFdc``, line 325, ``XRFdc_GetPLLConfig``
+   * - ``PyRFdc::PyRFdc``, ``XRFdc_GetPLLConfig``
      - A status outside the documented pair stores the returned PLL settings and then issues
        ``XRFdc_DynamicPLLConfig`` with them.
      - Only a success stores them and issues the reconfigure. Any other status issues no
        reconfigure at all from the constructor.
      - Undetermined here. Runs on every construction, and this is the row that changes whether
        a converter is reconfigured during construction, so a reviewer with such a board should
-       check this row alongside line 317.
-   * - ``PyRFdc::PyRFdc``, line 336, ``XRFdc_CheckBlockEnabled``
+       check this row alongside the ``XRFdc_CheckTileEnabled`` row above.
+   * - ``PyRFdc::PyRFdc``, ``XRFdc_CheckBlockEnabled``
      - A status outside the documented pair is read as an enabled block, so the block's default
        quadrature and mixer settings are read.
      - Only a success reads them.
      - Undetermined here. Runs on every construction.
-   * - ``PyRFdc::PyRFdc``, line 338, ``XRFdc_GetQMCSettings``
+   * - ``PyRFdc::PyRFdc``, ``XRFdc_GetQMCSettings``
      - A status outside the documented pair stores the returned quadrature settings as the
        block's defaults.
      - Only a success stores them.
      - Undetermined here. Runs on every construction.
-   * - ``PyRFdc::PyRFdc``, line 343, ``XRFdc_CheckDigitalPathEnabled``
+   * - ``PyRFdc::PyRFdc``, ``XRFdc_CheckDigitalPathEnabled``
      - A status outside the documented pair is read as an enabled digital path, so the block's
        mixer defaults are read. The second half of the condition, the mixer scale test, is
        unchanged.
      - Only a success reads the mixer defaults.
      - Undetermined here. Runs on every construction.
-   * - ``PyRFdc::PyRFdc``, line 347, ``XRFdc_GetMixerSettings``
+   * - ``PyRFdc::PyRFdc``, ``XRFdc_GetMixerSettings``
      - A status outside the documented pair stores the returned mixer settings as the block's
        defaults.
      - Only a success stores them.
      - Undetermined here. Runs on every construction.
-   * - ``PyRFdc::Reset`` global sweep, line 476, ``XRFdc_CheckTileEnabled``
+   * - ``PyRFdc::Reset`` global sweep, the tile enable test before the tile is touched,
+       ``XRFdc_CheckTileEnabled``
      - A status outside the documented pair is read as an enabled tile, so the tile is reset,
        PLL reconfigured and its blocks restored.
      - Only a success touches the tile. Any other status skips the whole tile.
      - Undetermined here. Reached by a host write to the global reset offset, which is the
        first thing the pyrogue ``Init()`` sequence does, so it runs on every bring-up.
-   * - ``PyRFdc::Reset`` global sweep, line 498, ``XRFdc_CheckBlockEnabled``
+   * - ``PyRFdc::Reset`` global sweep, ``XRFdc_CheckBlockEnabled``
      - A status outside the documented pair is read as an enabled block, so the block's
        quadrature and mixer settings are restored.
      - Only a success restores them.
      - Undetermined here. Reached on every bring-up, as above.
-   * - ``PyRFdc::Reset`` global sweep, line 512, ``qmcStatus`` set by ``XRFdc_SetQMCSettings``
-       at line 508. **Different kind of change: this tests a status an earlier call produced,
-       not the call it wraps.**
+   * - ``PyRFdc::Reset`` global sweep, ``qmcStatus`` set by ``XRFdc_SetQMCSettings``.
+       **Different kind of change: this tests a status an earlier call produced, not the call it
+       wraps.**
      - The quadrature event update is raised whenever the settings call did not return
        ``XRFDC_FAILURE``, so an event is raised for settings that may never have been applied.
        The settings status is separately recorded against the tile either way.
@@ -106,27 +109,28 @@ the enclosing function together with the driver call named in the same cell.
        per-tile attribution is unchanged, because it is taken before this guard.
      - Undetermined here. Reached on every bring-up. What changes is which returns reach the
        code inside the branch rather than which returns count as a failure.
-   * - ``PyRFdc::Reset`` global sweep, line 521, ``XRFdc_CheckDigitalPathEnabled``
+   * - ``PyRFdc::Reset`` global sweep, ``XRFdc_CheckDigitalPathEnabled``
      - A status outside the documented pair is read as an enabled digital path, so the block's
        mixer settings are restored.
      - Only a success restores them.
      - Undetermined here. Reached on every bring-up.
-   * - ``PyRFdc::Reset`` global sweep, line 537, ``mixerStatus`` set by
-       ``XRFdc_SetMixerSettings`` at line 533. **Different kind of change: this tests a status
-       an earlier call produced.**
+   * - ``PyRFdc::Reset`` global sweep, ``mixerStatus`` set by ``XRFdc_SetMixerSettings``.
+       **Different kind of change: this tests a status an earlier call produced.**
      - The mixer event update is raised whenever the settings call did not return
        ``XRFDC_FAILURE``.
      - The event update is raised only when the settings call reported success. The recorded
        per-tile attribution is unchanged.
-     - Undetermined here. Reached on every bring-up. Same kind of change as line 512.
-   * - ``PyRFdc::Reset`` global sweep, line 556, ``XRFdc_CheckTileEnabled``
+     - Undetermined here. Reached on every bring-up. Same kind of change as the ``qmcStatus`` row
+       above.
+   * - ``PyRFdc::Reset`` global sweep, the tile enable test guarding the reset issued after the
+       settings were restored, ``XRFdc_CheckTileEnabled``
      - A status outside the documented pair is read as an enabled tile, so the second reset of
        that tile is issued after its settings were restored.
      - Only a success issues the second reset.
      - Undetermined here. Reached on every bring-up. This is the second of the two resets the
        sweep performs per tile.
-   * - ``PyRFdc::MixerSettings``, line 947, ``status`` set by ``XRFdc_SetMixerSettings`` at
-       line 946. **Different kind of change: this tests a status an earlier call produced.**
+   * - ``PyRFdc::MixerSettings``, ``status`` set by ``XRFdc_SetMixerSettings``.
+       **Different kind of change: this tests a status an earlier call produced.**
      - The mixer event update is raised whenever the settings call did not return
        ``XRFDC_FAILURE``, and its own return then overwrites the status this entry point
        reports, so a status outside the documented pair could be replaced by a success and
@@ -136,14 +140,14 @@ the enclosing function together with the driver call named in the same cell.
        error.
      - Undetermined here. Reached only by a host write to the mixer settings apply index, not
        by the bring-up sequence.
-   * - ``PyRFdc::QMCSettings``, line 1033, ``status`` set by ``XRFdc_SetQMCSettings`` at line
-       1032. **Different kind of change: this tests a status an earlier call produced.**
+   * - ``PyRFdc::QMCSettings``, ``status`` set by ``XRFdc_SetQMCSettings``.
+       **Different kind of change: this tests a status an earlier call produced.**
      - The quadrature event update is raised whenever the settings call did not return
        ``XRFDC_FAILURE``, and its own return then overwrites the reported status.
      - The event update is raised only when the settings call reported success, and a status
        outside the documented pair is reported rather than overwritten.
      - Undetermined here. Reached only by a host write to the quadrature settings apply index.
-   * - ``PyRFdc::MtsEnabled``, line 3338, ``XRFdc_CheckTileEnabled``
+   * - ``PyRFdc::MtsEnabled``, ``XRFdc_CheckTileEnabled``
      - A status outside the documented pair is read as an enabled tile, so that tile's
        multi-tile synchronization enable bit is merged into the returned mask.
      - Only a success merges the bit. A tile whose check answered otherwise reads back as not
@@ -155,9 +159,10 @@ the enclosing function together with the driver call named in the same cell.
 Four of the 16 rows are marked as a different kind of change. Those four do not guard a call at
 its own call site. They gate a follow-on action on a status an earlier call already produced, so
 what the conversion changes there is which returns reach the code inside the branch, rather than
-which returns are treated as a failure. Two of them, at lines 947 and 1033, additionally stop a
-status outside the documented pair from being overwritten by the event update's own return,
-which is why the entry point reports an error after the change where it reported none before.
+which returns are treated as a failure. Two of them, in ``PyRFdc::MixerSettings`` and in
+``PyRFdc::QMCSettings``, additionally stop a status outside the documented pair from being
+overwritten by the event update's own return, which is why the entry point reports an error
+after the change where it reported none before.
 
 Driver initialization guard
 ---------------------------
@@ -340,8 +345,9 @@ The topology is read and never programmed. Nothing on this path calls
 order, the call sequence and the log output it has today, and the rows below say for each site
 whether it can reach such a board at all.
 
-Line numbers below are as of the commit that added this section. The durable anchor for each row
-is the enclosing function together with the driver call named beside it.
+This section cites no source line numbers either, for the reason given above. Every row below is
+located by its enclosing function together with the driver call or the register offset named
+beside it.
 
 .. list-table:: Behavior change at each sequencing site
    :header-rows: 1
@@ -352,7 +358,7 @@ is the enclosing function together with the driver call named beside it.
      - Before the change
      - After the change
      - Can this arise on a board with no clock distribution
-   * - ``PyRFdc::PyRFdc``, line 399
+   * - ``PyRFdc::PyRFdc``, the IP generation gate
      - ``XRFdc_GetClkDistribution``
      - Never called. This file named no distribution symbol at all and carried the support as a
        standing TODO.
@@ -374,7 +380,8 @@ is the enclosing function together with the driver call named beside it.
        as 255 off a real carrier whose device tree parameter property was empty. Such a
        construction consults no source, makes no driver call, cannot fail and cannot raise,
        and the board falls back to the same ungrouped per type sweep.
-   * - ``PyRFdc::decodeClkDistributionRaw``, line 4104, reached from the constructor at line 403
+   * - ``PyRFdc::decodeClkDistributionRaw``, reached from the pre-Gen3 arm of the constructor IP
+       generation gate
      - ``XRFdc_CheckTileEnabled``, then ``XRFdc_RDReg`` of the per tile clock detect register at
        offset ``0x0080``
      - No such function. A driver that would refuse the documented query left this file with no
@@ -390,10 +397,10 @@ is the enclosing function together with the driver call named beside it.
        finds nothing and every tile stays ungrouped. This path reads registers and nothing else:
        it issues no reset and writes no tile.
    * - ``PyRFdc::Reset`` global sweep, the removed pre-reset and second loop, and the
-       compensating reset at line 706
+       compensating reset
      - ``XRFdc_Reset``, decided by the ``XRFdc_RDReg`` power up status read of the tile common
-       status register at offset ``0x0228`` at line 670 and by ``XRFdc_DynamicPLLConfig`` at
-       line 673
+       status register at offset ``0x0228`` taken before the reconfigure, and by
+       ``XRFdc_DynamicPLLConfig``
      - Every enabled tile received a conditional reset before its PLL reconfigure, guarded on
        the tile PLL being enabled, and an unconditional reset in a second loop over the tiles
        after the settings had been restored. A healthy powered up tile with its PLL enabled
@@ -410,10 +417,10 @@ is the enclosing function together with the driver call named beside it.
      - Yes, on every board. This row is reached by a host write to either global reset offset,
        which is the first thing the pyrogue bring up sequence does, and the per tile cycle count
        it changes does not depend on the topology in any way.
-   * - ``PyRFdc::Reset`` global sweep, line 621, with ``PyRFdc::buildOwnedTileWalk`` at line 4248
-       and ``PyRFdc::buildDeferralMessage`` at line 4311
-     - None in the walk itself. Every tile it yields still passes ``XRFdc_CheckTileEnabled`` at
-       line 656 before any driver call is made against it.
+   * - ``PyRFdc::Reset`` global sweep, the owned tile walk, with ``PyRFdc::buildOwnedTileWalk``
+       and ``PyRFdc::buildDeferralMessage``
+     - None in the walk itself. Every tile it yields still passes ``XRFdc_CheckTileEnabled`` in
+       the sweep before any driver call is made against it.
      - Each of the two global reset commands walked the four tiles of its own type in tile id
        order. A tile taking its clock from a tile of the other type was therefore restarted
        without its master.
@@ -421,16 +428,18 @@ is the enclosing function together with the driver call named beside it.
        command takes the groups whose master is of its own tile type, in full and master first
        with the edge tiles in ascending tile index order, including edge tiles of the other
        type, and then its own tiles that belong to no group. No state is carried between the two
-       calls. A command that passes over a tile of its own type emits one ``log_->warning`` at
-       line 916 naming each deferred tile and the master it was deferred to.
+       calls. A command that passes over a tile of its own type emits one ``log_->warning``, the
+       line ``PyRFdc::buildDeferralMessage`` assembles, naming each deferred tile and the master
+       it was deferred to.
      - Yes, and there the behavior is unchanged: every tile is ungrouped, each command walks its
        own four tiles in ascending tile id exactly as before, and the deferral line is not built
        at all. **The consequence for a board owner who does have a distribution:** a standalone
        call to one of the two commands no longer resets a tile of that type whose clock master
        is of the other type, and the warning line names the tile it deferred and the master it
        deferred to.
-   * - ``PyRFdc::recoverClkGroup``, line 4385, armed by the pass at line 817
-     - ``XRFdc_Reset`` at line 4422
+   * - ``PyRFdc::recoverClkGroup``, armed by the pass over the recorded tile failures at the end
+       of the ``PyRFdc::Reset`` global sweep
+     - ``XRFdc_Reset``
      - No retry construct of any kind existed in this file. A tile that returned non-success
        from its reset was recorded and reported, and nothing further was attempted.
      - A reset that returns non-success on a tile the cached topology calls a distribution edge
@@ -457,7 +466,7 @@ is the enclosing function together with the driver call named beside it.
      - No. Arming requires the cached topology to call the tile a distribution edge, so on a
        board reporting no distribution no tile ever qualifies, the arming pass finds nothing,
        and the reset path is identical to the one before this was added.
-   * - ``PyRFdc::ClkDistStatus``, line 4478, at offset ``0x12010``
+   * - ``PyRFdc::ClkDistStatus``, at offset ``0x12010``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, so a transaction against it was refused as undefined
        memory.
@@ -505,7 +514,7 @@ is the enclosing function together with the driver call named beside it.
        alone, which is why the fourth source value exists: the distinction a reader needs lives
        in the source field rather than in the saturated byte. Partition hardware readings by the
        source field rather than pooling them.
-   * - ``PyRFdc::ClkDistMap``, line 4501, at offset ``0x12014``
+   * - ``PyRFdc::ClkDistMap``, at offset ``0x12014``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
      - Four bits per tile at tile index type times four plus tile, so ADC 0 occupies bits 3:0 and
@@ -529,7 +538,7 @@ is the enclosing function together with the driver call named beside it.
        distinguishes a grouping that did not engage from one that did, and on a board with a
        distribution it is now additionally what a withdrawn grouping reads as. The two are told
        apart by the error line, which is emitted only in the second case.
-   * - ``PyRFdc::ResetCycleCount``, line 4550, at offset ``0x12018``
+   * - ``PyRFdc::ResetCycleCount``, at offset ``0x12018``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
      - Four bits per tile in the same nibble layout, holding how many IPSM cycles the last global
@@ -564,7 +573,7 @@ is the enclosing function together with the driver call named beside it.
        both reads one per tile, and a nibble reading zero after a reset that covered the tile
        means the tile received no cycle at all. The reserved value is reachable on any board,
        distribution or not, because it depends only on how the reconfigure failed.
-   * - ``PyRFdc::RecoveryCount``, line 4597, at offset ``0x1201C``
+   * - ``PyRFdc::RecoveryCount``, at offset ``0x1201C``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
      - Bits 15:0 count the recoveries armed since construction and bits 31:16 count the ones that
@@ -577,12 +586,13 @@ is the enclosing function together with the driver call named beside it.
        A zero on any board means no recovery was ever armed, which is not the same statement as a
        recovery that was not needed.
 
-All four registers are admitted on read by the guard described above, at line 4685, which admits
-``0x12010`` through ``0x1201C`` for reads because none of the four bodies dereferences the driver
-instance. On an instance whose construction never produced a usable driver they answer with the
-values their members were declared with, which is the truth for a driver that ran no sweep. All
-four are exposed on the host side as read-only variables with no polling interval, for the reason
-recorded above for the initialization failure reason register.
+All four registers are admitted on read by the guard described above,
+``PyRFdc::rejectIfDriverDead``, which admits ``0x12010`` through ``0x1201C`` for reads because
+none of the four bodies dereferences the driver instance. On an instance whose construction never
+produced a usable driver they answer with the values their members were declared with, which is
+the truth for a driver that ran no sweep. All four are exposed on the host side as read-only
+variables with no polling interval, for the reason recorded above for the initialization failure
+reason register.
 
 Reading the four reports on a board
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
