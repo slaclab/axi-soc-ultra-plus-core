@@ -3050,6 +3050,46 @@ void scriptThisCarriersClockDetect() {
 }
 
 /*
+ * Two well formed distribution slots whose edge graph closes on itself.
+ *
+ * Slot one is sourced at ADC 0 and its two edges are DAC 0 and DAC 3, so in
+ * package tile indices, where DAC n is 3 - n and ADC n is 7 - n, the
+ * inclusive range is package 0 through 3, which is all four DAC tiles, and
+ * the source at package 7 lies outside its own range. Slot two is the mirror:
+ * sourced at DAC 0 with edges ADC 0 and ADC 3, so the range is package 4
+ * through 7, all four ADC tiles, and its source at package 3 lies outside
+ * that range too.
+ *
+ * Every tile therefore comes out of the decode marked as an edge, the four
+ * DAC tiles naming ADC 0 and the four ADC tiles naming DAC 0, so each half
+ * names a tile in the other half that is itself only an edge. Nothing in
+ * either slot is out of range, no tile is claimed twice and neither slot is
+ * degenerate, which is what makes this an ordinary pair of slots rather than
+ * a corrupt register read.
+ */
+void scriptACyclicMasterPair() {
+    XRFdcScriptDistribution first;
+    XRFdcScriptDistribution second;
+
+    first.sourceType = XRFDC_ADC_TILE;
+    first.sourceTileId = 0;
+    first.edgeTypes[0] = XRFDC_DAC_TILE;
+    first.edgeTypes[1] = XRFDC_DAC_TILE;
+    first.edgeTileIds[0] = 0;
+    first.edgeTileIds[1] = 3;
+
+    second.sourceType = XRFDC_DAC_TILE;
+    second.sourceTileId = 0;
+    second.edgeTypes[0] = XRFDC_ADC_TILE;
+    second.edgeTypes[1] = XRFDC_ADC_TILE;
+    second.edgeTileIds[0] = 0;
+    second.edgeTileIds[1] = 3;
+
+    gScript.distributions.push_back(first);
+    gScript.distributions.push_back(second);
+}
+
+/*
  * A scripted Gen3 topology travels from the driver shim into two registers.
  *
  * The two words are asserted literally rather than rebuilt from the same
@@ -4538,11 +4578,17 @@ void runNamedMasterCheck(const char *site, bool ok) {
  * down, which is the failure mode the two reproductions above both came
  * from.
  *
- * Four fixtures, two per topology source: this carrier through the
- * documented getter, this carrier through the raw decode, and the two
- * master-less reproductions. Each builds its own device after its own
- * fixture reset, so no fixture inherits the one before it, and each reads
- * the property off the published word alone.
+ * Five fixtures: this carrier through the documented getter, this carrier
+ * through the raw decode, the two master-less reproductions, and the cyclic
+ * pair. Each builds its own device after its own fixture reset, so no fixture
+ * inherits the one before it, and each reads the property off the published
+ * word alone.
+ *
+ * The cyclic fixture is the input that falsified this contract while the
+ * contract was asserted over four non-cyclic ones. Every earlier fixture
+ * leaves at least one tile marked as a master, so none of them could
+ * distinguish a normalization that makes the property total from one that
+ * makes it hold wherever a master happened to exist.
  */
 void checkEveryNamedClockMasterNamesItself() {
     {
@@ -4620,6 +4666,181 @@ void checkEveryNamedClockMasterNamesItself() {
                          map->getWord(0));
 
         runNamedMasterCheck("source outside its range", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptACyclicMasterPair();
+
+        PyRFdcPtr device = PyRFdc::create();
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = map->doneCalled() && !map->errorStrCalled();
+        if (ok) ok = everyNamedMasterNamesItself(map->getWord(0));
+
+        if (!ok) fprintf(stderr, "named master, cyclic master pair: map=0x%08X\n",
+                         map->getWord(0));
+
+        runNamedMasterCheck("cyclic master pair", ok);
+    }
+}
+
+//! The two words the cyclic pair publishes, written as literals for the
+//! reason the three per-board claims above write theirs as literals: a value
+//! recomputed from the driver's own arithmetic agrees with whatever that
+//! arithmetic happens to be.
+//!
+//! Every nibble ungrouped, because no tile of the pair names a master the
+//! cache can order and the grouping of all eight is therefore withdrawn.
+const uint32_t kCyclicPairMapWord = 0xFFFFFFFFu;
+
+//! The documented getter as the topology source, an IPType of 2, and a group
+//! count of two.
+//!
+//! The group count is deliberately left at what the decode counted, so this
+//! literal records a non-zero count sitting beside an all-ungrouped map. That
+//! disagreement is asserted here rather than left for a later reader to
+//! discover, because what the count field counts is a separate open question
+//! and answering it as a side effect of this normalization would move the
+//! meaning of a published register.
+const uint32_t kCyclicPairStatusWord = 0x00020201u;
+
+/*
+ * One sub-check of the cyclic pair claim, labelled so a single red one is
+ * identifiable. Four properties, each of which can break on its own: what is
+ * published, what is reported, and what each of the two global resets drives.
+ */
+void runCyclicPairCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("a cyclic master pair leaves both tiles ungrouped [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * Two distribution slots that each name the other's source leave every tile
+ * ungrouped, say so once on the error channel, and reset each tile from the
+ * entry point of its own type.
+ *
+ * The cache cannot resolve either half of this pair to a master: the chain
+ * from any tile closes on itself after one hop. The honest published answer
+ * is that those tiles are in no group, which is what a tile whose clock
+ * source cannot be resolved to an orderable master is, so every nibble reads
+ * the ungrouped sentinel and the map stops contradicting the invariant the
+ * host side description tells an operator to trust.
+ *
+ * What this claim does not assert, stated so nobody credits it with more: it
+ * says nothing about whether any board presents this topology. No reading
+ * taken on the carrier this work is for has ever carried a cyclic cache.
+ */
+void checkACyclicMasterPairLeavesBothTilesUngrouped() {
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptACyclicMasterPair();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = status->doneCalled() && !status->errorStrCalled();
+        if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+        if (ok) ok = (map->getWord(0) == kCyclicPairMapWord);
+        if (ok) ok = (status->getWord(0) == kCyclicPairStatusWord);
+
+        fprintf(stderr, "cyclic pair published: map=0x%08X status=0x%08X\n",
+                map->getWord(0), status->getWord(0));
+
+        runCyclicPairCheck("published word", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptACyclicMasterPair();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        // Named one by one rather than by a loop over the name table, so the
+        // check fails if the report drops a tile and not merely if it drops
+        // the whole line.
+        const char *const withdrawn[8] = {"ADC0", "ADC1", "ADC2", "ADC3",
+                                          "DAC0", "DAC1", "DAC2", "DAC3"};
+
+        bool ok = (gScript.logErrors.size() == 1);
+        if (ok) ok = gScript.logWarnings.empty();
+        for (size_t i = 0; ok && (i < 8); i++) {
+            ok = (gScript.logErrors[0].find(withdrawn[i]) != std::string::npos);
+        }
+
+        fprintf(stderr, "cyclic pair reported: %zu error(s) %zu warning(s) '%s'\n",
+                gScript.logErrors.size(), gScript.logWarnings.size(),
+                gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runCyclicPairCheck("reported once", ok);
+    }
+
+    // The two sequence sub-checks below assert each entry point drives four
+    // resets of its own tile type and none of the other. That is a property
+    // of a cache in which no tile is grouped, and it is what withdrawing an
+    // unresolvable grouping produces: tileIsOwnedBy routes an ungrouped tile
+    // to the reset of its own type, so membership stays total by the rule
+    // that already exists and no consumer needs a case of its own.
+    //
+    // They do not assert an improved ordering, because there is none to
+    // assert. The registers describe a cycle, no ordering can honor it, and a
+    // claim expecting master before edge here would be demanding a guarantee
+    // this change does not deliver.
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptACyclicMasterPair();
+
+        PyRFdcPtr device = PyRFdc::create();
+        gScript.calls.clear();
+
+        rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+        bool ok = adc->doneCalled() && !adc->errorStrCalled();
+        if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 4);
+        if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 0);
+        for (uint32_t tile = 0; ok && (tile < 4); tile++) {
+            ok = (countExactCalls("XRFdc_Reset", XRFDC_ADC_TILE, tile,
+                                  XRFDC_SCRIPT_ANY) == 1);
+        }
+
+        fprintf(stderr, "cyclic pair adc sequence: %zu adc reset(s) %zu dac reset(s)\n",
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE));
+
+        runCyclicPairCheck("adc sequence by own type", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptACyclicMasterPair();
+
+        PyRFdcPtr device = PyRFdc::create();
+        gScript.calls.clear();
+
+        rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+        bool ok = dac->doneCalled() && !dac->errorStrCalled();
+        if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE) == 4);
+        if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 0);
+        for (uint32_t tile = 0; ok && (tile < 4); tile++) {
+            ok = (countExactCalls("XRFdc_Reset", XRFDC_DAC_TILE, tile,
+                                  XRFDC_SCRIPT_ANY) == 1);
+        }
+
+        fprintf(stderr, "cyclic pair dac sequence: %zu dac reset(s) %zu adc reset(s)\n",
+                countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE),
+                countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
+
+        runCyclicPairCheck("dac sequence by own type", ok);
     }
 }
 
@@ -5561,7 +5782,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 105;
+const int kClaimsBeforeCountCheck = 110;
 
 /*
  * Every claim this file defines actually ran.
@@ -5684,6 +5905,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkSourceOutsideItsEdgeRangeIsStillResetFirst();
     checkSlotWhoseSourceWasAlreadyTakenIsOrderedBehindAMaster();
     checkEveryNamedClockMasterNamesItself();
+    checkACyclicMasterPairLeavesBothTilesUngrouped();
 
     checkFailingEdgeTileArmsExactlyOneRecovery();
     checkFailingTileThatIsNotAnEdgeArmsNoRecovery();
