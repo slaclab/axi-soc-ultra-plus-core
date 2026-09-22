@@ -447,6 +447,10 @@ is the enclosing function together with the driver call named beside it.
        while a tile that failed outside this group still reports, and it remains visible in
        three places: the armed and succeeded halves of ``0x1201C``, a second cycle in the per
        tile cycle count, and one ``log_->error`` line naming the arming tile and the master.
+       The second of those three is not unique to a recovery, so a reader who finds a cycle
+       count nibble of 2 should consult the ``PyRFdc::ResetCycleCount`` row below rather than
+       assume the PLL reconfigure produced it. That row states both producers and names this
+       register as the one that separates them.
        That line is emitted at the error level and the deferral line above is emitted at the
        warning level, which is deliberate and is explained under
        `Reading the four reports on a board`_.
@@ -537,10 +541,22 @@ is the enclosing function together with the driver call named beside it.
        cannot tell whether the call had already cycled it, so the true figure for that tile is
        one or two and the driver declines to pick between them. A real count saturates at
        ``0xE`` rather than at 15, one below the reserved value, so counting can never produce it
-       and the two readings are disjoint by construction. A nibble of 2 on the failing path is
-       the resolvable half of the same question: the tile read powered up before the reconfigure
-       and unpowered after it, so the call measurably drove it down and the compensating reset
-       drove it again. Each global reset clears only the tiles it covers, and clears the
+       and the two readings are disjoint by construction. A nibble of 2 has two producers rather
+       than one, so it does not by itself say which of them occurred. The first is a tile PLL
+       reconfigure that measurably left the tile unpowered, read powered up before the call and
+       unpowered after it, followed by the compensating reset that drove it again. The second is
+       a tile that took its one cycle in the sweep and was then re-run by a clock group recovery,
+       which counts a cycle for the group master and for every enabled edge tile it drives.
+       ``0x1201C`` is the register that tells the two apart, because a recovery that re-ran a
+       tile is counted there and a reconfigure that dropped one is not, and on a boot where the
+       register path has itself degraded that register may not answer, in which case the recovery
+       report on the log is the remaining evidence. The second producer is demonstrated in tree
+       rather than asserted here: the board-free claim
+       ``a disabled tile in a group does not defeat the recovery`` scripts one reset failure on a
+       single edge tile of this carrier's distribution and then requires the group master's
+       nibble to read exactly 2, that master having taken one sweep cycle and one recovery cycle
+       with no reconfigure having dropped it. Each global reset clears only the tiles it covers,
+       and clears the
        exactness qualifier alongside the count it qualifies, so a host that has driven both
        reads all eight nibbles and no tile carries a stale qualifier into a later reset. A write
        is refused by name.
