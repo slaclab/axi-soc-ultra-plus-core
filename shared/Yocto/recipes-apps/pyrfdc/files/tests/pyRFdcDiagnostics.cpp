@@ -5288,6 +5288,120 @@ void checkACyclicMasterPairLeavesBothTilesUngrouped() {
     }
 }
 
+/*
+ * One sub-check of the group count claim, labelled so a single red one says
+ * which of the two readings moved.
+ */
+void runGroupCountCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("the published group count counts what the normalization recovered as "
+                    "well as what the decode marked [") +
+        site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * The published group count has more than one producer, and the
+ * normalization's promote pass is one of them.
+ *
+ * clkDistGroups_ is incremented in three places and published in one.
+ * PyRFdc::cacheClkDistribution counts one for every distribution slot it
+ * accepts, after its per tile loop and whether or not that loop marked the
+ * slot's source a master. PyRFdc::decodeClkDistributionRaw counts one only
+ * where it marks a self-naming tile with at least one follower a master. The
+ * promote pass of normalizeClkDistCache counts one for every tile it marks
+ * master because an edge named it and no decode had marked it. Nothing
+ * decrements it, and PyRFdc::ClkDistStatus saturates it at 0xFF and packs it
+ * at bits 23:16.
+ *
+ * Both readings below script exactly one distribution slot through the
+ * documented getter, so a difference between the two published counts cannot
+ * come from the slot count. In the first the slot's source DAC 0 lies inside
+ * its own edge range, the getter marks it master itself, and the count is
+ * one. In the second the slot's source DAC 0 lies outside the range ADC 3
+ * through ADC 1 that its two edges bound, the getter marks no master, the
+ * promote pass marks DAC 0, and the count is two. The two map words are
+ * asserted beside the counts so the second count is seen to come from the
+ * promotion and not from a second slot.
+ *
+ * What this claim does not do, stated so nobody credits it with more: it does
+ * not say what the field ought to count, which is an open question with four
+ * answers already on record, and it is not a reading of any board. It pins
+ * the state the driver publishes today and the sentence both published
+ * descriptions carry about it.
+ */
+void checkPublishedGroupCountHasMoreThanOneProducer() {
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = status->doneCalled() && !status->errorStrCalled();
+        if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+
+        // The shift and the mask PyRFdc::ClkDistStatus packs this field with.
+        const uint32_t groups = (status->getWord(0) >> 16) & 0xFFu;
+
+        if (ok) ok = (gScript.distributions.size() == 1);
+        if (ok) ok = (groups == 1);
+        if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+        if (ok) ok = (status->getWord(0) == 0x00010201u);
+
+        if (!ok) {
+            fprintf(stderr,
+                    "group count, marked by the decode: groups=%u status=0x%08X map=0x%08X\n",
+                    groups, status->getWord(0), map->getWord(0));
+        }
+
+        runGroupCountCheck("decode marked the master", ok);
+    }
+
+    {
+        XRFdcScriptDistribution dist;
+
+        gScript.reset();
+        gScript.ipType = 2;
+
+        dist.sourceType = XRFDC_DAC_TILE;
+        dist.sourceTileId = 0;
+        dist.edgeTypes[0] = XRFDC_ADC_TILE;
+        dist.edgeTypes[1] = XRFDC_ADC_TILE;
+        dist.edgeTileIds[0] = 3;
+        dist.edgeTileIds[1] = 1;
+        gScript.distributions.push_back(dist);
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+        rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+        bool ok = status->doneCalled() && !status->errorStrCalled();
+        if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+
+        const uint32_t groups = (status->getWord(0) >> 16) & 0xFFu;
+
+        if (ok) ok = (gScript.distributions.size() == 1);
+        if (ok) ok = (groups == 2);
+        if (ok) ok = (map->getWord(0) == 0xFFF4444Fu);
+        if (ok) ok = (status->getWord(0) == 0x00020201u);
+
+        if (!ok) {
+            fprintf(stderr,
+                    "group count, recovered by the normalization: groups=%u status=0x%08X "
+                    "map=0x%08X\n",
+                    groups, status->getWord(0), map->getWord(0));
+        }
+
+        runGroupCountCheck("normalization recovered the master", ok);
+    }
+}
+
 /* ------------------------------------------------------------------------ */
 /* One bounded recovery attempt per group.                                   */
 /*                                                                           */
@@ -6603,7 +6717,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 124;
+const int kClaimsBeforeCountCheck = 126;
 
 /*
  * Every claim this file defines actually ran.
@@ -6730,6 +6844,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkSlotWhoseSourceWasAlreadyTakenIsOrderedBehindAMaster();
     checkEveryNamedClockMasterNamesItself();
     checkACyclicMasterPairLeavesBothTilesUngrouped();
+    checkPublishedGroupCountHasMoreThanOneProducer();
 
     checkFailingEdgeTileArmsExactlyOneRecovery();
     checkFailingTileThatIsNotAnEdgeArmsNoRecovery();
