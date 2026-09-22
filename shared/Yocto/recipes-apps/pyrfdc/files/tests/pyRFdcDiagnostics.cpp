@@ -3310,6 +3310,114 @@ void checkGen3DriverIsNeverGivenTheRawDecode() {
 }
 
 /*
+ * A driver that filled the caller's array and then refused is still no
+ * distribution.
+ *
+ * The two refusal claims above both leave the fixture's distribution list
+ * empty, so under them the array the getter hands back is a zeroed one whose
+ * every slot already carries the unused sentinel. A stub that filled that
+ * array before reporting its failure would therefore still produce no group,
+ * and both claims would keep passing against a production body that had
+ * stopped guarding the cache write. This claim removes that hole: the
+ * fixture is given this carrier's real topology and is told to write it out
+ * before it reports the scripted failure, so the only thing left standing
+ * between a filled array and a cached topology is the production
+ * XRFDC_SUCCESS test around the cache write.
+ *
+ * That is what makes this claim red only when that success test is removed,
+ * or when the cache write moves outside it, and it is the protection the
+ * earlier form of the refusal claim could not reach.
+ */
+void checkFilledDistributionArrayThatWasRefusedIsStillNoDistribution() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+    gScript.distributionFillsOnRefusal = true;
+    gScript.scriptFailure("XRFdc_GetClkDistribution", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    bool ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 1);
+    if (ok) ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // No source, an IPType of 2 and no groups, exactly as for a driver that
+    // wrote nothing at all.
+    if (ok) ok = (status->getWord(0) == 0x00000200u);
+    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+    fprintf(stderr, "filled then refused: status=0x%08X map=0x%08X, %zu query call(s)\n",
+            status->getWord(0), map->getWord(0),
+            gScript.countCalls("XRFdc_GetClkDistribution"));
+
+    runCheck("a filled distribution array that was refused is still no distribution", ok);
+}
+
+/*
+ * A generation outside the range this driver knows how to ask is asked
+ * nothing at all.
+ *
+ * 255 is not a hypothetical. It is what the installed image read out of
+ * RFdc_Config.IPType on this project's own carrier, from a device tree node
+ * whose parameter property was zero bytes, so the driver was left reading a
+ * parameter block nothing had filled. An unbounded lower test admits it, and
+ * it then selects the documented getter, which is the one branch with no
+ * range check of its own in front of it.
+ *
+ * The fixture here is deliberately willing to answer either question: this
+ * carrier's topology is pushed for the documented getter and this carrier's
+ * clock detect registers are scripted for the raw decode. So the only reason
+ * neither was asked is the gate, which is what makes this a claim about the
+ * gate rather than a restatement of an empty fixture.
+ *
+ * The absence of the clock detect reads is asserted over the recorded call
+ * list rather than over a return value, for the reason the layering claim
+ * above gives: the recorded form of a register primitive carries the offset
+ * in its fourth field, so absence at one offset is a fact the list can state.
+ */
+void checkOutOfRangeGenerationIsAskedNothingAtAll() {
+    gScript.reset();
+    gScript.ipType = 255;
+    scriptThisCarriersDistribution();
+    scriptThisCarriersClockDetect();
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    // Taken before any transaction is driven, so the absence is a statement
+    // about construction and not about what a read happened to do after it.
+    const size_t recorded = gScript.calls.size();
+    bool ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 0);
+
+    for (uint32_t type = 0; ok && (type < 2); type++) {
+        for (uint32_t tile = 0; ok && (tile < 4); tile++) {
+            ok = (firstCallAt("XRFdc_RDReg", type, tile, 0x80) == recorded);
+        }
+    }
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    if (ok) ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // The unsupported-generation source, a generation byte of 0xFF and no
+    // groups. Neither the documented getter's source value nor the raw
+    // decode's, which is the whole claim.
+    if (ok) ok = (status->getWord(0) == 0x0000FF03u);
+    if (ok) ok = (map->getWord(0) == 0xFFFFFFFFu);
+
+    fprintf(stderr,
+            "out of range generation: status=0x%08X map=0x%08X, %zu query call(s), "
+            "%zu recorded call(s) at construction\n",
+            status->getWord(0), map->getWord(0),
+            gScript.countCalls("XRFdc_GetClkDistribution"), recorded);
+
+    runCheck("an out of range generation is asked nothing at all", ok);
+}
+
+/*
  * The two new branches disturb nothing already in the chain, and both
  * answer on an instance whose construction never produced a driver.
  *
@@ -3481,6 +3589,64 @@ void checkOneIpsmCyclePerEnabledTileOnTheHealthyPath() {
     }
 
     runCheck("one ipsm cycle per enabled tile on the healthy path", ok);
+}
+
+/*
+ * A generation outside the known range leaves the board resetting exactly as
+ * it did before grouping existed.
+ *
+ * Stated as a reset sequence rather than as a register value, because a
+ * register value would say what the cache holds and this claim is about what
+ * the two global resets then do with it. The same fixture as the claim about
+ * the gate: a topology the documented getter would have served and clock
+ * detect registers the raw decode would have served, with the reported
+ * generation out of range, so no topology reaches the cache from either.
+ *
+ * Every tile is therefore ungrouped, each entry point owns its own four
+ * tiles, and neither reaches across into the other type. That is the
+ * pre-grouping behaviour every board without a distribution already depends
+ * on, and it is what stops the new arm from being a way to break a board
+ * that works today. Lodged here rather than beside the other gate claims
+ * because it reads the per tile cycle count declared just above.
+ */
+void checkOutOfRangeGenerationStillResetsEveryTileAsBefore() {
+    gScript.reset();
+    gScript.ipType = 255;
+    scriptThisCarriersDistribution();
+    scriptThisCarriersClockDetect();
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    const size_t adcSweepAdcResets = countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE);
+    const size_t adcSweepDacResets = countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE);
+
+    gScript.calls.clear();
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    const size_t dacSweepDacResets = countCallsForType("XRFdc_Reset", XRFDC_DAC_TILE);
+    const size_t dacSweepAdcResets = countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE);
+
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    // One cycle for each of the eight tiles, and exactly one.
+    if (ok) ok = (counts->getWord(0) == 0x11111111u);
+    // Each entry point reset its own four tiles and none of the other type.
+    if (ok) ok = (adcSweepAdcResets == 4);
+    if (ok) ok = (adcSweepDacResets == 0);
+    if (ok) ok = (dacSweepDacResets == 4);
+    if (ok) ok = (dacSweepAdcResets == 0);
+
+    fprintf(stderr,
+            "out of range reset sequence: counts=0x%08X, adc sweep adc=%zu dac=%zu, "
+            "dac sweep dac=%zu adc=%zu\n",
+            counts->getWord(0), adcSweepAdcResets, adcSweepDacResets, dacSweepDacResets,
+            dacSweepAdcResets);
+
+    runCheck("an out of range generation still resets every tile as before", ok);
 }
 
 /*
@@ -5094,7 +5260,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 97;
+const int kClaimsBeforeCountCheck = 100;
 
 /*
  * Every claim this file defines actually ran.
@@ -5191,9 +5357,12 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkRawDecodeNamesTheSameMasterAsTheDocumentedApi();
     checkUnprogrammedClockDetectRegisterYieldsNoDistribution();
     checkGen3DriverIsNeverGivenTheRawDecode();
+    checkFilledDistributionArrayThatWasRefusedIsStillNoDistribution();
+    checkOutOfRangeGenerationIsAskedNothingAtAll();
     checkDistributionRegistersDoNotCollideAndAnswerADeadDriver();
 
     checkOneIpsmCyclePerEnabledTileOnTheHealthyPath();
+    checkOutOfRangeGenerationStillResetsEveryTileAsBefore();
     checkPoweredUpTileWithSucceedingReconfigureGetsNoExplicitReset();
     checkWedgedTileStillGetsItsOneCycle();
     checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle();

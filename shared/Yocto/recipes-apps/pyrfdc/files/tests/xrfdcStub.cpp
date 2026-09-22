@@ -632,9 +632,21 @@ u32 XRFdc_GetClkDistribution(XRFdc *InstancePtr,
     // and would hide the ungrouped fallback that the whole of this work rests
     // on. Recording still happens through rec below, so the call list is
     // unchanged either way.
-    if (static_cast<u32>(gScript.statusFor("XRFdc_GetClkDistribution", ANY, ANY, ANY)) ==
-            XRFDC_SUCCESS &&
-        DistributionArrayPtr != nullptr) {
+    //
+    // gScript.distributionFillsOnRefusal opts out of that ordering and fills
+    // the array whatever the scripted status says. It is opt-in rather than
+    // the default on purpose: the default models the driver's documented
+    // refusal path, and making the kinder shape the default would change what
+    // every claim already written against this stub is asserting. With the
+    // flag set, what a passing claim rests on is the production success test
+    // around the cache write and nothing else, which is exactly the
+    // separation the flag exists to make.
+    const bool fill =
+        (static_cast<u32>(gScript.statusFor("XRFdc_GetClkDistribution", ANY, ANY, ANY)) ==
+         XRFDC_SUCCESS) ||
+        gScript.distributionFillsOnRefusal;
+
+    if (fill && DistributionArrayPtr != nullptr) {
         zero(DistributionArrayPtr);
 
         // A memset alone would leave every slot reading as sourced by tile 0,

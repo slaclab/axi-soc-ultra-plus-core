@@ -14,7 +14,7 @@
  * object that every stub consults keeps the scripted failure, the recorded
  * call list and the register contents consistent by construction.
  *
- * It carries nine things:
+ * It carries eleven things:
  *
  *   calls        an ordered record of every driver call, each formatted as
  *                name/type/tile/block, so a check can assert the sequence a
@@ -43,6 +43,10 @@
  *                unreachable unless a claim asks for it.
  *   distributions the clock distribution topology the getter hands back,
  *                empty by default so the default board has none.
+ *   distributionFillsOnRefusal
+ *                whether the distribution getter writes its out parameter
+ *                before it decides to report a failure. False by default,
+ *                which is the driver's own documented refusal path.
  *   cfgInstance  the driver instance pointer XRFdc_CfgInitialize was handed.
  *                Recorded because the constructor writes two fields of that
  *                instance per tile directly rather than through a call, so
@@ -185,6 +189,21 @@ class XRFdcScript {
     //! reason ipType has to be set there.
     std::vector<XRFdcScriptDistribution> distributions;
 
+    //! Whether XRFdc_GetClkDistribution writes the caller's array before it
+    //! consults the scripted status, rather than after.
+    //!
+    //! What it models is a driver version that fills its out parameter and
+    //! then decides to report a failure. The review flags that shape as one
+    //! this repository cannot rule out, because the driver source is not
+    //! present on this host, and the fixture exists so the production guard
+    //! can be tested against it instead of assumed against it.
+    //!
+    //! False by default, which keeps the consult-before-write ordering every
+    //! claim written before this field existed was asserted under. Set it
+    //! before PyRFdc::create(), for the same reason ipType has to be set
+    //! there.
+    bool distributionFillsOnRefusal = false;
+
     //! The driver instance pointer XRFdc_CfgInitialize was handed. The
     //! constructor writes two fields of that instance per tile without
     //! making a call, so this is the only handle a claim has on a write the
@@ -216,6 +235,7 @@ class XRFdcScript {
         pllEnabled = 0;
         ipType = 0;
         distributions.clear();
+        distributionFillsOnRefusal = false;
         cfgInstance = nullptr;
         closedDevice = nullptr;
     }
