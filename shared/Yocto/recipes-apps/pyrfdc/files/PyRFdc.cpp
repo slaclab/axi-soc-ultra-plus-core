@@ -409,12 +409,17 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // more way for the topology to be unavailable rather than a new class of
     // error.
     //
-    // What it does do is say so. A boot that obtained no topology loses the
-    // master before edge ordering for every tile, which is not a routine
-    // outcome, and the source field alone is visible only to a host that
-    // already knows which offset to read, on a boot whose register path may
-    // itself have degraded. So the arm emits one line through the log
-    // channel, at the level a default bridge admits, and never through the
+    // What it does do is say so, and it is no longer alone in that. Of the
+    // three ways out of this capture branch, two end with no topology: the
+    // documented getter asked and refusing, and a reported generation this
+    // file will not put the question to. Both lose the master before edge
+    // ordering for every tile, which is not a routine outcome, and on both
+    // the source field alone is visible only to a host that already knows
+    // which offset to read, on a boot whose register path may itself have
+    // degraded. The third way out is the one where a source answered, and it
+    // prints nothing. So both of the first two emit one line through the log
+    // channel, at the same level a default bridge admits, each naming its own
+    // cause and not the other's, and never through the
     // diagnostic error path, for the reason the recovery and withdrawal
     // reports below give: a topology outcome is not a transaction failure and
     // construction must not start failing over one. Keeping the bound has a
@@ -462,6 +467,40 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 
         if (XRFdc_GetClkDistribution(RFdcInstPtr_, &clkDist) == XRFDC_SUCCESS) {
             cacheClkDistribution(&clkDist);
+        } else {
+            // The same argument the arm below is reported on, which was
+            // always an argument about this branch rather than about one arm
+            // of it. A boot that obtained no topology loses the master
+            // before edge ordering for every tile, that is not a routine
+            // outcome, and the source field alone is visible only to a host
+            // that already knows which offset to read, on a boot whose
+            // register path may itself have degraded. If anything the case
+            // for saying so is stronger here: this arm is a vendor getter
+            // refusing on a register path that has been measured degrading,
+            // where the arm below is a reported generation nothing has ever
+            // read on this hardware.
+            //
+            // What is specific to this arm: the cache keeps the no topology
+            // source value, and the enumeration in PyRFdc.h says in its own
+            // words that this value means asked and refused rather than
+            // never asked. The distinction is therefore already named and
+            // already published. What it is not is readable on a console,
+            // and the console half is the one that has to survive the boot
+            // where the register itself cannot be read.
+            //
+            // One sentence, so it sits far inside the console budget the
+            // failure report is held to and needs no omission counter, and
+            // assembled with std::string the way the rest of the message
+            // assembly in this file is. The reported generation is
+            // deliberately not named: the generation is not what went wrong
+            // on this arm, and naming it would make the two no topology
+            // lines harder rather than easier to tell apart. Through the log
+            // channel only, never through setDiagError or errMsg_, so no
+            // transaction verdict moves and construction does not fail.
+            log_->error(std::string("clock distribution topology not obtained"
+                                    " because the documented getter returned"
+                                    " non-success; reset falls back to per"
+                                    " type ordering\n").c_str());
         }
     } else if (ipType_ < XRFDC_GEN3) {
         decodeClkDistributionRaw();

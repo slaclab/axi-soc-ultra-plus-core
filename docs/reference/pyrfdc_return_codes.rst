@@ -471,7 +471,7 @@ beside it.
        register as the one that separates them.
        That line is emitted at the error level and the deferral line above is emitted at the
        warning level, which is deliberate and is explained under
-       `Reading the four reports on a board`_.
+       `Reading the five reports on a board`_.
      - No. Arming requires the cached topology to call the tile a distribution edge, so on a
        board reporting no distribution no tile ever qualifies, the arming pass finds nothing,
        and the reset path is identical to the one before this was added.
@@ -515,6 +515,12 @@ beside it.
        per type ordering. So the loss of the ordering guarantee is no longer visible only to a
        host that knows to read this register, on a boot where the register path may itself have
        degraded.
+
+       A boot that lands in the first source value, no topology obtained, now emits its own
+       line too, at the same level, stating that the documented getter returned non-success.
+       So a reader who finds a 0 in bits 7:0 does not have to work out from the register alone
+       whether the getter was asked and refused or whether construction never reached the
+       branch at all.
      - Yes, and this is the register that says so. A board with no distribution reads a group
        count of zero against a non-zero source, which is a different reading from a board that
        was never asked, and the IP generation field is the only place this driver publishes what
@@ -607,10 +613,10 @@ the truth for a driver that ran no sweep. All four are exposed on the host side 
 variables with no polling interval, for the reason recorded above for the initialization failure
 reason register.
 
-Reading the four reports on a board
+Reading the five reports on a board
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This driver emits four reports about the reset path and they are deliberately not all at the
+This driver emits five reports about the reset path and they are deliberately not all at the
 same level. A board owner looking for any one of them needs to know which, because the host side
 log is filtered by a global level whose default admits errors and discards warnings, so a report
 emitted below that level does not reach a console at all however carefully it is worded.
@@ -647,6 +653,23 @@ hexadecimal and states that the reset falls back to per type ordering. It is emi
 log channel and never through the diagnostic error path, so no transaction verdict moves on
 account of it and construction does not fail: a generation this driver cannot interpret is one
 more way for the topology to be unavailable, not a new class of error.
+
+The refused topology query report, the line beginning ``clock distribution topology not
+obtained because the documented getter returned non-success``, is emitted through
+``log_->error`` for the same reason the three above are: it is readable on a bridge running
+the default level with no configuration of any kind. It fires once at construction and only
+when the reported IP generation is inside the range this driver asks and the documented getter
+was then asked and answered with something other than success, which is the state the source
+field at ``0x12010`` publishes as asked and refused. A board whose getter answers gains no line
+from this, and neither does a pre-Gen3 board, which takes the raw decode and is never asked. It
+names the refusal as the cause and deliberately does not name the reported generation, because
+the generation is not what went wrong on this arm and naming it would make this line and the
+one above harder rather than easier to tell apart. It states that the reset falls back to per
+type ordering. It is emitted through the log channel and never through the diagnostic error
+path, so no transaction verdict moves on account of it and construction does not fail: a
+topology that was asked for and refused is a topology outcome and not a transaction failure.
+As with the report above, this arm has never been observed on this carrier either, so this
+line has no hardware evidence for or against it and has never been seen on a board.
 
 The tile deferral report, the line beginning ``ADC global reset deferred`` or
 ``DAC global reset deferred``, is emitted through ``log_->warning`` and is **not** readable at
