@@ -483,8 +483,29 @@ beside it.
      - Reports where the cached topology came from in bits 7:0, as 0 for nothing obtained, 1 for
        the documented getter, 2 for the raw decode and 3 for a reported IP generation outside
        the range this driver asks, meaning no source was consulted at all; the IP generation the
-       driver reports for this part in bits 15:8; and the number of distribution groups found in
-       bits 23:16. Both byte fields saturate rather than wrap. A write is refused by name.
+       driver reports for this part in bits 15:8; and how many distribution groups this driver
+       counted while it built the cache in bits 23:16. Both byte fields saturate rather than
+       wrap. A write is refused by name.
+
+       **What the group count counts, read from the three places that increment it and the one
+       that publishes it.** The count has more than one producer rather than one. The documented
+       getter counts one for every distribution slot it accepted, whether or not it could mark
+       that slot a master, while the raw clock detect decode counts one only where it marks a
+       master. The normalization then contributes
+       plus one for each tile the normalization promoted to master
+       because an edge named it and no decode marked it. So a board with one distribution slot
+       whose source lies outside its own edge range publishes a count of two, and that second
+       count is a master the normalization recovered rather than a second slot the documented
+       getter reported. The count is never decremented, so it is not the same as how many
+       groupings the cache still holds: a grouping the normalization could not resolve to an
+       orderable master is withdrawn from the map without changing this count, and a non-zero
+       count beside a map reading every tile ungrouped is the register-only signature of a
+       withdrawn grouping. This is asserted in tree rather than only written down: the
+       board-free claim
+       ``the published group count counts what the normalization recovered as well as what the decode marked``
+       scripts exactly one distribution slot on each of two topologies and requires a count of 1
+       where the getter marked the master itself and a count of 2 where the normalization had to
+       recover it.
 
        **What the fourth source value costs, stated because the upper bound that produces it is
        a tradeoff and not pure protection.** What the bound buys: a part reporting a generation
