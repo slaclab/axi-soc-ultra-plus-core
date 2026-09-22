@@ -449,7 +449,7 @@ is the enclosing function together with the driver call named beside it.
        tile cycle count, and one ``log_->error`` line naming the arming tile and the master.
        That line is emitted at the error level and the deferral line above is emitted at the
        warning level, which is deliberate and is explained under
-       `Reading the three reports on a board`_.
+       `Reading the four reports on a board`_.
      - No. Arming requires the cached topology to call the tile a distribution edge, so on a
        board reporting no distribution no tile ever qualifies, the arming pass finds nothing,
        and the reset path is identical to the one before this was added.
@@ -462,6 +462,37 @@ is the enclosing function together with the driver call named beside it.
        the range this driver asks, meaning no source was consulted at all; the IP generation the
        driver reports for this part in bits 15:8; and the number of distribution groups found in
        bits 23:16. Both byte fields saturate rather than wrap. A write is refused by name.
+
+       **What the fourth source value costs, stated because the upper bound that produces it is
+       a tradeoff and not pure protection.** What the bound buys: a part reporting a generation
+       this driver cannot interpret is not sent down the branch that reads Gen3 clock
+       distribution registers, which on a genuinely pre-Gen3 part whose generation byte happens
+       to read high would be reads against registers that are not backed. What it costs, in the
+       same breath rather than in a footnote: a genuinely high generation part that the previous
+       unbounded lower-bound-only test served correctly now obtains no topology at all, so its
+       reset falls back to the per type ordering and the master before edge guarantee does not
+       apply on that part. That cost is accepted and it is not discharged. No such part is
+       available to this work, so nothing here measures it.
+
+       **The reading that decided the direction rather than an argument that preferred it.** On
+       the one carrier available to this work, a session dated 2026-09-21 read ``0xFF`` in the
+       generation byte of this register with the source field reading 1, the documented getter.
+       On that reading the previous unbounded test selected the documented getter, obtained a
+       topology, and published ``0xFF55FFFF`` at ``0x12014``: DAC 1 mastering DAC 0, and ADC 3
+       ungrouped and therefore reset in isolation from the tile that sources its clock. That is
+       the same failure direction the bound is accused of causing, so widening the bound back
+       would not recover the outcome on this board. It would exchange one way of isolating ADC 3
+       for another while reopening the unbacked-register hazard above.
+       A reviewer holding a different part should weigh the two against their own hardware rather
+       than treat this as settled: the reading above is one sample, on one carrier, whose device
+       tree parameter property was empty.
+
+       **What an operator sees now.** A boot that lands in the fourth source value emits one line
+       at the error level, ``clock distribution topology not obtained because the reported IP
+       generation`` followed by the reported value and the statement that the reset falls back to
+       per type ordering. So the loss of the ordering guarantee is no longer visible only to a
+       host that knows to read this register, on a boot where the register path may itself have
+       degraded.
      - Yes, and this is the register that says so. A board with no distribution reads a group
        count of zero against a non-zero source, which is a different reading from a board that
        was never asked, and the IP generation field is the only place this driver publishes what
@@ -537,10 +568,10 @@ values their members were declared with, which is the truth for a driver that ra
 four are exposed on the host side as read-only variables with no polling interval, for the reason
 recorded above for the initialization failure reason register.
 
-Reading the three reports on a board
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reading the four reports on a board
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This driver emits three reports about the reset path and they are deliberately not all at the
+This driver emits four reports about the reset path and they are deliberately not all at the
 same level. A board owner looking for any one of them needs to know which, because the host side
 log is filtered by a global level whose default admits errors and discards warnings, so a report
 emitted below that level does not reach a console at all however carefully it is worded.
@@ -564,6 +595,19 @@ falls back to per type ordering. It is emitted through the log channel and never
 diagnostic error path, so no transaction verdict moves on account of it: a cache that cannot be
 ordered is a topology outcome and not a transaction failure, and a reset that then succeeds
 still reports success.
+
+The uninterpretable generation report, the line beginning ``clock distribution topology not
+obtained because the reported IP generation``, is emitted through ``log_->error`` for the same
+reason the two above are: it is readable on a bridge running the default level with no
+configuration of any kind. It fires once at construction and only when the reported IP
+generation is above ``PYRFDC_IPTYPE_MAX_KNOWN``, which is the fourth source value at
+``0x12010``, so a board in any other generation partition sees nothing new on the console. In
+particular a pre-Gen3 board, which is the population most likely to have no distribution at
+all, takes the raw decode and gains no line from this. It names the reported generation in
+hexadecimal and states that the reset falls back to per type ordering. It is emitted through the
+log channel and never through the diagnostic error path, so no transaction verdict moves on
+account of it and construction does not fail: a generation this driver cannot interpret is one
+more way for the topology to be unavailable, not a new class of error.
 
 The tile deferral report, the line beginning ``ADC global reset deferred`` or
 ``DAC global reset deferred``, is emitted through ``log_->warning`` and is **not** readable at
