@@ -4879,6 +4879,7 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     static const char* const typeName[2] = {"ADC", "DAC"};
     uint32_t group[8];
     uint32_t groupLen = 0;
+    uint32_t dropped = 0;
     uint32_t idx, g;
 
     // Whether every reset this call actually issued returned success, over
@@ -4945,9 +4946,31 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
         // redundancy is deliberate: it keeps both arrays safe from an
         // overrun even if a later edit removes that test on the grounds
         // that the caller already range checks the master.
+        //
+        // What the bound trades the overrun for is not nothing. A tile it
+        // turns away is neither reset nor has its diagnostic record
+        // cleared, the group size field of the report below would
+        // under-report the real group, and the outcome word would still
+        // read plausibly. That is why a turned away tile is counted here
+        // and announced below rather than silently absorbed.
         if (groupLen < 8) {
             group[groupLen++] = idx;
+        } else {
+            dropped++;
         }
+    }
+
+    // Announced here, after the scan and before the drive loop, because the
+    // final count is known as soon as the scan closes, and announcing it
+    // before any reset is issued means the truncation is reported even on a
+    // pass that then fails partway through the drive loop. One line for the
+    // whole truncation rather than one per dropped tile, so it sits far
+    // inside the console budget the failure report is held to. The count is
+    // a format argument so the compiler can check the specifier.
+    if (dropped > 0) {
+        log_->error("clock group recovery truncated at the bound of eight tiles;"
+                    " %u tile(s) dropped from the group are neither reset nor cleared\n",
+                    unsigned(dropped));
     }
 
     for (g = 0; g < groupLen; g++) {

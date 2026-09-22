@@ -636,6 +636,17 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! completes and a message built for some other tile still reports the
     //! recovered one as observed rather than as failed. On failure it
     //! changes no record at all.
+    //!
+    //! A masterIdx above seven is refused at entry: no reset is issued, no
+    //! counter moves and no record changes, and the refusal is announced on
+    //! the error channel. The call is accepted and discarded, not rejected
+    //! by a return value and not asserted.
+    //!
+    //! A group holding more than eight tiles is truncated at eight. The
+    //! dropped tiles are neither reset nor cleared, and the count of them is
+    //! announced on the same channel before any reset is issued, so the
+    //! group size field of the report is read beside that line and not
+    //! alone.
     void recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx);
 
     void MetalLogLevel();
