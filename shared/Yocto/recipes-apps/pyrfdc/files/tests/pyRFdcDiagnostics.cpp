@@ -5339,6 +5339,56 @@ void checkHealthyPathStillCostsOnePowerUpReadPerTile() {
     runCheck("the healthy path still costs one power-up read per tile", ok);
 }
 
+/*
+ * A later sweep clears the not-exact flag along with the count it qualifies.
+ *
+ * The flag and the counter are two parallel arrays describing one tile, and
+ * a sweep that cleared one and not the other would publish a fresh count
+ * under a stale qualifier: a tile that was unknowable during one reset would
+ * keep reading the reserved value for every reset after it, however cleanly
+ * those went.
+ *
+ * Driven as two sweeps over one device rather than as two claims, because
+ * the defect is a difference between the two arrays and only a second sweep
+ * over a tile the first one flagged can see it. The reconfigure is scripted
+ * to fail once, so the first sweep leaves ADC 2 unknowable and the second
+ * finds every tile healthy.
+ */
+void checkASecondSweepClearsTheNotExactFlagWithTheCount() {
+    const uint32_t failing = 2;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCommonStatus, kPoweredUpStatus);
+    }
+    gScript.scriptFailureTimes("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, failing,
+                               XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+
+    driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr afterFirst = driveRead(device, kResetCycleCount);
+    const uint32_t first = afterFirst->getWord(0);
+
+    rim::TransactionPtr second = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr afterSecond = driveRead(device, kResetCycleCount);
+    const uint32_t later = afterSecond->getWord(0);
+
+    // The precondition: the first sweep really did leave the tile flagged,
+    // so a green verdict below cannot come from a flag that was never set.
+    bool ok = (tileNibble(first, XRFDC_ADC_TILE, failing) == 0xFu);
+    if (ok) ok = second->doneCalled() && !second->errorStrCalled();
+    if (ok) ok = afterSecond->doneCalled() && !afterSecond->errorStrCalled();
+    if (ok) ok = (later == 0x00001111u);
+
+    fprintf(stderr, "flag cleared by the next sweep: first=0x%08X, later=0x%08X\n", first, later);
+
+    runCheck("a second sweep clears the not exact flag with the count", ok);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
@@ -5443,7 +5493,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 103;
+const int kClaimsBeforeCountCheck = 104;
 
 /*
  * Every claim this file defines actually ran.
@@ -5552,6 +5602,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkReconfigureFailureThatLeftTheTileDownIsCountedAsTwoCycles();
     checkReconfigureFailureThatCannotBeToldApartIsReportedAsNotExact();
     checkHealthyPathStillCostsOnePowerUpReadPerTile();
+    checkASecondSweepClearsTheNotExactFlagWithTheCount();
 
     checkAdcEntryPointDefersATileMasteredByADac();
     checkGroupMasterIsResetBeforeItsEdgeTiles();
