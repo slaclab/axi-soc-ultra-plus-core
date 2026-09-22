@@ -409,6 +409,20 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // more way for the topology to be unavailable rather than a new class of
     // error.
     //
+    // What it does do is say so. A boot that obtained no topology loses the
+    // master before edge ordering for every tile, which is not a routine
+    // outcome, and the source field alone is visible only to a host that
+    // already knows which offset to read, on a boot whose register path may
+    // itself have degraded. So the arm emits one line through the log
+    // channel, at the level a default bridge admits, and never through the
+    // diagnostic error path, for the reason the recovery and withdrawal
+    // reports below give: a topology outcome is not a transaction failure and
+    // construction must not start failing over one. Keeping the bound has a
+    // cost, stated here rather than left implicit: a genuinely high
+    // generation part that the previous unbounded test served correctly now
+    // obtains no topology at all, and that cost is accepted rather than
+    // discharged.
+    //
     // The no-distribution fallback needs no branch of its own on either path.
     // The documented path writes the cache only inside an XRFDC_SUCCESS test,
     // which is the guard shape the two captures below use, and the raw decode
@@ -456,6 +470,16 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
         // ungrouped values PyRFdc.h declares and the status register says
         // which of the four cases this was.
         clkDistSource_ = PYRFDC_CLKDIST_SRC_UNSUPPORTED_GEN;
+
+        // One sentence naming the reported value, so it is well inside the
+        // console budget the failure report is held to and needs no omission
+        // counter. Assembled with std::string and HexValue, matching the rest
+        // of the message assembly in this file.
+        log_->error((std::string("clock distribution topology not obtained"
+                                 " because the reported IP generation ")
+                     + HexValue(ipType_)
+                     + " is outside the range this driver asks; reset falls"
+                       " back to per type ordering\n").c_str());
     }
     normalizeClkDistCache();
 
@@ -4976,10 +5000,12 @@ void PyRFdc::ClkDistMap() {
 //
 // Four bits per tile at tile index type * 4 + tile, so ADC 0 occupies bits 3
 // down to 0 and DAC 3 occupies bits 31 down to 28. The encoding is part of
-// this driver's address space contract and is fixed here. A nibble saturates
-// at 15 rather than wrapping, for the reason the status register above
-// states: an unexpectedly large value should read as out of range and not as
-// a plausible small one.
+// this driver's address space contract and is fixed here. A real count
+// saturates one below the reserved value rather than wrapping, so counting
+// can never produce the reserved value, and an unexpectedly large count
+// reads as out of range rather than as a plausible small one. The top nibble
+// value is reserved and is not a count at all: the note at the cap below
+// states what it means.
 //
 // A cycle is counted whether the tile was cycled by an explicit reset or by
 // the PLL reconfigure's own internal restart. A count of explicit calls would
