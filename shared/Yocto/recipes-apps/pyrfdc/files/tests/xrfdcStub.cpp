@@ -647,12 +647,28 @@ u32 XRFdc_GetClkDistribution(XRFdc *InstancePtr,
         gScript.distributionFillsOnRefusal;
 
     if (fill && DistributionArrayPtr != nullptr) {
-        zero(DistributionArrayPtr);
+        // What happens to the slots the fixture did not push is the third
+        // shape this body can take, and gScript.distributionFillsFoundSlotsOnly
+        // selects it.
+        //
+        // Stated as a property of a driver rather than of this project. A
+        // driver that fills only the slots it found leaves the caller's own
+        // bytes in every other slot, so the consumer's unused-slot test is
+        // meaningful only if the caller wrote the sentinel there before the
+        // call. A stub that always writes the sentinel itself is kinder than
+        // such a driver and hides that dependency, which is the same class of
+        // problem the ordering argument above records for the refusal path.
+        //
+        // Opt in and defaulting off, so the two shapes below are exactly what
+        // every claim written before this branch existed is still asserting.
+        if (!gScript.distributionFillsFoundSlotsOnly) {
+            zero(DistributionArrayPtr);
 
-        // A memset alone would leave every slot reading as sourced by tile 0,
-        // which is a real tile, so every unused slot is marked explicitly.
-        for (size_t slot = 0; slot < 8; slot++) {
-            DistributionArrayPtr->Distributions[slot].SourceTileId = XRFDC_CLK_DST_INVALID;
+            // A memset alone would leave every slot reading as sourced by tile 0,
+            // which is a real tile, so every unused slot is marked explicitly.
+            for (size_t slot = 0; slot < 8; slot++) {
+                DistributionArrayPtr->Distributions[slot].SourceTileId = XRFDC_CLK_DST_INVALID;
+            }
         }
 
         for (size_t slot = 0; slot < gScript.distributions.size() && slot < 8; slot++) {

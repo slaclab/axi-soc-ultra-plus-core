@@ -14,7 +14,7 @@
  * object that every stub consults keeps the scripted failure, the recorded
  * call list and the register contents consistent by construction.
  *
- * It carries eleven things:
+ * It carries twelve things:
  *
  *   calls        an ordered record of every driver call, each formatted as
  *                name/type/tile/block, so a check can assert the sequence a
@@ -50,6 +50,13 @@
  *                whether the distribution getter writes its out parameter
  *                before it decides to report a failure. False by default,
  *                which is the driver's own documented refusal path.
+ *   distributionFillsFoundSlotsOnly
+ *                whether the distribution getter fills only the slots the
+ *                fixture pushed and leaves every other slot exactly as the
+ *                caller left it, with no zero fill and no sentinel of its
+ *                own. False by default, so the getter keeps the two shapes
+ *                every claim written before this field existed was
+ *                asserted under.
  *   cfgInstance  the driver instance pointer XRFdc_CfgInitialize was handed.
  *                Recorded because the constructor writes two fields of that
  *                instance per tile directly rather than through a call, so
@@ -207,6 +214,24 @@ class XRFdcScript {
     //! there.
     bool distributionFillsOnRefusal = false;
 
+    //! Whether XRFdc_GetClkDistribution fills only the slots this fixture
+    //! pushed and leaves every other slot exactly as the caller left it.
+    //!
+    //! What it models is a driver version that writes only the slots it
+    //! found. Such a driver never zeroes the caller's structure and never
+    //! marks a slot unused, so the bytes in every slot it did not fill are
+    //! the caller's own, and the consumer's unused-slot test is meaningful
+    //! only because the caller wrote the sentinel there first. The two
+    //! shapes above both supply that sentinel themselves, whichever of them
+    //! is selected, so under either of them the caller's obligation is
+    //! invisible.
+    //!
+    //! False by default, because making this the default would change what
+    //! every claim already written against this stub is asserting. Set it
+    //! before PyRFdc::create(), for the same reason ipType has to be set
+    //! there: the getter is consulted during construction and not later.
+    bool distributionFillsFoundSlotsOnly = false;
+
     //! The driver instance pointer XRFdc_CfgInitialize was handed. The
     //! constructor writes two fields of that instance per tile without
     //! making a call, so this is the only handle a claim has on a write the
@@ -240,6 +265,7 @@ class XRFdcScript {
         ipType = 0;
         distributions.clear();
         distributionFillsOnRefusal = false;
+        distributionFillsFoundSlotsOnly = false;
         cfgInstance = nullptr;
         closedDevice = nullptr;
     }
