@@ -1011,11 +1011,21 @@ void PyRFdc::Reset(int Tile_Id) {
                 // The role test above is what keeps the value in range
                 // today, but a bound that is a consequence of a predicate is
                 // not a property of the index, and the predicate is one edit
-                // away from changing. This test is also what makes the
-                // ungrouped half of the arming predicate measurable at all:
-                // without it, removing the role test is undefined behaviour
-                // rather than a failing claim, and a crash is not a failing
-                // claim.
+                // away from changing. recoverClkGroup carries the same test
+                // at its own entry and announces the refusal on the error
+                // channel when it fires, so without this test an out of
+                // range master becomes a call the callee discards with a
+                // line beside it, not a write past the end of two fixed
+                // arrays. This test is kept anyway for a reason of its own:
+                // the pass below writes the master index into attempted
+                // before it calls, so without this test an impossible master
+                // would consume an attempt slot for a call that issues
+                // nothing, and attempted would name a master no recovery was
+                // run for. That is the whole of the cost. It is not slot
+                // exhaustion, because attempted gains at most one entry per
+                // walked tile and is sized to the walk, and it is not a lost
+                // attempt on a real group, because an out of range value
+                // never compares equal to a master in range.
                 if (masterIdx > 7) {
                     continue;
                 }
