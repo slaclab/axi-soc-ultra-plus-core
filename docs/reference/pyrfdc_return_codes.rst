@@ -439,10 +439,14 @@ is the enclosing function together with the driver call named beside it.
        conjunction: the recorded step must be ``XRFdc_Reset`` and the cached role must be edge,
        so a tile that failed at some other step arms nothing. The bound is one attempt per group
        per global reset however many of that group's edge tiles failed, held in a set local to
-       the call. A recovery whose resets all succeed clears the failure records of the tiles it
-       reset, so the transaction completes reporting no error, and it remains visible in three
-       places: the armed and succeeded halves of ``0x1201C``, a second cycle in the per tile
-       cycle count, and one warning line naming the arming tile and the master.
+       the call. A member of the group that is not enabled is skipped before any call is made
+       against it, so it receives no reset and no cycle, and its refusal is not counted against
+       the attempt: without that guard the recovery would be unreachable on any board with a
+       partially populated group. A recovery whose resets all succeed clears the failure records
+       of the tiles it reset and of no others, so the transaction completes reporting no error
+       while a tile that failed outside this group still reports, and it remains visible in
+       three places: the armed and succeeded halves of ``0x1201C``, a second cycle in the per
+       tile cycle count, and one warning line naming the arming tile and the master.
      - No. Arming requires the cached topology to call the tile a distribution edge, so on a
        board reporting no distribution no tile ever qualifies, the arming pass finds nothing,
        and the reset path is identical to the one before this was added.
@@ -478,12 +482,23 @@ is the enclosing function together with the driver call named beside it.
      - Four bits per tile in the same nibble layout, holding how many IPSM cycles the last global
        reset covering that tile issued for it. A cycle is counted whether it came from an
        explicit reset or from the internal restart the PLL reconfigure performs, because a count
-       of explicit calls would read zero for every tile of a healthy reset. Each nibble saturates
-       at 15. Each global reset clears only the tiles it covers, so a host that has driven both
-       reads all eight nibbles. A write is refused by name.
+       of explicit calls would read zero for every tile of a healthy reset. That remains true on
+       every path but one. A nibble reading ``0xF`` is not a count at all: it is the reserved
+       value for a tile whose PLL reconfigure returned non-success at a point where the driver
+       cannot tell whether the call had already cycled it, so the true figure for that tile is
+       one or two and the driver declines to pick between them. A real count saturates at
+       ``0xE`` rather than at 15, one below the reserved value, so counting can never produce it
+       and the two readings are disjoint by construction. A nibble of 2 on the failing path is
+       the resolvable half of the same question: the tile read powered up before the reconfigure
+       and unpowered after it, so the call measurably drove it down and the compensating reset
+       drove it again. Each global reset clears only the tiles it covers, and clears the
+       exactness qualifier alongside the count it qualifies, so a host that has driven both
+       reads all eight nibbles and no tile carries a stale qualifier into a later reset. A write
+       is refused by name.
      - Yes. On such a board both commands walk their own four tiles, so a host that has driven
        both reads one per tile, and a nibble reading zero after a reset that covered the tile
-       means the tile received no cycle at all.
+       means the tile received no cycle at all. The reserved value is reachable on any board,
+       distribution or not, because it depends only on how the reconfigure failed.
    * - ``PyRFdc::RecoveryCount``, line 4597, at offset ``0x1201C``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
