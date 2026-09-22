@@ -3458,6 +3458,118 @@ void checkOutOfRangeGenerationIsAskedNothingAtAll() {
 }
 
 /*
+ * One sub-check of the out of range channel claim, labelled so a single red
+ * one is identifiable. The same shape as the cyclic pair sub-checks below and
+ * for the same reason: three generation partitions, each of which can break
+ * on its own.
+ */
+void runOutOfRangeChannelCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("an out of range generation says so on a channel a default"
+                    " bridge admits [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * A generation outside the range this driver knows how to ask says so on the
+ * error channel, and the two generations it does know how to ask say nothing
+ * new at all.
+ *
+ * The arm this covers consults no source, so every tile stays ungrouped by
+ * construction and the reset falls back to per type ordering. That is the
+ * loss of the master before edge guarantee, and until now the only trace of
+ * it was one field of a register at 0x12010, readable only by a host that
+ * already knows to look there, on a boot whose register path may itself have
+ * degraded. The error level and not the warning level, because the host side
+ * bridge filters by a global level whose default admits errors and discards
+ * warnings.
+ *
+ * Both list sizes are asserted in every sub-check and not only in the one the
+ * report is expected in. A line emitted on the wrong channel and a line
+ * emitted on a healthy board are the two failures this claim exists to catch,
+ * and a one sided assertion would miss both.
+ *
+ * The two quiet sub-checks are therefore not padding. The whole argument for
+ * the report is that it fires on an outcome that is not routine, so a fixture
+ * in which it must stay silent is half of that property rather than a
+ * restatement of the first sub-check. That is the same argument the mirrored
+ * channel rows in this phase's mutation record made for the deferral report.
+ *
+ * The fixture is the same in all three: this carrier's topology is pushed for
+ * the documented getter and its clock detect registers are scripted for the
+ * raw decode, so the reported generation is the only thing that differs and
+ * the gate is the only thing that can explain the difference.
+ *
+ * What this says nothing about: no reading taken on this carrier has ever
+ * carried the out of range source value, so the arm this report is attached
+ * to has no hardware evidence for or against it and this line has never been
+ * seen on a board.
+ */
+void checkOutOfRangeGenerationSaysSoOnAnAdmittedChannel() {
+    {
+        gScript.reset();
+        gScript.ipType = 255;
+        scriptThisCarriersDistribution();
+        scriptThisCarriersClockDetect();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        // The reported value in the driver's own hexadecimal rendering, so a
+        // line that fired without naming which generation provoked it is red
+        // rather than accepted.
+        bool ok = (gScript.logErrors.size() == 1);
+        if (ok) ok = (gScript.logErrors[0].find("0xFF") != std::string::npos);
+        if (ok) ok = gScript.logWarnings.empty();
+
+        fprintf(stderr,
+                "out of range channel: %zu error(s) %zu warning(s) '%s'\n",
+                gScript.logErrors.size(), gScript.logWarnings.size(),
+                gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runOutOfRangeChannelCheck("out of range", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+        scriptThisCarriersClockDetect();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        bool ok = gScript.logErrors.empty();
+        if (ok) ok = gScript.logWarnings.empty();
+
+        fprintf(stderr,
+                "documented getter channel: %zu error(s) %zu warning(s) '%s'\n",
+                gScript.logErrors.size(), gScript.logWarnings.size(),
+                gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runOutOfRangeChannelCheck("documented getter", ok);
+    }
+
+    {
+        gScript.reset();
+        gScript.ipType = 1;
+        scriptThisCarriersDistribution();
+        scriptThisCarriersClockDetect();
+
+        PyRFdcPtr device = PyRFdc::create();
+
+        bool ok = gScript.logErrors.empty();
+        if (ok) ok = gScript.logWarnings.empty();
+
+        fprintf(stderr,
+                "pre gen3 channel: %zu error(s) %zu warning(s) '%s'\n",
+                gScript.logErrors.size(), gScript.logWarnings.size(),
+                gScript.logErrors.empty() ? "" : gScript.logErrors[0].c_str());
+
+        runOutOfRangeChannelCheck("pre gen3", ok);
+    }
+}
+
+/*
  * The two new branches disturb nothing already in the chain, and both
  * answer on an instance whose construction never produced a driver.
  *
@@ -6093,7 +6205,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 113;
+const int kClaimsBeforeCountCheck = 116;
 
 /*
  * Every claim this file defines actually ran.
@@ -6192,6 +6304,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkGen3DriverIsNeverGivenTheRawDecode();
     checkFilledDistributionArrayThatWasRefusedIsStillNoDistribution();
     checkOutOfRangeGenerationIsAskedNothingAtAll();
+    checkOutOfRangeGenerationSaysSoOnAnAdmittedChannel();
     checkDistributionRegistersDoNotCollideAndAnswerADeadDriver();
 
     checkOneIpsmCyclePerEnabledTileOnTheHealthyPath();
