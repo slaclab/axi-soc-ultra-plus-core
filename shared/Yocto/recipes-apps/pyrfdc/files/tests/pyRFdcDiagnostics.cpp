@@ -5244,6 +5244,115 @@ void checkRecoveryClearsOnlyTheTileItReRan() {
 }
 
 /*
+ * How many enable probes one global DAC reset makes against one tile, with
+ * nothing at all scripted.
+ *
+ * Measured off the recorded call list rather than written down as a
+ * literal, because the two claims below stand on a count-limited fixture
+ * entry sized to exactly this figure, and a count that quietly stopped
+ * matching the sweep would leave both of them asserting something other
+ * than what their labels say. This file has already recorded four claims
+ * whose premise rotted without anything going red, so the premise is
+ * measured here and asserted in the verdicts that use it.
+ *
+ * The probe is the first driver call the sweep makes against every tile in
+ * its walk, so this is also how many times the tile appears in that walk.
+ * Nothing is scripted, so no reset fails, so no recovery arms and the
+ * figure belongs to the sweep and to nothing else.
+ */
+size_t measureSweepEnableProbes(uint32_t type, uint32_t tile) {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+
+    driveWrite(device, kResetAllDac, 1);
+
+    return countExactCalls("XRFdc_CheckTileEnabled", type, tile, XRFDC_SCRIPT_ANY);
+}
+
+/*
+ * Script one tile as enabled for the sweep and not enabled for everything
+ * after it. This is the one fixture shape the two latent halves of the
+ * recovery accounting are reachable from at all.
+ *
+ * Two entries, and insertion order is what makes them work. The first
+ * carries success and is limited to the number of probes the sweep makes,
+ * so it answers those and then stops matching. The second carries failure
+ * and never runs out, so every later probe, the recovery's included, is
+ * refused. An entry's status is whatever the caller passed, so a scripted
+ * success is as expressible as a scripted failure.
+ *
+ * Deliberately impossible on the vendor driver in front of this code today,
+ * which reads static configuration and therefore cannot change answer
+ * inside one transaction. It is written anyway because what the two claims
+ * below are about is a property of this driver's own accounting rather than
+ * a property of that read, and the comment above the attempt flag used to
+ * argue the opposite.
+ */
+void scriptEnabledForTheSweepOnly(uint32_t type, uint32_t tile, size_t sweepProbes) {
+    gScript.scriptFailureTimes("XRFdc_CheckTileEnabled", type, tile, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, uint32_t(sweepProbes), XRFDC_SUCCESS);
+    gScript.scriptFailure("XRFdc_CheckTileEnabled", type, tile, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+}
+
+//! The five members of this carrier's DAC 0 group, in the order the recovery
+//! builds them: the master first, then every edge that names it in ascending
+//! tile index order.
+const uint32_t kDacGroupTypes[5] = {XRFDC_DAC_TILE, XRFDC_ADC_TILE, XRFDC_DAC_TILE,
+                                    XRFDC_DAC_TILE, XRFDC_DAC_TILE};
+const uint32_t kDacGroupTiles[5] = {0, 3, 1, 2, 3};
+
+/*
+ * The recovery report line out of the captured error list, or the empty
+ * string when no captured line is one.
+ *
+ * Selected by the line's own opening rather than by position. A transaction
+ * that raises puts its diagnostic message on the same list, so the list can
+ * hold two entries whose order is a property of the call sites rather than
+ * of the report, and a claim that read entry zero would be asserting about
+ * that order.
+ */
+std::string recoveryReportLine() {
+    for (size_t i = 0; i < gScript.logErrors.size(); i++) {
+        if (gScript.logErrors[i].find("clock group recovery armed by") != std::string::npos) {
+            return gScript.logErrors[i];
+        }
+    }
+    return "";
+}
+
+//! How many captured error lines are recovery report lines. Asserted rather
+//! than assumed wherever a claim reads the report, so a change that emitted
+//! it twice could not satisfy a claim that only looked at the first one.
+size_t recoveryReportCount() {
+    size_t n = 0;
+
+    for (size_t i = 0; i < gScript.logErrors.size(); i++) {
+        if (gScript.logErrors[i].find("clock group recovery armed by") != std::string::npos) n++;
+    }
+    return n;
+}
+
+/*
+ * One sub-check of the disabled-tile claim, under the same prefix as that
+ * claim's own verdict so the two read as one fixture.
+ *
+ * The site sentence completes the prefix rather than sitting in brackets
+ * after it, unlike the sub-check runners further up this file, so a reader
+ * or a grep looking for the property's own sentence finds the verdict that
+ * carries it.
+ */
+void runDisabledInGroupCheck(const char *site, bool ok) {
+    const std::string label = std::string("a disabled tile in a group, ") + site;
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
  * One tile of the group that is not enabled does not defeat the recovery.
  *
  * The sweep asks XRFdc_CheckTileEnabled before it touches a tile, and the
@@ -5302,6 +5411,208 @@ void checkDisabledTileInAGroupDoesNotDefeatTheRecovery() {
     }
 
     runCheck("a disabled tile in a group does not defeat the recovery", ok);
+
+    /*
+     * The report's own two figures, as a verdict of their own.
+     *
+     * A second verdict rather than two more conjuncts on the one above, so a
+     * red report assertion is distinguishable from a red cycle-nibble
+     * assertion. They are two separate properties of one attempt: what the
+     * driver did, and what it said it did. This fixture is the only
+     * partially populated group in the suite, so it is the only place the
+     * two figures can differ at all.
+     *
+     * Matched as substrings of the assembled line rather than against a
+     * whole expected line, so the claim pins the two figures without
+     * pinning the field order around them. Construction emits on neither
+     * channel and this attempt's transaction completes clean, so the one
+     * captured error line belongs to the report and to nothing else.
+     */
+    {
+        const std::string report = recoveryReportLine();
+
+        bool reported = (gScript.logErrors.size() == 1) && (recoveryReportCount() == 1);
+        if (reported) reported = (report.find("group size 5") != std::string::npos);
+        if (reported) reported = (report.find("tiles reset 4") != std::string::npos);
+
+        fprintf(stderr, "report figures: %zu captured error line(s), report '%s'\n",
+                gScript.logErrors.size(), report.c_str());
+
+        runDisabledInGroupCheck("the recovery report states what it reset and what the group held",
+                                reported);
+    }
+}
+
+/*
+ * An attempt that reset nothing is not counted as a recovery that
+ * succeeded.
+ *
+ * Every member of the DAC 0 group answers enabled for the sweep and not
+ * enabled for the recovery, so the attempt arms and then issues no reset at
+ * all. The armed half of the published word has to move and the succeeded
+ * half must not, because that half is the only evidence a host has that a
+ * recovery ever worked and this one did nothing that could have worked.
+ *
+ * Asserted on the recorded call list as well as on the word. A counter that
+ * held while a reset was issued anyway would be no property at all, so the
+ * calls are counted per member: the sweep issues exactly one reset against
+ * each of the five, so a second against any of them would be the
+ * recovery's. That is how "no reset after the sweep" is expressed on a list
+ * the two passes share and cannot be cleared between.
+ *
+ * The transaction is required to raise. The clear loop sits inside the
+ * success accounting, so an attempt that is not counted as having succeeded
+ * clears nothing, and the reset failure that armed it survives into the
+ * verdict. A pass that reported success and cleared the record would hand
+ * the host a clean reset for a converter nothing was re-run against.
+ *
+ * What this claim deliberately proves nothing about: any board. The
+ * condition it turns on is an enable probe that changes answer inside one
+ * transaction, which the vendor driver in front of this code cannot
+ * currently present, so the fixture measures this driver's accounting and
+ * not a case any carrier has produced.
+ */
+void checkAttemptThatResetNothingIsNotCountedAsSucceeded() {
+    size_t sweepProbes[5];
+    size_t resetCalls[5];
+    size_t m;
+
+    for (m = 0; m < 5; m++) {
+        sweepProbes[m] = measureSweepEnableProbes(kDacGroupTypes[m], kDacGroupTiles[m]);
+    }
+
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    for (m = 0; m < 5; m++) {
+        scriptEnabledForTheSweepOnly(kDacGroupTypes[m], kDacGroupTiles[m], sweepProbes[m]);
+    }
+
+    // ADC 3 fails its reset once, which is what arms the attempt. One time
+    // and not for good, so the failure is spent by the sweep and the
+    // recovery's own resets would return success if it issued any.
+    gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+    const std::string report = recoveryReportLine();
+
+    for (m = 0; m < 5; m++) {
+        resetCalls[m] = countExactCalls("XRFdc_Reset", kDacGroupTypes[m], kDacGroupTiles[m],
+                                        XRFDC_SCRIPT_ANY);
+    }
+
+    // The fixture's own premise first, so a probe count that stopped
+    // matching the sweep reddens this claim rather than hiding inside it.
+    bool ok = true;
+    for (m = 0; m < 5; m++) {
+        if (sweepProbes[m] == 0) ok = false;
+    }
+
+    if (ok) ok = armed->doneCalled() && !armed->errorStrCalled();
+    // Armed one, succeeded none.
+    if (ok) ok = (armed->getWord(0) == 0x00000001u);
+
+    for (m = 0; m < 5 && ok; m++) {
+        ok = (resetCalls[m] == 1);
+    }
+
+    if (ok) ok = (recoveryReportCount() == 1);
+    if (ok) ok = (report.find("group size 5") != std::string::npos);
+    if (ok) ok = (report.find("tiles reset 0") != std::string::npos);
+    if (ok) ok = dac->errorStrCalled();
+
+    fprintf(stderr,
+            "reset nothing: recoveries=0x%08X, probes=%zu/%zu/%zu/%zu/%zu, "
+            "resets=%zu/%zu/%zu/%zu/%zu, err=%u, report '%s'\n",
+            armed->getWord(0), sweepProbes[0], sweepProbes[1], sweepProbes[2],
+            sweepProbes[3], sweepProbes[4], resetCalls[0], resetCalls[1], resetCalls[2],
+            resetCalls[3], resetCalls[4], dac->errorStrCalls(), report.c_str());
+
+    runCheck("an attempt that reset nothing is not counted as a recovery that succeeded", ok);
+}
+
+/*
+ * A tile the recovery skipped keeps the reset failure nothing re-ran
+ * against it.
+ *
+ * ADC 3 and DAC 1 both fail their reset once in the sweep, so both record a
+ * failure at the same step, and ADC 3 arms the one attempt the group gets.
+ * DAC 1 alone answers enabled for the sweep and not enabled for the
+ * recovery, so the attempt re-runs four of the five members and never
+ * addresses DAC 1. Its record therefore has to survive into the verdict.
+ *
+ * The counter assertion is load-bearing rather than incidental, for the
+ * same reason the neighbouring clear-scope claim gives: a recovery that
+ * failed clears nothing at all, so without asserting that this attempt was
+ * counted as having succeeded the surviving record would prove nothing. One
+ * armed and one succeeded is what makes the survival a statement about
+ * scope.
+ *
+ * Both directions are asserted, because only the pair says "scope". DAC 1's
+ * own record has to still name the reset, and ADC 3's has to no longer name
+ * it: the attempt did re-run ADC 3, so clearing that one is correct and a
+ * pass that simply stopped clearing anything would satisfy the first half
+ * alone.
+ *
+ * Asserted over each tile's own record rather than over the whole message,
+ * so "names DAC 1 and names the reset step" cannot be satisfied by two
+ * different tiles' records between them.
+ *
+ * What this claim deliberately proves nothing about: any board, for the
+ * reason the claim above states.
+ */
+void checkSkippedTileKeepsTheResetFailureTheRecoveryNeverReRan() {
+    const size_t sweepProbes = measureSweepEnableProbes(XRFDC_DAC_TILE, 1);
+
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_ADC_TILE, 3, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+    gScript.scriptFailureTimes("XRFdc_Reset", XRFDC_DAC_TILE, 1, XRFDC_SCRIPT_ANY,
+                               XRFDC_SCRIPT_ANY, 1, XRFDC_FAILURE);
+    scriptEnabledForTheSweepOnly(XRFDC_DAC_TILE, 1, sweepProbes);
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+    const std::string msg = dac->errorStrValue();
+    rim::TransactionPtr armed = driveRead(device, kRecoveryCount);
+    const std::string dac1 = recordFor(msg, "DAC1");
+    const std::string adc3 = recordFor(msg, "ADC3");
+    const size_t dac1Resets =
+        countExactCalls("XRFdc_Reset", XRFDC_DAC_TILE, 1, XRFDC_SCRIPT_ANY);
+
+    bool ok = (sweepProbes > 0);
+    if (ok) ok = armed->doneCalled() && !armed->errorStrCalled();
+    // One armed and one succeeded.
+    if (ok) ok = (armed->getWord(0) == 0x00010001u);
+    if (ok) ok = dac->errorStrCalled();
+    if (ok) ok = (msg.find("DAC1") != std::string::npos);
+    if (ok) ok = (msg.find("XRFdc_Reset") != std::string::npos);
+    if (ok) ok = (dac1.find("XRFdc_Reset") != std::string::npos);
+    if (ok) ok = (adc3.find("XRFdc_Reset") == std::string::npos);
+    // The sweep's one reset against DAC 1 and no second one, which is what
+    // makes it the tile the attempt never addressed.
+    if (ok) ok = (dac1Resets == 1);
+
+    fprintf(stderr,
+            "skipped keeps its failure: recoveries=0x%08X, probes=%zu, dac1 resets=%zu, "
+            "err=%u, dac1 record '%s', adc3 record '%s'\n",
+            armed->getWord(0), sweepProbes, dac1Resets, dac->errorStrCalls(), dac1.c_str(),
+            adc3.c_str());
+
+    runCheck("a skipped tile keeps the reset failure the recovery never re-ran", ok);
 }
 
 /*
@@ -5782,7 +6093,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 110;
+const int kClaimsBeforeCountCheck = 113;
 
 /*
  * Every claim this file defines actually ran.
@@ -5914,6 +6225,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkFiredRecoveryIsReportedOnAnAdmittedChannel();
     checkRecoveryClearsOnlyTheTileItReRan();
     checkDisabledTileInAGroupDoesNotDefeatTheRecovery();
+    checkAttemptThatResetNothingIsNotCountedAsSucceeded();
+    checkSkippedTileKeepsTheResetFailureTheRecoveryNeverReRan();
     checkTwoFailingEdgesInOneGroupArmOneRecovery();
     checkRecoveryCounterIsReadOnlyAndAnswersADeadDriver();
     checkRecoveryRerunsTheGroupMasterFirst();
