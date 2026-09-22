@@ -357,13 +357,23 @@ is the enclosing function together with the driver call named beside it.
      - Never called. This file named no distribution symbol at all and carried the support as a
        standing TODO.
      - Called once at construction, and only when ``RFdc_Config.IPType`` is at least
-       ``XRFDC_GEN3``. The result is decoded into a per tile cache of role, master type and
-       master tile. The call sits inside an ``== XRFDC_SUCCESS`` test and the cache is written
-       only on success, so a refused query leaves every tile ungrouped.
+       ``XRFDC_GEN3`` and at most ``PYRFDC_IPTYPE_MAX_KNOWN``, a constant defined in
+       ``PyRFdc.h`` at 3, one above ``XRFDC_GEN3``, so a genuine next generation part still
+       takes this call. The structure handed to the driver is zeroed and has the unused
+       sentinel written into all eight slots before the call, because the decode decides a
+       slot is unused by testing that one field. The result is decoded into a per tile cache
+       of role, master type and master tile. The call sits inside an ``== XRFDC_SUCCESS`` test
+       and the cache is written only on success, so a refused query leaves every tile
+       ungrouped.
      - Yes, and on such a board the gate is the point. A driver reporting pre-Gen3 is never
        asked and therefore gains no new driver error line at bridge start. A Gen3 driver that
        refuses the call falls back to ungrouped rather than to the raw decode below, because the
-       decode is selected by the IP generation gate and not by the return value.
+       decode is selected by the IP generation gate and not by the return value. A generation
+       above ``PYRFDC_IPTYPE_MAX_KNOWN`` is not asked either, and is not a board type: it is a
+       driver reporting something no part of this family carries, which this project has read
+       as 255 off a real carrier whose device tree parameter property was empty. Such a
+       construction consults no source, makes no driver call, cannot fail and cannot raise,
+       and the board falls back to the same ungrouped per type sweep.
    * - ``PyRFdc::decodeClkDistributionRaw``, line 4104, reached from the constructor at line 403
      - ``XRFdc_CheckTileEnabled``, then ``XRFdc_RDReg`` of the per tile clock detect register at
        offset ``0x0080``
@@ -441,13 +451,18 @@ is the enclosing function together with the driver call named beside it.
      - The offset decoded to nothing, so a transaction against it was refused as undefined
        memory.
      - Reports where the cached topology came from in bits 7:0, as 0 for nothing obtained, 1 for
-       the documented getter and 2 for the raw decode; the IP generation the driver reports for
-       this part in bits 15:8; and the number of distribution groups found in bits 23:16. Both
-       byte fields saturate rather than wrap. A write is refused by name.
+       the documented getter, 2 for the raw decode and 3 for a reported IP generation outside
+       the range this driver asks, meaning no source was consulted at all; the IP generation the
+       driver reports for this part in bits 15:8; and the number of distribution groups found in
+       bits 23:16. Both byte fields saturate rather than wrap. A write is refused by name.
      - Yes, and this is the register that says so. A board with no distribution reads a group
        count of zero against a non-zero source, which is a different reading from a board that
        was never asked, and the IP generation field is the only place this driver publishes what
-       the driver thinks the part is.
+       the driver thinks the part is. Note that the generation byte saturating at ``0xFF`` means
+       a true 255 and a field nothing ever captured are not distinguishable from that byte
+       alone, which is why the fourth source value exists: the distinction a reader needs lives
+       in the source field rather than in the saturated byte. Partition hardware readings by the
+       source field rather than pooling them.
    * - ``PyRFdc::ClkDistMap``, line 4501, at offset ``0x12014``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
