@@ -3396,6 +3396,118 @@ void checkFilledDistributionArrayThatWasRefusedIsStillNoDistribution() {
     runCheck("a filled distribution array that was refused is still no distribution", ok);
 }
 
+//! Words of stack the helper below writes its pattern into. The structure the
+//! constructor hands the distribution getter is roughly three kilobytes, and
+//! the frames of the create helper and of the shared pointer's own allocation
+//! sit between this helper's frame and the constructor's, so the region is
+//! made comfortably larger than that structure alone.
+const size_t kDistributionResidueWords = 2048;
+
+//! The two word values the pattern alternates between, and the reason it has
+//! to alternate rather than repeat.
+//!
+//! Every field the topology decode reads is a 32 bit word, and the decode
+//! admits a type of 0 or 1 and a tile id of 0 through 3. A byte fill of any
+//! value but zero therefore produces fields far above both ranges, which the
+//! decode's own bounds reject, so such a pattern would leave the published
+//! words alone whether the caller pre-filled the structure or not. A uniform
+//! word fill is rejected for a second reason: it makes a slot's two edges the
+//! same package index, which the decode treats as a single tile on its own
+//! clock and skips.
+//!
+//! Alternating 0 and 1 avoids both. A slot reading those words in either
+//! phase names one type's tile 1 or tile 0 as its source and puts its two
+//! edges on tile 0 of one type and tile 1 of the other, which is an in range
+//! pair spanning six package indices and yields a group. Either phase works,
+//! so the pattern does not depend on where in the fill the structure lands.
+const uint32_t kDistributionResidueEvenWord = 0u;
+const uint32_t kDistributionResidueOddWord = 1u;
+
+/*
+ * Write the alternating pattern into a region of stack below this function's
+ * own frame, then release it, so the frame the constructor is about to push
+ * starts out holding something other than zero.
+ *
+ * The array is volatile so the write loop survives the optimization level the
+ * tests Makefile builds with, and the function carries the no-inline
+ * attribute so its frame is really pushed and really released rather than
+ * folded into the caller's.
+ *
+ * Whether the pattern reaches the constructor's own automatic structure is a
+ * measurement and not a guarantee. Frame layout, a red zone, and the
+ * allocation the shared pointer performs between this call and the
+ * constructor's prologue can all put that structure somewhere the pattern
+ * never reached, or overwrite the part of the region it occupies. The
+ * mutation record carries what was observed.
+ */
+__attribute__((noinline)) void dirtyDistributionResidue() {
+    volatile uint32_t scratch[kDistributionResidueWords];
+    for (size_t i = 0; i < kDistributionResidueWords; i++) {
+        scratch[i] = ((i & 1) != 0) ? kDistributionResidueOddWord : kDistributionResidueEvenWord;
+    }
+    // Nothing reads it back, and nothing here can: the only reader that
+    // matters is whatever the next frame puts in the same place. The cast
+    // keeps the build warning-free without weakening the volatile writes
+    // above, which are what makes those writes survive the optimizer.
+    (void)scratch;
+}
+
+/*
+ * A getter that fills only the slots it found still yields the scripted
+ * topology.
+ *
+ * This is not a restatement of the capture claim above it, and the difference
+ * is worth stating because the two assert the same two words. Under the
+ * getter shape this claim selects, nothing but the caller wrote the seven
+ * slots the fixture did not push: the getter performs no zero fill and marks
+ * no slot unused. So the decode's unused-slot test is answered by the
+ * constructor's own pre-fill of that structure and by nothing else, where
+ * under both other getter shapes it is answered by the getter itself whatever
+ * the caller did.
+ *
+ * What that buys depends on a measurement rather than on this reasoning. A
+ * claim that passes here with the pre-fill present and fails with it absent
+ * is measuring the pre-fill. A claim that passes both ways is measuring the
+ * decode's tolerance of whatever happened to be in memory, which is a much
+ * weaker statement, and the two are told apart by the mutation rows run
+ * against this claim rather than by argument. The helper above is the attempt
+ * to make the absent-pre-fill case reach a decodable pattern; the recorded
+ * outcome of that attempt is in the mutation record.
+ *
+ * Either way the claim is worth keeping, because it pins the new getter shape
+ * and the decode's behavior under it.
+ */
+void checkGetterFillingFoundSlotsOnlyStillYieldsTheScriptedTopology() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+    gScript.distributionFillsFoundSlotsOnly = true;
+
+    // Immediately before the construction, with nothing between the two that
+    // could push a frame of its own through the region.
+    dirtyDistributionResidue();
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    bool ok = (gScript.countCalls("XRFdc_GetClkDistribution") == 1);
+    if (ok) ok = status->doneCalled() && !status->errorStrCalled();
+    if (ok) ok = map->doneCalled() && !map->errorStrCalled();
+    // The same two words the same distribution produces under the default
+    // getter shape: the documented API as the topology source, an IPType of
+    // 2, one group, and ADC 3 plus all four DAC tiles mastered by DAC 0.
+    if (ok) ok = (status->getWord(0) == 0x00010201u);
+    if (ok) ok = (map->getWord(0) == 0x44444FFFu);
+
+    fprintf(stderr, "found slots only: status=0x%08X map=0x%08X, %zu query call(s)\n",
+            status->getWord(0), map->getWord(0),
+            gScript.countCalls("XRFdc_GetClkDistribution"));
+
+    runCheck("a getter that fills only the slots it found still yields the scripted topology", ok);
+}
+
 /*
  * A generation outside the range this driver knows how to ask is asked
  * nothing at all.
@@ -6205,7 +6317,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 116;
+const int kClaimsBeforeCountCheck = 117;
 
 /*
  * Every claim this file defines actually ran.
@@ -6303,6 +6415,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkUnprogrammedClockDetectRegisterYieldsNoDistribution();
     checkGen3DriverIsNeverGivenTheRawDecode();
     checkFilledDistributionArrayThatWasRefusedIsStillNoDistribution();
+    checkGetterFillingFoundSlotsOnlyStillYieldsTheScriptedTopology();
     checkOutOfRangeGenerationIsAskedNothingAtAll();
     checkOutOfRangeGenerationSaysSoOnAnAdmittedChannel();
     checkDistributionRegistersDoNotCollideAndAnswerADeadDriver();
