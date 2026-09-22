@@ -5577,6 +5577,21 @@ void runDisabledInGroupCheck(const char *site, bool ok) {
 }
 
 /*
+ * One sub-check of the all-skipped claim, in the same shape as the runner
+ * above and for the same reason.
+ *
+ * The prefix deliberately stops short of that claim's own sentence, so a
+ * grep counting the claim's verdict finds one line rather than two, and a
+ * red sub-check here is distinguishable from a red counter or call-count
+ * assertion in the claim it sits under.
+ */
+void runResetNothingCheck(const char *site, bool ok) {
+    const std::string label = std::string("an attempt that reset nothing, ") + site;
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
  * One tile of the group that is not enabled does not defeat the recovery.
  *
  * The sweep asks XRFdc_CheckTileEnabled before it touches a tile, and the
@@ -5664,6 +5679,33 @@ void checkDisabledTileInAGroupDoesNotDefeatTheRecovery() {
 
         runDisabledInGroupCheck("the recovery report states what it reset and what the group held",
                                 reported);
+    }
+
+    /*
+     * The other direction of the outcome vocabulary, as a verdict of its
+     * own.
+     *
+     * This attempt drove some of its group and not all of it, and every
+     * reset it issued returned success, so the word has to be the one a
+     * fully driven success uses. Without this half a change that made the
+     * zero-driven word unconditional would satisfy the all-skipped claim
+     * and pass the whole suite.
+     *
+     * The field name is asserted together with the value rather than the
+     * value alone, so a word that moved into some other field of the line
+     * is red here rather than accepted.
+     */
+    {
+        const std::string report = recoveryReportLine();
+
+        const bool worded = (report.find("outcome succeeded") != std::string::npos);
+
+        if (!worded) {
+            fprintf(stderr, "disabled in group outcome word: report '%s'\n", report.c_str());
+        }
+
+        runDisabledInGroupCheck("the recovery report names the outcome of a pass that drove some of its group",
+                                worded);
     }
 }
 
@@ -5760,6 +5802,30 @@ void checkAttemptThatResetNothingIsNotCountedAsSucceeded() {
             resetCalls[3], resetCalls[4], dac->errorStrCalls(), report.c_str());
 
     runCheck("an attempt that reset nothing is not counted as a recovery that succeeded", ok);
+
+    /*
+     * The outcome word on the same captured line, as a verdict of its own.
+     *
+     * The two figures beside it were already pinned by the claim above. The
+     * word was not, so a change to it in either direction passed the whole
+     * suite, and the word is the half of this line an operator has on a boot
+     * whose register path has degraded far enough that the counter cannot be
+     * read. It is asserted here with its field name rather than as a bare
+     * value, so a word that moved into some other field would be red.
+     *
+     * A second verdict rather than another conjunct above, so a red outcome
+     * word is distinguishable from a red counter, call-count or transaction
+     * assertion. They are different properties of one attempt.
+     */
+    {
+        const bool worded = (report.find("outcome nothing driven") != std::string::npos);
+
+        if (!worded) {
+            fprintf(stderr, "reset nothing outcome word: report '%s'\n", report.c_str());
+        }
+
+        runResetNothingCheck("the recovery report gives it an outcome word of its own", worded);
+    }
 }
 
 /*
@@ -6317,7 +6383,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 117;
+const int kClaimsBeforeCountCheck = 119;
 
 /*
  * Every claim this file defines actually ran.
