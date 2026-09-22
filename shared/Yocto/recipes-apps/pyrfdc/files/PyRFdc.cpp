@@ -4447,9 +4447,12 @@ void PyRFdc::normalizeClkDistCache() {
     // once more than the slot count, which is the honest reading: the slot
     // and the group this pass recovered from it are two separate findings.
     //
-    // Nothing is demoted and a tile already marked as a master is left
-    // exactly as it was, so a cache that already held the invariant comes
-    // out byte identical and every claim written against one stays green.
+    // Nothing is demoted here and a tile already marked as a master is left
+    // exactly as it was by this pass, though pass three below withdraws a
+    // master whose own master fields name a different tile. The byte
+    // identical outcome promised here therefore belongs to a cache that
+    // already satisfies the postcondition rather than to pass two on its
+    // own, and every claim written against such a cache stays green.
     for (idx = 0; idx < 8; idx++) {
         uint32_t named;
 
@@ -4476,9 +4479,11 @@ void PyRFdc::normalizeClkDistCache() {
         clkDistGroups_++;
     }
 
-    // Pass three, withdraw. An edge still naming a tile that is not a marked
-    // master names a master this cache cannot order, and the honest answer
-    // for such a tile is that it is in no group at all.
+    // Pass three, withdraw. A tile the cache cannot place in an orderable
+    // group is put in no group at all, in both of the ways the cache can
+    // hold one: an edge still naming a tile that is not a marked master, and
+    // a tile carrying the master role whose own master fields name a
+    // different tile.
     //
     // What that buys is that the postcondition holds for every input rather
     // than for every input the two decoders happen to produce. The
@@ -4487,20 +4492,30 @@ void PyRFdc::normalizeClkDistCache() {
     // do not support, on a word a host reads as evidence of what this driver
     // did.
     //
-    // One forward pass, with no repetition and no bound of its own. The test
-    // is whether the named tile is a marked master, and this pass never
-    // demotes a marked master: it only turns an edge into an ungrouped tile.
-    // So the test's outcome is monotone across the pass. A tile that fails it
-    // when its own index comes up would fail it just as surely later, and a
-    // tile that passes it cannot be made to fail it by anything this pass
-    // does. Every tile that has to be withdrawn is therefore withdrawn at its
-    // own inspection, in one sweep of eight.
+    // Two forward sub-passes, each one sweep of the eight tiles, and the
+    // ordering between them is load bearing rather than a tidy-up. Sub-pass
+    // one runs to completion before the first edge is inspected, so the set
+    // of tiles still carrying the master role is fixed for the whole of
+    // sub-pass two. Sub-pass two then changes the role of edges only, and an
+    // edge that another edge names fails its own keep test at its own
+    // inspection, because its target does not carry the master role either.
+    // Each sub-pass is therefore monotone within itself: a tile that fails
+    // its own test when its index comes up would fail it just as surely
+    // later, and a tile that passes cannot be made to fail by anything the
+    // same sub-pass does afterwards. Every tile that has to be withdrawn is
+    // withdrawn at its own inspection, and one sweep of eight in each is
+    // sufficient. Interleaving the two would break that argument, because an
+    // edge inspected before the master it names was withdrawn would be kept
+    // and nothing later would come back for it.
     //
     // The out of range arm and the unresolvable chain arm are the same case
-    // and are treated identically on purpose. Neither is reachable from
-    // either decoder today, since the documented path range checks every
-    // field of a slot before it uses one and the raw decode's indices are
-    // bounded by construction, but the postcondition is published with no
+    // and are treated identically on purpose, and so is a master that names
+    // another tile. None of the three is reachable from either decoder
+    // today: the documented path range checks every field of a slot before
+    // it uses one and takes the master role only where the slot's source is
+    // the tile being written, and the raw decode's indices are bounded by
+    // construction and take that role only where the decoded source is the
+    // tile's own package index. But the postcondition is published with no
     // proviso, so this makes it total rather than conditional.
     //
     // The group count is deliberately left exactly as the decode set it, so a
@@ -4516,6 +4531,46 @@ void PyRFdc::normalizeClkDistCache() {
         std::string tiles;
         uint32_t withdrawn = 0;
 
+        // Sub-pass one, the marked masters. A tile carrying the master role
+        // is a master only if its own master fields name itself, which is
+        // what every consumer of this cache reads it as: tileIsOwnedBy
+        // routes a tile to the reset of its master's type, and ClkDistMap
+        // publishes a master's own nibble as its own index. A tile marked
+        // master that names some other tile satisfies neither, so the honest
+        // answer for it is the same one an unresolvable edge gets.
+        for (idx = 0; idx < 8; idx++) {
+            uint32_t named;
+
+            if (clkDist_[idx >> 2][idx & 0x3].role != PYRFDC_CLKDIST_MASTER) {
+                continue;
+            }
+
+            named = (uint32_t(clkDist_[idx >> 2][idx & 0x3].masterType) * 4) +
+                    uint32_t(clkDist_[idx >> 2][idx & 0x3].masterTile);
+
+            // No in-range test ahead of this comparison, unlike the two
+            // passes above, because idx is in 0 to 7 and a composed value
+            // outside that range cannot equal it. An out of range master
+            // index is therefore withdrawn by this same inequality rather
+            // than by a test of its own, and the composed value is only ever
+            // compared here and never used as a subscript.
+            if (named == idx) {
+                continue;
+            }
+
+            // The same sentinel the edge withdrawal below writes, for the
+            // reason given there.
+            clkDist_[idx >> 2][idx & 0x3].role = PYRFDC_CLKDIST_UNGROUPED;
+            clkDist_[idx >> 2][idx & 0x3].masterType = 0xFF;
+            clkDist_[idx >> 2][idx & 0x3].masterTile = 0xFF;
+
+            withdrawn++;
+            tiles += " " + std::string(typeName[idx >> 2]) + std::to_string(idx & 0x3);
+        }
+
+        // Sub-pass two, the edges. Unchanged, and it picks up every edge
+        // orphaned by sub-pass one for free, because such an edge now names
+        // a tile whose role is ungrouped and so fails the keep test below.
         for (idx = 0; idx < 8; idx++) {
             uint32_t named;
 

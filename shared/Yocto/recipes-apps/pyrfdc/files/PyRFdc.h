@@ -530,7 +530,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
 
     //! Establish the cached topology's ordering precondition: after this
     //! runs, every tile marked as an edge names an in-range tile that is
-    //! marked as a master.
+    //! marked as a master, and every tile marked as a master names itself.
     //!
     //! It lives at cache level rather than inside either decoder because
     //! every consumer reads the cache and not one of them asks which source
@@ -546,8 +546,11 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! source the cache cannot resolve to an orderable master is honestly
     //! ungrouped, and the alternative of naming a master picked by tile index
     //! or by visit order would publish an ordering the registers do not
-    //! support. Nothing else is demoted and a tile already marked as a master
-    //! is left untouched, and the withdrawal fires only on a cache that
+    //! support. A tile marked as a master whose own master fields name some
+    //! other tile has its grouping withdrawn on exactly those terms too, and
+    //! every edge orphaned by that withdrawal follows it, since a master that
+    //! names another tile is one no consumer of this cache can order either.
+    //! Nothing else is demoted, and the withdrawal fires only on a cache that
     //! violated the invariant, so a cache that already satisfied it comes out
     //! byte identical.
     //!

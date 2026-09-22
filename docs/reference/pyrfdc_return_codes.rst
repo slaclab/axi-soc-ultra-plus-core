@@ -522,20 +522,24 @@ beside it.
        otherwise the tile index of that tile's distribution master, so a master's own nibble
        holds its own index. A write is refused by name. That invariant, every nibble naming a
        master naming a tile whose own nibble is its own index, holds without a proviso, because
-       the normalization now handles the one case that used to violate it. A cache whose edge
-       graph cannot be resolved to a marked master, whether because the graph contains a cycle
-       or because a named master index is out of range, has the grouping of those tiles
-       withdrawn, so their nibbles read ``0xF`` and none of them names a non-master. The reset
-       sequence for such a cache is the per type ordering, each global reset driving the four
-       tiles of its own type, and it is unchanged by the withdrawal in the sense that matters: a
+       the normalization now handles both of the classes that can violate it: an edge whose
+       chain reaches no marked master, and a tile marked as a master that does not name itself.
+       A cache the normalization cannot order has the grouping of those tiles withdrawn, so
+       their nibbles read ``0xF`` and none of them names a non-master, for any of three causes:
+       the edge graph contains a cycle, a named master index is out of range, or a tile is
+       marked as a master that does not name itself, in which case every edge naming that tile
+       is withdrawn with it. The reset sequence for such a cache is the per type ordering, each
+       global reset driving the four tiles of its own type, and it is unchanged by the
+       withdrawal in the sense that matters: a
        topology no ordering can honor is not made orderable by publishing a master for it, so
        what the withdrawal changes is what is published and reported rather than whether any
        ordering guarantee is delivered. The withdrawal is announced once on the error channel,
        described below.
      - No, not the withdrawal case. Such a board reads ``0xFFFFFFFF`` already, which is every
-       tile ungrouped, because no tile is ever marked as an edge there, so the withdrawal has
-       nothing to withdraw and never fires. That all-ungrouped reading is also what
-       distinguishes a grouping that did not engage from one that did, and on a board with a
+       tile ungrouped, because no tile is ever marked as an edge or as a master there, so
+       neither half of the withdrawal has anything to withdraw and neither fires. That
+       all-ungrouped reading is also what distinguishes a grouping that did not engage from one
+       that did, and on a board with a
        distribution it is now additionally what a withdrawn grouping reads as. The two are told
        apart by the error line, which is emitted only in the second case.
    * - ``PyRFdc::ResetCycleCount``, at offset ``0x12018``
