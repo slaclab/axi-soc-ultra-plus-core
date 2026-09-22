@@ -366,23 +366,48 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // two sources answers. The order below is the rule, and the rule matters
     // more than either source does on its own.
     //
-    // A driver reporting at least a third generation part is asked the
-    // documented question and is asked nothing else. If that call returns
-    // non-success the cache stays at the no-distribution values PyRFdc.h
-    // declares, and this code deliberately does not fall through to the raw
-    // decode. A board that answered the documented call and answered it with
-    // an error is telling the driver something, and a raw register read
-    // cannot correct that. Falling through would also mean one board could
-    // report two different topologies depending on whether a transient
-    // failure happened to land on that one call at construction.
+    // A driver reporting a generation from the third up to the highest this
+    // file knows how to ask, PYRFDC_IPTYPE_MAX_KNOWN, is asked the documented
+    // question and is asked nothing else. If that call returns non-success
+    // the cache stays at the no-distribution values PyRFdc.h declares, and
+    // this code deliberately does not fall through to the raw decode. A board
+    // that answered the documented call and answered it with an error is
+    // telling the driver something, and a raw register read cannot correct
+    // that. Falling through would also mean one board could report two
+    // different topologies depending on whether a transient failure happened
+    // to land on that one call at construction.
     //
-    // A driver reporting anything below that refuses the documented call at
-    // its first branch, without reading hardware, and prints a console error
-    // every time it is asked. This file is consumed by every SLAC RFSoC
-    // project, so an unguarded call would add a permanent error line at every
-    // bridge start on boards this work is not trying to change. Such a driver
-    // is therefore never asked, and gets the raw clock detect decode instead,
-    // which no IP generation gate can block.
+    // A driver reporting anything below the third generation refuses the
+    // documented call at its first branch, without reading hardware, and
+    // prints a console error every time it is asked. That refusal is a
+    // property of the driver's own range check and not of anything here.
+    // This file is consumed by every SLAC RFSoC project, so an unguarded call
+    // would add a permanent error line at every bridge start on boards this
+    // work is not trying to change. Such a driver is therefore never asked,
+    // and gets the raw clock detect decode instead, which no IP generation
+    // gate can block. That low arm is left exactly as wide as it was: it is
+    // the branch the project's only successful topology reading was taken on,
+    // and narrowing it to protect against an unmeasured input would trade a
+    // hypothetical for a measured regression.
+    //
+    // The upper bound exists because the driver's own range check protects
+    // only values the driver could have produced. IPType is copied out of a
+    // device tree property the driver does not validate, and this project has
+    // read 255 out of it on a real board, from a node whose parameter list
+    // was zero bytes. An unbounded test admits that value and routes exactly
+    // the degraded case to the one branch with no guard of its own in front
+    // of it. Anything above the bound therefore consults no source at all and
+    // records PYRFDC_CLKDIST_SRC_UNSUPPORTED_GEN, which is what keeps a
+    // generation nobody can vouch for distinguishable at 0x12010 from a
+    // driver that answered, from one that refused and from one that took the
+    // raw decode.
+    //
+    // What that third arm deliberately does not do is fail construction or
+    // raise. The fallback for an unavailable topology is the ungrouped per
+    // type sweep, which is the guarantee every board without a distribution
+    // already depends on, and a generation this file cannot interpret is one
+    // more way for the topology to be unavailable rather than a new class of
+    // error.
     //
     // The no-distribution fallback needs no branch of its own on either path.
     // The documented path writes the cache only inside an XRFDC_SUCCESS test,
@@ -398,16 +423,39 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     // that every consumer reads, not of whichever source happened to fill
     // that cache, and the same defect was reachable from both arms.
     ipType_ = RFdcInstPtr_->RFdc_Config.IPType;
-    if (ipType_ >= XRFDC_GEN3) {
+    if ((ipType_ >= XRFDC_GEN3) && (ipType_ <= PYRFDC_IPTYPE_MAX_KNOWN)) {
         // The structure is roughly three kilobytes, so it lives in a block of
         // its own rather than being carried through the tile loops below.
         // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetClkDistribution-Gen-3/DFE
         XRFdc_Distribution_System_Settings clkDist;
+
+        // Every slot marked unused before the driver sees the structure.
+        // cacheClkDistribution decides a slot is unused by testing one field
+        // against a sentinel, and that test means nothing unless something
+        // wrote the sentinel. The only party here that can guarantee it is
+        // this caller: a driver version that fills only the slots it found
+        // would otherwise leave the decode reading this process's stack as a
+        // topology, and the range checks downstream admit any residue that
+        // happens to look like a valid tile pair.
+        //
+        // The zero fill alone is not enough, which is why the loop follows
+        // it. A zeroed slot reads as sourced by tile 0, and tile 0 is a real
+        // tile. <cstring> is already included at the top of this file.
+        std::memset(&clkDist, 0, sizeof(clkDist));
+        for (uint32_t slot = 0; slot < 8; slot++) {
+            clkDist.Distributions[slot].SourceTileId = XRFDC_CLK_DST_INVALID;
+        }
+
         if (XRFdc_GetClkDistribution(RFdcInstPtr_, &clkDist) == XRFDC_SUCCESS) {
             cacheClkDistribution(&clkDist);
         }
-    } else {
+    } else if (ipType_ < XRFDC_GEN3) {
         decodeClkDistributionRaw();
+    } else {
+        // No source consulted and no driver call made. The cache keeps the
+        // ungrouped values PyRFdc.h declares and the status register says
+        // which of the four cases this was.
+        clkDistSource_ = PYRFDC_CLKDIST_SRC_UNSUPPORTED_GEN;
     }
     normalizeClkDistCache();
 

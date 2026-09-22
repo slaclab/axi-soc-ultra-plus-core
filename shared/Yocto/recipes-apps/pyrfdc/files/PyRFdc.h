@@ -84,8 +84,30 @@ enum PyRFdcClkDistRole {
 enum PyRFdcClkDistSource {
     PYRFDC_CLKDIST_SRC_NONE       = 0,  //!< No topology was obtained
     PYRFDC_CLKDIST_SRC_API        = 1,  //!< The documented distribution getter answered
-    PYRFDC_CLKDIST_SRC_RAW_DECODE = 2   //!< A raw clock-detect decode answered
+    PYRFDC_CLKDIST_SRC_RAW_DECODE = 2,  //!< A raw clock-detect decode answered
+    //! The reported IP generation was outside the range this driver knows
+    //! how to ask, so no source was consulted at all. A fourth value and not
+    //! a reuse of the first: none means asked and refused, and a reader of a
+    //! hardware register needs asked-and-refused to stay distinct from
+    //! never-asked-because-the-reported-part-type-is-not-a-part-type.
+    PYRFDC_CLKDIST_SRC_UNSUPPORTED_GEN = 3
 };
+
+//! The highest reported IP generation this driver will put the documented
+//! distribution question to.
+//!
+//! Deliberately a constant of this project's own and not a vendor symbol.
+//! The real vendor header is not present on the host this work was done on,
+//! so a new hard dependency on a symbol only the test shim guarantees would
+//! surface as a build break in every downstream project that consumes this
+//! file rather than as a compile error here.
+//!
+//! Set one above XRFDC_GEN3, so a genuine next-generation part still takes
+//! the documented call and only a value no generation of this part could
+//! carry falls off the top. The one out-of-range value this project has
+//! measured on its own hardware is 255, far above it, read from a device
+//! tree node whose parameter property was zero bytes.
+#define PYRFDC_IPTYPE_MAX_KNOWN 3U
 
 //! Memory interface Emlator device
 /** This memory will respond to transactions, emilator hardware by responding to read
@@ -591,6 +613,16 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
 
     //! Where the topology came from, which IP generation the driver
     //! reported and how many groups were found, as one word at 0x12010.
+    //!
+    //! The source is in bits 7:0, the reported IP generation in bits 15:8
+    //! and the group count in bits 23:16. Both byte fields saturate rather
+    //! than wrap.
+    //!
+    //! The generation byte saturating at 0xFF means a true 255 and a field
+    //! nothing ever captured are not distinguishable from that byte alone,
+    //! which is why the source field carries a fourth value for a generation
+    //! outside the range this driver asks: the distinction a reader needs
+    //! lives there rather than in the saturated byte.
     void ClkDistStatus();
 
     //! The per-tile distribution map, four bits per tile, at 0x12014.
