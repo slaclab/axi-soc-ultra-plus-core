@@ -28,7 +28,10 @@
  *                retry can be scripted as well as one that never clears
  *   registers    scripted register contents keyed on type, tile and offset,
  *                consulted by the XRFdc_ReadReg stub, so a diagnostic read
- *                can be made to return a chosen value
+ *                can be made to return a chosen value, each key optionally
+ *                carrying a queue of values spent one per read before the
+ *                sticky one answers, so two reads of one key inside one body
+ *                can be made to disagree
  *   logErrors    the strings the Logging shim was asked to print, kept
  *                beside the transaction record so the console line and the
  *                caller-visible error can be asserted separately
@@ -232,6 +235,7 @@ class XRFdcScript {
         metalLogs.clear();
         failures_.clear();
         registers_.clear();
+        registerQueues_.clear();
         pllEnabled = 0;
         ipType = 0;
         distributions.clear();
@@ -287,6 +291,29 @@ class XRFdcScript {
         registers_[key] = value;
     }
 
+    //! Queue one value for the next read of this base and offset, after which
+    //! the key falls back to whatever scriptRegister set for it, or to zero
+    //! when nothing did.
+    //!
+    //! It exists because the production reset sweep now reads one register
+    //! twice inside one tile's body, once before the PLL reconfigure and once
+    //! after it has failed, and the whole point of the second read is that it
+    //! can disagree with the first. A sticky map cannot express that: one key
+    //! holds one value, so both reads are forced to agree and the case the
+    //! second read was added to detect is unscriptable.
+    //!
+    //! The queue is consumed in call order by every read of the key, not only
+    //! by the two the sweep's cycle decision makes. A diagnostic capture of
+    //! the same register sits between them on the failing path and spends an
+    //! entry of its own. A claim leaning on this is therefore leaning on the
+    //! recorded order as much as on the value, which is why the claims that
+    //! use it assert the recorded read counts alongside the nibble they are
+    //! really about.
+    void scriptRegisterOnce(uint32_t type, uint32_t tile, uint32_t offset, uint32_t value) {
+        XRFdcScriptRegKey key = {type, tile, offset};
+        registerQueues_[key].push_back(value);
+    }
+
     //! Record one driver call and return the status it should produce.
     //! Both halves live in one method so a stub body cannot record a call it
     //! then fails to consult the selector for, or the reverse.
@@ -331,8 +358,21 @@ class XRFdcScript {
     }
 
     //! The scripted contents of a register, or 0 when nothing scripted it.
-    uint32_t registerValue(uint32_t type, uint32_t tile, uint32_t offset) const {
+    //!
+    //! A queued value takes precedence over the sticky one and is spent by
+    //! the read that took it, so the same key can answer differently on two
+    //! successive reads. Non-const for that reason, and it is the one
+    //! accessor the register stubs already call, so the queue needs no stub
+    //! change to be reached.
+    uint32_t registerValue(uint32_t type, uint32_t tile, uint32_t offset) {
         XRFdcScriptRegKey key = {type, tile, offset};
+        std::map<XRFdcScriptRegKey, std::vector<uint32_t> >::iterator q =
+            registerQueues_.find(key);
+        if (q != registerQueues_.end() && !q->second.empty()) {
+            const uint32_t queued = q->second.front();
+            q->second.erase(q->second.begin());
+            return queued;
+        }
         std::map<XRFdcScriptRegKey, uint32_t>::const_iterator it = registers_.find(key);
         if (it == registers_.end()) return 0;
         return it->second;
@@ -424,6 +464,11 @@ class XRFdcScript {
 
     std::vector<XRFdcScriptFailure> failures_;
     std::map<XRFdcScriptRegKey, uint32_t> registers_;
+
+    //! Values queued for the next reads of a key, oldest first. Kept apart
+    //! from the sticky map rather than folded into it, so a key with nothing
+    //! queued answers exactly as it did before this existed.
+    std::map<XRFdcScriptRegKey, std::vector<uint32_t> > registerQueues_;
 };
 
 //! The one fixture instance. Defined in xrfdcStub.cpp.

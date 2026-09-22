@@ -5157,6 +5157,181 @@ void checkRecoveryRerunsTheGroupMasterFirst() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* What the cycle count is allowed to claim when a reconfigure fails.        */
+/*                                                                           */
+/* The fire predicate treats every non-success from XRFdc_DynamicPLLConfig   */
+/* as having performed no cycle. That is true of a refusal that happened     */
+/* before the call touched the tile and false of a failure that happened     */
+/* after the call had already driven the tile down and back up, and the two  */
+/* are the same return value. The three claims below are about the count     */
+/* and not about the reset: the reset fires on every non-success either      */
+/* way, which the three claims further up already pin.                       */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A reconfigure that left the tile unpowered is counted as two cycles.
+ *
+ * The tile reads powered up before the reconfigure and not powered up after
+ * it, which is only possible if the call drove the tile down. It did not
+ * bring it back, so the compensating reset is still needed and still fires,
+ * and the tile is driven at its state machine twice inside one sweep. A
+ * nibble of one here would be the counter under-reporting the exact thing
+ * it was built to detect.
+ *
+ * The two reads are scripted as a sticky zero plus one queued powered-up
+ * value rather than as two sticky values, because one key cannot hold two
+ * answers. The read count is asserted alongside the nibble: the queue is
+ * spent in call order, so a claim that only checked the nibble could be
+ * satisfied by a sweep that made a different number of reads and happened
+ * to land on the same pair of values.
+ */
+void checkReconfigureFailureThatLeftTheTileDownIsCountedAsTwoCycles() {
+    const uint32_t failing = 2;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCommonStatus,
+                               (tile == failing) ? 0x0 : kPoweredUpStatus);
+    }
+    // The first read of this key answers powered up and every read after it
+    // falls back to the sticky zero above, so the tile looks powered up to
+    // the gate and unpowered to the re-read.
+    gScript.scriptRegisterOnce(XRFDC_ADC_TILE, failing, kOffsetCommonStatus, kPoweredUpStatus);
+    gScript.scriptFailure("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    const size_t failingReads =
+        countExactCalls("XRFdc_RDReg", XRFDC_ADC_TILE, failing, kOffsetCommonStatus);
+    const size_t healthyReads =
+        countExactCalls("XRFdc_RDReg", XRFDC_ADC_TILE, 0, kOffsetCommonStatus);
+
+    bool ok = counts->doneCalled() && !counts->errorStrCalled();
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, failing) == 2u);
+    // The neighbours are untouched by the discrimination: each was powered
+    // up, each reconfigured cleanly, and each keeps its one cycle.
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, 0) == 1u);
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, 1) == 1u);
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, 3) == 1u);
+    // Two reads of the gate register on the failing tile and one on a
+    // healthy one, so the nibble above came from a second read that was
+    // really taken and the healthy path really did not take one.
+    if (ok) ok = (failingReads == 2);
+    if (ok) ok = (healthyReads == 1);
+    // And the reset the count is recording did happen.
+    if (ok) ok = gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY);
+
+    fprintf(stderr,
+            "left down: counts=0x%08X, failing reads=%zu healthy reads=%zu, reset=%d\n",
+            counts->getWord(0), failingReads, healthyReads,
+            gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY) ? 1 : 0);
+
+    runCheck("a reconfigure failure that left the tile down is counted as two cycles", ok);
+}
+
+/*
+ * A reconfigure failure the driver cannot resolve is reported as not exact.
+ *
+ * The tile reads powered up both before the reconfigure and after it failed.
+ * From this code an early refusal that never touched the tile and a late
+ * failure that completed its cycle and left the tile powered look identical,
+ * so the true figure is one or two and the driver declines to pick. The
+ * nibble carries the reserved value rather than a guess.
+ *
+ * The reset call is asserted as well, because the reserved value must not be
+ * readable as the driver having skipped the reset. The failure this carrier
+ * actually produces is the reference frequency refusal on its five external
+ * clock tiles, and those tiles get no cycle at all without it.
+ */
+void checkReconfigureFailureThatCannotBeToldApartIsReportedAsNotExact() {
+    const uint32_t failing = 2;
+
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    // No queued value anywhere, so both reads of the failing tile's gate
+    // register agree and nothing separates the two reconfigure outcomes.
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCommonStatus, kPoweredUpStatus);
+    }
+    gScript.scriptFailure("XRFdc_DynamicPLLConfig", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY,
+                          XRFDC_FAILURE);
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    const size_t failingResets =
+        countExactCalls("XRFdc_Reset", XRFDC_ADC_TILE, failing, XRFDC_SCRIPT_ANY);
+
+    bool ok = counts->doneCalled() && !counts->errorStrCalled();
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, failing) == 0xFu);
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, 0) == 1u);
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, 1) == 1u);
+    if (ok) ok = (tileNibble(counts->getWord(0), XRFDC_ADC_TILE, 3) == 1u);
+    if (ok) ok = (failingResets == 1);
+
+    fprintf(stderr, "not exact: counts=0x%08X, failing tile resets=%zu\n",
+            counts->getWord(0), failingResets);
+
+    runCheck("a reconfigure failure that cannot be told apart is reported as not exact", ok);
+}
+
+/*
+ * The healthy path still costs one power-up read per tile.
+ *
+ * This is the claim that catches a second read added to the healthy path,
+ * which is the cost the whole discrimination has to avoid. Every tile is
+ * powered up and every reconfigure succeeds, so every tile takes the first
+ * arm of the cycle decision, and the re-read must be unreachable there.
+ *
+ * Asserted per tile and not as a type total, because a total of four can be
+ * produced by two tiles read twice and two tiles never read at all.
+ */
+void checkHealthyPathStillCostsOnePowerUpReadPerTile() {
+    gScript.reset();
+    PyRFdcPtr device = PyRFdc::create();
+
+    gScript.calls.clear();
+    gScript.logErrors.clear();
+
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        gScript.scriptRegister(XRFDC_ADC_TILE, tile, kOffsetCommonStatus, kPoweredUpStatus);
+    }
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr counts = driveRead(device, kResetCycleCount);
+
+    size_t reads[4] = {0, 0, 0, 0};
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        reads[tile] = countExactCalls("XRFdc_RDReg", XRFDC_ADC_TILE, tile, kOffsetCommonStatus);
+    }
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = counts->doneCalled() && !counts->errorStrCalled();
+    if (ok) ok = (counts->getWord(0) == 0x00001111u);
+    if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 0);
+    for (uint32_t tile = 0; ok && (tile < 4); tile++) {
+        ok = (reads[tile] == 1);
+    }
+
+    fprintf(stderr, "healthy read cost: counts=0x%08X, reads=%zu/%zu/%zu/%zu, reset=%zu\n",
+            counts->getWord(0), reads[0], reads[1], reads[2], reads[3],
+            countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
+
+    runCheck("the healthy path still costs one power-up read per tile", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -5260,7 +5435,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 100;
+const int kClaimsBeforeCountCheck = 103;
 
 /*
  * Every claim this file defines actually ran.
@@ -5366,6 +5541,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkPoweredUpTileWithSucceedingReconfigureGetsNoExplicitReset();
     checkWedgedTileStillGetsItsOneCycle();
     checkPoweredUpTileWithFailingReconfigureStillGetsItsOneCycle();
+    checkReconfigureFailureThatLeftTheTileDownIsCountedAsTwoCycles();
+    checkReconfigureFailureThatCannotBeToldApartIsReportedAsNotExact();
+    checkHealthyPathStillCostsOnePowerUpReadPerTile();
 
     checkAdcEntryPointDefersATileMasteredByADac();
     checkGroupMasterIsResetBeforeItsEdgeTiles();
