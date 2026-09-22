@@ -4259,6 +4259,86 @@ void checkSourceOutsideItsEdgeRangeIsStillResetFirst() {
 }
 
 /*
+ * A slot whose source an earlier slot already took is still ordered behind
+ * a marked master.
+ *
+ * This is the other documented getter route to a master-less group, and it
+ * is the one that produces an edge naming another edge rather than an edge
+ * naming an ungrouped tile. The first slot is this carrier, so DAC 0 is
+ * marked and ADC 3 is one of its edges. The second slot names ADC 3 as its
+ * own source and ADC 1 as its far edge, so its range covers ADC 3, ADC 2
+ * and ADC 1. First slot wins, ADC 3 keeps the edge role it already had, and
+ * ADC 2 and ADC 1 come out naming a tile that is an edge rather than a
+ * master.
+ *
+ * Without the chain being followed the two of them are owned by the ADC
+ * entry point, because the tile they name is an ADC. They would then be
+ * restarted by a call that cannot restart DAC 0 first, which is the same
+ * hazard the division of work exists to remove, arriving at two tiles this
+ * time instead of one. 0x4444444F is asserted as a literal: every tile but
+ * ADC 0 naming tile index 4, which is DAC 0.
+ *
+ * Both entry points are driven. The DAC sweep has to put DAC 0 ahead of
+ * both re-pointed tiles, and the ADC sweep has to leave both of them alone,
+ * and neither half implies the other.
+ */
+void checkSlotWhoseSourceWasAlreadyTakenIsOrderedBehindAMaster() {
+    XRFdcScriptDistribution overlap;
+
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+
+    overlap.sourceType = XRFDC_ADC_TILE;
+    overlap.sourceTileId = 3;
+    overlap.edgeTypes[0] = XRFDC_ADC_TILE;
+    overlap.edgeTypes[1] = XRFDC_ADC_TILE;
+    overlap.edgeTileIds[0] = 3;
+    overlap.edgeTileIds[1] = 1;
+    gScript.distributions.push_back(overlap);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    gScript.calls.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+    const bool adcTouchedOne =
+        gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, 1, XRFDC_SCRIPT_ANY);
+    const bool adcTouchedTwo =
+        gScript.sawCall("XRFdc_Reset", XRFDC_ADC_TILE, 2, XRFDC_SCRIPT_ANY);
+
+    gScript.calls.clear();
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+    const size_t master = probeAt(XRFDC_DAC_TILE, 0);
+    const size_t adc1 = probeAt(XRFDC_ADC_TILE, 1);
+    const size_t adc2 = probeAt(XRFDC_ADC_TILE, 2);
+
+    bool ok = map->doneCalled() && !map->errorStrCalled();
+    if (ok) ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    if (ok) ok = (map->getWord(0) == 0x4444444Fu);
+    if (ok) ok = !adcTouchedOne;
+    if (ok) ok = !adcTouchedTwo;
+    if (ok) ok = (master < adc1);
+    if (ok) ok = (master < adc2);
+
+    if (!ok) {
+        fprintf(stderr,
+                "source already taken: map=0x%08X, adc sweep touched adc1=%d adc2=%d, "
+                "dac sweep probes dac0=%zu adc1=%zu adc2=%zu\n",
+                map->getWord(0), static_cast<int>(adcTouchedOne),
+                static_cast<int>(adcTouchedTwo), master, adc1, adc2);
+    }
+
+    runCheck("a slot whose source was already taken is ordered behind a master", ok);
+}
+
+/*
  * One fixture of the named master contract claim, labelled so a single red
  * fixture is identifiable.
  */
@@ -5014,7 +5094,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 96;
+const int kClaimsBeforeCountCheck = 97;
 
 /*
  * Every claim this file defines actually ran.
@@ -5128,6 +5208,7 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     checkMasterWithZeroClockDetectIsStillResetFirst();
     checkSourceOutsideItsEdgeRangeIsStillResetFirst();
+    checkSlotWhoseSourceWasAlreadyTakenIsOrderedBehindAMaster();
     checkEveryNamedClockMasterNamesItself();
 
     checkFailingEdgeTileArmsExactlyOneRecovery();
