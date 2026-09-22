@@ -467,8 +467,9 @@ beside it.
        succeeded half of the counter does not move either.
        The second of those three is not unique to a recovery, so a reader who finds a cycle
        count nibble of 2 should consult the ``PyRFdc::ResetCycleCount`` row below rather than
-       assume the PLL reconfigure produced it. That row states both producers and names this
-       register as the one that separates them.
+       assume the PLL reconfigure produced it. That row states both producers and states the one
+       direction this register can be read in: an armed half of zero rules one producer out, and
+       a non-zero armed half attributes nothing.
        That line is emitted at the error level and the deferral line above is emitted at the
        warning level, which is deliberate and is explained under
        `Reading the five reports on a board`_.
@@ -529,6 +530,13 @@ beside it.
        alone, which is why the fourth source value exists: the distinction a reader needs lives
        in the source field rather than in the saturated byte. Partition hardware readings by the
        source field rather than pooling them.
+
+       The group count carries a second reading beside that one. A non-zero count sitting beside
+       a map at ``0x12014`` reading every tile ungrouped is the register-only signature of a
+       withdrawn grouping, because the normalization withdraws a grouping it cannot resolve to an
+       orderable master without changing this count. That pair is what a host attaching later, a
+       host after a bridge restart and a host after a log rotation still has, where the
+       withdrawal report is a construction-time console line that none of them can go back for.
    * - ``PyRFdc::ClkDistMap``, at offset ``0x12014``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
@@ -556,7 +564,11 @@ beside it.
        all-ungrouped reading is also what distinguishes a grouping that did not engage from one
        that did, and on a board with a
        distribution it is now additionally what a withdrawn grouping reads as. The two are told
-       apart by the error line, which is emitted only in the second case.
+       apart in two ways. The error line is emitted only in the second case, and it is the only
+       one of the two that says which tiles. The register pair says as much without it: a
+       non-zero group count at ``0x12010`` beside this word is the register-only signature of a
+       withdrawn grouping, and unlike a construction-time console line it is still there for a
+       host attaching later, a host after a bridge restart and a host after a log rotation.
    * - ``PyRFdc::ResetCycleCount``, at offset ``0x12018``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
@@ -575,10 +587,15 @@ beside it.
        unpowered after it, followed by the compensating reset that drove it again. The second is
        a tile that took its one cycle in the sweep and was then re-run by a clock group recovery,
        which counts a cycle for the group master and for every enabled edge tile it drives.
-       ``0x1201C`` is the register that tells the two apart, because a recovery that re-ran a
-       tile is counted there and a reconfigure that dropped one is not, and on a boot where the
-       register path has itself degraded that register may not answer, in which case the recovery
-       report on the log is the remaining evidence. The second producer is demonstrated in tree
+       ``0x1201C`` rules one producer out and does not identify the other. Its armed half reading
+       zero means no recovery has ever fired on this driver instance, so the nibble came from the
+       reconfigure. A non-zero armed half attributes nothing, because that half counts groups
+       rather than tiles and is cumulative since construction while this count is cleared at the
+       start of every reset, so it can stand for a recovery that fired on an earlier reset or on
+       another group entirely. What attributes a recovery to a tile is the clock group recovery
+       report, which names the arming tile and the group master, and on a boot where the register
+       path has itself degraded that register may not answer, in which case that report is the
+       remaining evidence. The second producer is demonstrated in tree
        rather than asserted here: the board-free claim
        ``a disabled tile in a group does not defeat the recovery`` scripts one reset failure on a
        single edge tile of this carrier's distribution and then requires the group master's
