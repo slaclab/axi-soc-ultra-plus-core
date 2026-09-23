@@ -5644,6 +5644,182 @@ void enumerateRawDecodeScripts(TopologySourceTally &t) {
     }
 }
 
+//! The opening words of the line the constructor emits when the documented
+//! getter refuses, copied from its report assembly in PyRFdc::PyRFdc.
+const char kRefusedTopologyLinePrefix[] =
+    "clock distribution topology not obtained because the documented getter returned non-success";
+
+//! The opening words of the line the constructor emits when the reported IP
+//! generation is above the range it asks, copied from the same report
+//! assembly. The generation itself follows these words and is not part of the
+//! prefix, so one prefix matches every generation.
+const char kOutOfRangeGenerationLinePrefix[] =
+    "clock distribution topology not obtained because the reported IP generation";
+
+//! What one enumeration of a path that obtains no topology saw.
+//!
+//! Every counter but the first two cause counters and the reason counter
+//! must stay zero for the path to have published what it is documented to:
+//! the expected source, every tile ungrouped, a zero count and no withdrawal
+//! report. The cause counters say whether each construction captured exactly
+//! one line naming its cause, and the reason counter how many read a
+//! non-zero InitFailureReason, so a sub-check can require one or the other
+//! on every construction.
+struct NoTopologyTally {
+    unsigned long constructions = 0;
+    unsigned long wrongSource = 0;
+    unsigned long notAllUngrouped = 0;
+    unsigned long nonZeroCount = 0;
+    unsigned long withdrawalReports = 0;
+    unsigned long causeLineOnce = 0;
+    unsigned long causeLineNotOnce = 0;
+    unsigned long reasonSet = 0;
+};
+
+/*
+ * Construct one driver from whatever the fixture holds now, read the two
+ * registers, and classify the reading into the tally.
+ *
+ * With a cause prefix, the construction is counted by whether exactly one
+ * captured line carries it. With none, the driver is one that never
+ * initialized far enough to ask, and the construction is counted by whether
+ * InitFailureReason at 0x1200C reads non-zero, which is the evidence a host
+ * has on that path.
+ */
+void observeNoTopologyReading(PyRFdcPtr device, uint32_t expectedSource, const char *causePrefix,
+                              NoTopologyTally &t) {
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    t.constructions++;
+
+    const bool clean = status->doneCalled() && !status->errorStrCalled() &&
+                       map->doneCalled() && !map->errorStrCalled();
+    const uint32_t statusWord = status->getWord(0);
+
+    if (!clean || ((statusWord & 0xFFu) != expectedSource)) {
+        t.wrongSource++;
+    }
+    if (map->getWord(0) != 0xFFFFFFFFu) {
+        t.notAllUngrouped++;
+    }
+    if (((statusWord >> 16) & 0xFFu) != 0) {
+        t.nonZeroCount++;
+    }
+
+    unsigned long causeLines = 0;
+    for (size_t i = 0; i < gScript.logErrors.size(); i++) {
+        if (gScript.logErrors[i].find(kWithdrawalReportPrefix) != std::string::npos) {
+            t.withdrawalReports++;
+        }
+        if ((causePrefix != nullptr) &&
+            (gScript.logErrors[i].find(causePrefix) != std::string::npos)) {
+            causeLines++;
+        }
+    }
+
+    if (causePrefix != nullptr) {
+        if (causeLines == 1) {
+            t.causeLineOnce++;
+        } else {
+            t.causeLineNotOnce++;
+        }
+    } else {
+        rim::TransactionPtr reason = driveRead(device, kInitFailReason);
+
+        if (reason->doneCalled() && !reason->errorStrCalled() && (reason->getWord(0) != 0)) {
+            t.reasonSet++;
+        }
+    }
+}
+
+/*
+ * The same getter topologies enumerateGetterTopologies builds, each handed
+ * to a getter that writes the topology out and then refuses, at generation 2.
+ * The fill first form is the one enumerated because it is the stronger one:
+ * the only thing between a filled array and a cached topology is the success
+ * test around the cache write.
+ */
+void scriptRefusingGetter() {
+    gScript.reset();
+    gScript.ipType = 2;
+    gScript.distributionFillsOnRefusal = true;
+    gScript.scriptFailure("XRFdc_GetClkDistribution", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+}
+
+void enumerateRefusedGetterTopologies(NoTopologyTally &t) {
+    scriptRefusingGetter();
+    observeNoTopologyReading(PyRFdc::create(), PYRFDC_CLKDIST_SRC_NONE,
+                             kRefusedTopologyLinePrefix, t);
+
+    for (uint32_t a = 0; a < 512; a++) {
+        scriptRefusingGetter();
+        gScript.distributions.push_back(inRangeDistributionSlot(a));
+        observeNoTopologyReading(PyRFdc::create(), PYRFDC_CLKDIST_SRC_NONE,
+                                 kRefusedTopologyLinePrefix, t);
+    }
+
+    for (uint32_t a = 0; a < 512; a++) {
+        for (uint32_t b = 0; b < 512; b++) {
+            scriptRefusingGetter();
+            gScript.distributions.push_back(inRangeDistributionSlot(a));
+            gScript.distributions.push_back(inRangeDistributionSlot(b));
+            observeNoTopologyReading(PyRFdc::create(), PYRFDC_CLKDIST_SRC_NONE,
+                                     kRefusedTopologyLinePrefix, t);
+        }
+    }
+}
+
+/*
+ * A driver whose construction returned before the path selection, at each of
+ * the three constructor steps the rest of this suite fails, with this
+ * carrier's distribution and clock detect scripted so a topology was there
+ * to be found had the constructor asked.
+ */
+void constructUninitializedDrivers(NoTopologyTally &t) {
+    const char *const failingCalls[] = {"metal_init", "XRFdc_RegisterMetal",
+                                        "XRFdc_CfgInitialize"};
+
+    for (size_t i = 0; i < sizeof(failingCalls) / sizeof(failingCalls[0]); i++) {
+        gScript.reset();
+        gScript.ipType = 2;
+        scriptThisCarriersDistribution();
+        scriptThisCarriersClockDetect();
+        gScript.scriptFailure(failingCalls[i], XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                              XRFDC_SCRIPT_ANY, XRFDC_FAILURE);
+
+        observeNoTopologyReading(PyRFdc::create(), PYRFDC_CLKDIST_SRC_NONE, nullptr, t);
+    }
+}
+
+/*
+ * Every reported generation from 4 to 255, then 256, 65536 and 0xFFFFFFFF,
+ * each with this carrier's distribution and clock detect scripted. The first
+ * run is PYRFDC_IPTYPE_MAX_KNOWN plus one, and the last three are values the
+ * generation byte of the status word saturates.
+ */
+void enumerateOutOfRangeGenerations(NoTopologyTally &t) {
+    std::vector<uint32_t> generations;
+
+    for (uint32_t g = PYRFDC_IPTYPE_MAX_KNOWN + 1; g <= 255; g++) {
+        generations.push_back(g);
+    }
+    generations.push_back(256);
+    generations.push_back(65536);
+    generations.push_back(0xFFFFFFFFu);
+
+    for (size_t i = 0; i < generations.size(); i++) {
+        gScript.reset();
+        gScript.ipType = generations[i];
+        scriptThisCarriersDistribution();
+        scriptThisCarriersClockDetect();
+
+        observeNoTopologyReading(PyRFdc::create(), PYRFDC_CLKDIST_SRC_UNSUPPORTED_GEN,
+                                 kOutOfRangeGenerationLinePrefix, t);
+    }
+}
+
 /*
  * One sub-check of the topology source reading claim, labelled so a single
  * red one says which source and which half moved.
@@ -5679,15 +5855,33 @@ void runTopologySourceReadingCheck(const char *site, bool ok) {
  * among those it saw, so on this source the report is what says a
  * withdrawal happened.
  *
+ * Sources 0 and 3 obtain no topology, so the cache keeps the ungrouped
+ * values PyRFdc.h declares, the count stays zero and
+ * PyRFdc::normalizeClkDistCache has nothing to withdraw. Source 0 has two
+ * producers: a documented getter that was asked and refused, and a driver
+ * that never initialized far enough to ask, whose construction returned
+ * before the path selection and so kept the declared source value. Source 3
+ * is a reported generation above the range the constructor asks. The fourth
+ * sub-check asserts, over the refused getter and the driver that never
+ * initialized, that every reading is source 0 with every tile ungrouped, a
+ * zero count and no withdrawal report, beside exactly one refused getter
+ * line or a non-zero InitFailureReason. The fifth asserts the same of source
+ * 3 beside exactly one line naming the reported generation.
+ *
  * What it measures. Every documented getter topology of at most two slots,
  * 262,657 constructions, and every raw script in which at most three tiles
  * name a source, 30,529 constructions. Two slots are the smallest getter
  * input that can withdraw, and three naming tiles cover a master with two
- * followers, every cycle of two or three tiles and every promotion. Every
+ * followers, every cycle of two or three tiles and every promotion. For the
+ * two sources that obtain no topology it also measures the same 262,657
+ * getter topologies handed to a getter that writes each one out and then
+ * refuses, a driver whose construction failed at each of three constructor
+ * steps with a distribution scripted, and every reported generation above
+ * the bound, 255 constructions, with a distribution scripted. Every
  * sub-check also requires its enumeration to have constructed exactly its
  * domain, with every reading on the expected source and none capturing more
  * than one report, so an enumeration that built nothing or the wrong thing
- * cannot pass. Both tallies go to stderr on every run.
+ * cannot pass. All five tallies go to stderr on every run.
  *
  * Why the domain stops there. One construction costs about 14 to 15
  * microseconds on a development host. Every ordered getter array of up to
@@ -5704,9 +5898,15 @@ void runTopologySourceReadingCheck(const char *site, bool ok) {
 void checkAllUngroupedMapIsReadBesideTheTopologySource() {
     TopologySourceTally getter;
     TopologySourceTally raw;
+    NoTopologyTally refused;
+    NoTopologyTally uninitialized;
+    NoTopologyTally outOfRange;
 
     enumerateGetterTopologies(getter);
     enumerateRawDecodeScripts(raw);
+    enumerateRefusedGetterTopologies(refused);
+    constructUninitializedDrivers(uninitialized);
+    enumerateOutOfRangeGenerations(outOfRange);
 
     fprintf(stderr,
             "topology source reading, getter: constructions=%lu wrong source=%lu "
@@ -5722,6 +5922,27 @@ void checkAllUngroupedMapIsReadBesideTheTopologySource() {
             raw.constructions, raw.wrongSource, raw.allUngrouped, raw.nonZeroWithReport,
             raw.nonZeroWithoutReport, raw.zeroWithReport, raw.zeroWithoutReport,
             raw.moreThanOneReport);
+    fprintf(stderr,
+            "topology source reading, getter refused: constructions=%lu wrong source=%lu "
+            "not all ungrouped=%lu non-zero count=%lu withdrawal reports=%lu "
+            "cause line once=%lu cause line not once=%lu\n",
+            refused.constructions, refused.wrongSource, refused.notAllUngrouped,
+            refused.nonZeroCount, refused.withdrawalReports, refused.causeLineOnce,
+            refused.causeLineNotOnce);
+    fprintf(stderr,
+            "topology source reading, driver not initialized: constructions=%lu "
+            "wrong source=%lu not all ungrouped=%lu non-zero count=%lu "
+            "withdrawal reports=%lu reason set=%lu\n",
+            uninitialized.constructions, uninitialized.wrongSource,
+            uninitialized.notAllUngrouped, uninitialized.nonZeroCount,
+            uninitialized.withdrawalReports, uninitialized.reasonSet);
+    fprintf(stderr,
+            "topology source reading, out of range generation: constructions=%lu "
+            "wrong source=%lu not all ungrouped=%lu non-zero count=%lu "
+            "withdrawal reports=%lu cause line once=%lu cause line not once=%lu\n",
+            outOfRange.constructions, outOfRange.wrongSource, outOfRange.notAllUngrouped,
+            outOfRange.nonZeroCount, outOfRange.withdrawalReports, outOfRange.causeLineOnce,
+            outOfRange.causeLineNotOnce);
 
     const bool getterDomain = (getter.constructions == kGetterTopologyCount) &&
                               (getter.wrongSource == 0) && (getter.moreThanOneReport == 0);
@@ -5740,6 +5961,30 @@ void checkAllUngroupedMapIsReadBesideTheTopologySource() {
                                   rawDomain && (raw.nonZeroWithReport == 0) &&
                                       (raw.nonZeroWithoutReport == 0) &&
                                       (raw.zeroWithReport > 0) && (raw.zeroWithoutReport > 0));
+
+    // Every counter a path that obtains no topology must leave at zero, so an
+    // enumeration that built nothing or the wrong thing cannot pass.
+    const bool refusedClean = (refused.wrongSource == 0) && (refused.notAllUngrouped == 0) &&
+                              (refused.nonZeroCount == 0) && (refused.withdrawalReports == 0) &&
+                              (refused.causeLineNotOnce == 0) && (refused.reasonSet == 0);
+    const bool uninitializedClean =
+        (uninitialized.wrongSource == 0) && (uninitialized.notAllUngrouped == 0) &&
+        (uninitialized.nonZeroCount == 0) && (uninitialized.withdrawalReports == 0) &&
+        (uninitialized.causeLineOnce == 0) && (uninitialized.causeLineNotOnce == 0);
+    const bool outOfRangeClean =
+        (outOfRange.wrongSource == 0) && (outOfRange.notAllUngrouped == 0) &&
+        (outOfRange.nonZeroCount == 0) && (outOfRange.withdrawalReports == 0) &&
+        (outOfRange.causeLineNotOnce == 0) && (outOfRange.reasonSet == 0);
+
+    runTopologySourceReadingCheck("no topology obtained, every tile ungrouped and nothing withdrawn",
+                                  refusedClean && (refused.constructions == kGetterTopologyCount) &&
+                                      (refused.causeLineOnce == kGetterTopologyCount) &&
+                                      uninitializedClean && (uninitialized.constructions == 3) &&
+                                      (uninitialized.reasonSet == 3));
+
+    runTopologySourceReadingCheck("out of range generation, every tile ungrouped and nothing withdrawn",
+                                  outOfRangeClean && (outOfRange.constructions == 255) &&
+                                      (outOfRange.causeLineOnce == 255));
 }
 
 /*
@@ -7203,7 +7448,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 131;
+const int kClaimsBeforeCountCheck = 133;
 
 /*
  * Every claim this file defines actually ran.
