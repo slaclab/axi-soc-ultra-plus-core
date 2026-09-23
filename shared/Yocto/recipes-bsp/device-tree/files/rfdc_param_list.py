@@ -29,7 +29,10 @@ subcommand reads the IP's .xci (the configuration the bitstream was built
 from) and applies rfdc.tcl's parameter list and encoding, name for name and
 in the same order, to produce the property as a DTS fragment. The check
 subcommand walks a built DTB and reports an RFDC node whose param-list is
-missing, of the wrong length or of an unexpected IPType.
+missing, of the wrong length, of an unexpected or unknown IPType, or with an
+implausible tile enable or sampling rate, and, given the .xci, any byte that
+differs from a fresh encode of it. The decode subcommand prints the header
+and tile fields of a param-list by their packed offsets.
 
 What it cannot show. It says nothing about an RFDC node the generator
 emits from a block design (that path is rfdc.tcl's), and nothing about how
@@ -41,11 +44,15 @@ Invocation:
     python3 rfdc_param_list.py encode --xci RfDataConverterIpCore.xci --base 0x490000000 -o rfdc-param-list.dtsi
     python3 rfdc_param_list.py check --dtb system-top.dtb --board SlacRfmcCarrier --policy fail --expect-iptype 2
     python3 rfdc_param_list.py check --dtb system-top.dtb --meta-user-bsp sources/meta-user/recipes-bsp --policy warn
+    python3 rfdc_param_list.py check --dtb system-top.dtb --board SlacRfmcCarrier --policy fail --expect-iptype 2 --xci RfDataConverterIpCore.xci --base 0x490000000
+    python3 rfdc_param_list.py decode --dtb system-top.dtb
+    python3 rfdc_param_list.py decode --param-list zcu111-param-list.hex
 """
 
 import argparse
 import hashlib
 import json
+import math
 import os
 import struct
 import sys
@@ -137,6 +144,38 @@ PARAM_NAMES_C = (
 # build of librfdc, whose xrfdc.h wraps the structures in #pragma pack(1).
 CONFIG_SIZE_C   = 1880
 IPTYPE_OFFSET_C = 32
+
+# The highest IPType the check accepts as a known generation, kept equal to
+# PyRFdc's PYRFDC_IPTYPE_MAX_KNOWN so the build and the driver's generation
+# gate agree on what is out of range. A board that sets no expected IPType
+# still has a value above this caught, such as the 255 of an erased byte.
+IPTYPE_MAX_KNOWN_C = 3
+
+# Packed XRFdc_Config tile layout: four DAC tiles follow the 40 header bytes,
+# then four ADC tiles. The tile-relative offsets below are shared by both
+# tile types up to NumSlices; only the DAC tile carries LinkCoupling.
+DAC_TILE_BASE_C   = 40
+DAC_TILE_STRIDE_C = 256
+ADC_TILE_BASE_C   = 1064
+ADC_TILE_STRIDE_C = 204
+
+TILE_ENABLE_C           = 0
+TILE_PLL_ENABLE_C       = 4
+TILE_SAMPLING_RATE_C    = 8
+TILE_REFCLK_FREQ_C      = 16
+TILE_FABCLK_FREQ_C      = 24
+TILE_FEEDBACK_DIV_C     = 32
+TILE_OUTPUT_DIV_C       = 36
+TILE_REFCLK_DIV_C       = 40
+TILE_MULTIBAND_CONFIG_C = 44
+TILE_MAX_SAMPLE_RATE_C  = 48
+TILE_NUM_SLICES_C       = 56
+DAC_LINK_COUPLING_C     = 60
+
+# An enabled tile's SamplingRate (GS/s) must lie strictly between 0 and this.
+# The fastest RFSoC converter (a Gen3 DAC) tops out at 10 GS/s, so a value
+# outside the range was never encoded from a real IP; it is not a design choice.
+SAMPLING_RATE_MAX_C = 11.0
 
 COMPONENT_REFERENCE_C = 'xilinx.com:ip:usp_rf_data_converter:2.6'
 
@@ -259,6 +298,76 @@ def fragment_text(data, xci_path):
     return '\n'.join(lines) + '\n'
 
 
+def _field_layout():
+    """Return (name, offset, struct format) for every decoded field, in byte order.
+
+    Built from the literal packed offsets, deliberately not from the
+    encoder's walk over PARAM_NAMES_C, so a disagreement between the name
+    list and the structure shows up as a wrong decode instead of agreeing
+    with itself.
+    """
+    layout = [
+        ('DeviceId',        0,  '<I'),
+        ('BaseAddr',        4,  '<Q'),
+        ('ADCType',         12, '<I'),
+        ('MasterADCTile',   16, '<I'),
+        ('MasterDACTile',   20, '<I'),
+        ('ADCSysRefSource', 24, '<I'),
+        ('DACSysRefSource', 28, '<I'),
+        ('IPType',          32, '<I'),
+        ('SiRevision',      36, '<I'),
+    ]
+    tile_fields = [
+        ('Enable',          TILE_ENABLE_C,           '<I'),
+        ('PLLEnable',       TILE_PLL_ENABLE_C,       '<I'),
+        ('SamplingRate',    TILE_SAMPLING_RATE_C,    '<d'),
+        ('RefClkFreq',      TILE_REFCLK_FREQ_C,      '<d'),
+        ('FabClkFreq',      TILE_FABCLK_FREQ_C,      '<d'),
+        ('FeedbackDiv',     TILE_FEEDBACK_DIV_C,     '<I'),
+        ('OutputDiv',       TILE_OUTPUT_DIV_C,       '<I'),
+        ('RefClkDiv',       TILE_REFCLK_DIV_C,       '<I'),
+        ('MultibandConfig', TILE_MULTIBAND_CONFIG_C, '<I'),
+        ('MaxSampleRate',   TILE_MAX_SAMPLE_RATE_C,  '<d'),
+        ('NumSlices',       TILE_NUM_SLICES_C,       '<I'),
+    ]
+    for kind, base, stride in (('DAC', DAC_TILE_BASE_C, DAC_TILE_STRIDE_C),
+                               ('ADC', ADC_TILE_BASE_C, ADC_TILE_STRIDE_C)):
+        extra = [('LinkCoupling', DAC_LINK_COUPLING_C, '<I')] if kind == 'DAC' else []
+        for tile in range(4):
+            for name, offset, fmt in tile_fields + extra:
+                layout.append((f'{kind}{tile}.{name}', base + tile * stride + offset, fmt))
+    return layout
+
+
+def decode(data):
+    """Return [(name, value)] for the header and tile fields of a param-list."""
+    if len(data) != CONFIG_SIZE_C:
+        raise RuntimeError(f'param-list length {len(data)}, expected {CONFIG_SIZE_C}')
+    return [(name, struct.unpack_from(fmt, data, offset)[0]) for name, offset, fmt in _field_layout()]
+
+
+def field_at(offset):
+    """Name the decoded field that holds byte offset, or None if no decoded field does."""
+    for name, start, fmt in _field_layout():
+        if start <= offset < start + struct.calcsize(fmt):
+            return name
+    return None
+
+
+def read_hex_param_list(path):
+    """Read a param-list stored as whitespace-separated hex pairs; # starts a comment line."""
+    data = bytearray()
+    with open(path, 'r') as f:
+        for number, line in enumerate(f, 1):
+            if line.lstrip().startswith('#'):
+                continue
+            for token in line.split():
+                if len(token) != 2 or token.strip('0123456789abcdefABCDEF'):
+                    raise RuntimeError(f'{path}:{number}: {token!r} is not a two-digit hex byte')
+                data.append(int(token, 16))
+    return bytes(data)
+
+
 def _node_path(names):
     return '/' + '/'.join(names[1:])
 
@@ -357,13 +466,20 @@ def board_name(meta_user_bsp):
     return 'unknown board'
 
 
-def check_dtb(dtb_path, board, policy, expect_iptype=None):
+def check_dtb(dtb_path, board, policy, expect_iptype=None, xci_path=None, base_addr=None):
     """Return the problems found with the RFDC param-list in dtb_path.
 
     board is the name the caller reports problems under; the checks do not
     depend on it. Under policy 'warn' a missing DTB or a DTB with no RFDC
     node is not a problem, so a machine that deploys no such DTB, or has
     no RF data converter at all, stays silent. Under 'fail' both are.
+
+    The length and IPType checks catch an empty or foreign param-list; the
+    plausibility checks catch a full-length one that was never encoded from
+    a real IP (erased flash, a hand-edited array). Neither can catch a
+    plausible configuration of the wrong design, so when xci_path and
+    base_addr are given the param-list must also equal a fresh encode of
+    that .xci, byte for byte.
     """
     strict = (policy == 'fail')
 
@@ -381,7 +497,7 @@ def check_dtb(dtb_path, board, policy, expect_iptype=None):
 
     rfdc = find_rfdc_nodes(nodes)
     if not rfdc:
-        return [f'no node with a {COMPATIBLE_PREFIX_C}* compatible in {dtb_path}'] if strict else []
+        return [f'no usp_rf_data_converter node (compatible {COMPATIBLE_PREFIX_C}*) in {dtb_path}'] if strict else []
     if len(rfdc) > 1:
         return [f'{len(rfdc)} RFDC nodes ({", ".join(rfdc)}), expected exactly one']
 
@@ -393,10 +509,42 @@ def check_dtb(dtb_path, board, policy, expect_iptype=None):
     problems = []
     if len(param) != CONFIG_SIZE_C:
         problems.append(f'param-list length {len(param)}, expected {CONFIG_SIZE_C}')
-    if expect_iptype is not None and len(param) >= IPTYPE_OFFSET_C + 4:
+    if len(param) >= IPTYPE_OFFSET_C + 4:
         iptype, = struct.unpack_from('<I', param, IPTYPE_OFFSET_C)
-        if iptype != expect_iptype:
+        if expect_iptype is not None and iptype != expect_iptype:
             problems.append(f'IPType {iptype}, expected {expect_iptype}')
+        if iptype > IPTYPE_MAX_KNOWN_C:
+            problems.append(f'IPType {iptype} is above the highest known generation {IPTYPE_MAX_KNOWN_C}')
+    if len(param) != CONFIG_SIZE_C:
+        return problems
+
+    fields = dict(decode(param))
+    if fields['DeviceId'] != 0:
+        problems.append(f'DeviceId {fields["DeviceId"]}, expected 0')
+    for kind in ('DAC', 'ADC'):
+        for tile in range(4):
+            prefix = f'{kind}{tile}'
+            enable = fields[f'{prefix}.Enable']
+            if enable not in (0, 1):
+                problems.append(f'{prefix}.Enable {enable}, expected 0 or 1')
+            elif enable == 1:
+                rate = fields[f'{prefix}.SamplingRate']
+                if not (math.isfinite(rate) and 0.0 < rate < SAMPLING_RATE_MAX_C):
+                    problems.append(
+                        f'{prefix}.SamplingRate {rate} on an enabled tile, '
+                        f'expected strictly between 0 and {SAMPLING_RATE_MAX_C:g} GS/s')
+
+    if xci_path is not None and base_addr is not None:
+        try:
+            expected = encode(xci_path, base_addr)
+        except RuntimeError as e:
+            problems.append(f'cannot encode {xci_path} to compare against: {e}')
+        else:
+            if param != expected:
+                first = next(i for i in range(CONFIG_SIZE_C) if param[i] != expected[i])
+                field = field_at(first)
+                where = f' ({field})' if field else ''
+                problems.append(f'param-list differs from a fresh encode of {xci_path} from byte {first}{where}')
     return problems
 
 
@@ -419,7 +567,7 @@ def _run_encode(args):
 
 def _run_check(args):
     board    = args.board if args.board else board_name(args.meta_user_bsp)
-    problems = check_dtb(args.dtb, board, args.policy, args.expect_iptype)
+    problems = check_dtb(args.dtb, board, args.policy, args.expect_iptype, args.xci, args.base)
     tag      = 'FAIL' if args.policy == 'fail' else 'WARNING'
 
     for problem in problems:
@@ -433,6 +581,37 @@ def _run_check(args):
         return 0
     print('RESULT FAIL')
     return 1
+
+
+def _dtb_param_list(dtb_path):
+    """Return the param-list of the one RFDC node in dtb_path, or raise RuntimeError."""
+    try:
+        with open(dtb_path, 'rb') as f:
+            nodes = walk_dtb(f.read())
+    except OSError as e:
+        raise RuntimeError(f'cannot read {dtb_path}: {e}')
+    rfdc = find_rfdc_nodes(nodes)
+    if len(rfdc) != 1:
+        raise RuntimeError(f'{len(rfdc)} RFDC nodes in {dtb_path}, expected exactly one')
+    param = nodes[rfdc[0]].get('param-list')
+    if param is None:
+        raise RuntimeError(f'{rfdc[0]} in {dtb_path} has no param-list')
+    return param
+
+
+def _run_decode(args):
+    try:
+        if args.dtb is not None:
+            data = _dtb_param_list(args.dtb)
+        else:
+            data = read_hex_param_list(args.param_list)
+        fields = decode(data)
+    except (RuntimeError, OSError) as e:
+        print(f'ERROR: {e}')
+        return 1
+    for name, value in fields:
+        print(f'{name} = {value:#x}' if name == 'BaseAddr' else f'{name} = {value}')
+    return 0
 
 
 def main(argv=None):
@@ -501,10 +680,44 @@ def main(argv=None):
         default = None,
         help    = 'IPType the param-list must carry (librfdc XRFDC_GEN3 is 2)')
 
+    chk.add_argument(
+        '--xci',
+        type    = str,
+        default = None,
+        help    = 'The .xci the param-list was encoded from; it must equal a fresh encode (needs --base)')
+
+    chk.add_argument(
+        '--base',
+        type    = _int_auto,
+        default = None,
+        help    = 'RFDC base address the fresh encode uses (needs --xci)')
+
+    dec = subparsers.add_parser(
+        'decode',
+        help = 'Print the header and tile fields of a param-list')
+
+    src = dec.add_mutually_exclusive_group(required=True)
+
+    src.add_argument(
+        '--dtb',
+        type = str,
+        help = 'DTB whose one RFDC node carries the param-list')
+
+    src.add_argument(
+        '--param-list',
+        type = str,
+        help = 'Text file of whitespace-separated hex bytes; lines starting with # are comments')
+
     args = parser.parse_args(argv)
 
     if args.command == 'encode':
         return _run_encode(args)
+    if args.command == 'decode':
+        return _run_decode(args)
+    # A lone --xci or --base would silently skip the comparison the caller
+    # asked for, so refuse it instead.
+    if (args.xci is None) != (args.base is None):
+        chk.error('--xci and --base must be given together')
     return _run_check(args)
 
 

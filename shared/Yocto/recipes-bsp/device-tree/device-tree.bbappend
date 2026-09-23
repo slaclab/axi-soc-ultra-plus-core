@@ -12,6 +12,10 @@ SRC_URI:append = " file://rfdc_param_list.py"
 RFDC_PARAM_LIST_POLICY ??= "warn"
 # IPType the RFDC param-list must carry (librfdc XRFDC_GEN3 is 2); empty skips it.
 RFDC_EXPECTED_IPTYPE ??= ""
+# A board that encodes its param-list from an .xci sets both; the check then
+# also requires the DTB to equal a fresh encode of that .xci. Empty skips it.
+RFDC_XCI ??= ""
+RFDC_BASEADDR ??= ""
 
 # The check sits at deploy, on ${DEPLOYDIR}/devicetree/${DTB_FILE_NAME}: that is
 # the exact file image.its packs into image.ub (through the ${MACHINE}-system.dtb
@@ -29,11 +33,15 @@ do_deploy:append () {
 	if [ -n "${RFDC_EXPECTED_IPTYPE}" ]; then
 		rfdc_iptype_arg="--expect-iptype ${RFDC_EXPECTED_IPTYPE}"
 	fi
+	rfdc_xci_arg=""
+	if [ -n "${RFDC_XCI}" ] && [ -n "${RFDC_BASEADDR}" ]; then
+		rfdc_xci_arg="--xci ${RFDC_XCI} --base ${RFDC_BASEADDR}"
+	fi
 	rfdc_rc=0
 	rfdc_out=$(python3 ${WORKDIR}/rfdc_param_list.py check \
 		--dtb ${DEPLOYDIR}/devicetree/${DTB_FILE_NAME} \
 		--meta-user-bsp ${TOPDIR}/../sources/meta-user/recipes-bsp \
-		--policy ${RFDC_PARAM_LIST_POLICY} $rfdc_iptype_arg 2>&1) || rfdc_rc=$?
+		--policy ${RFDC_PARAM_LIST_POLICY} $rfdc_iptype_arg $rfdc_xci_arg 2>&1) || rfdc_rc=$?
 	if [ $rfdc_rc -ne 0 ]; then
 		bbfatal "$rfdc_out"
 	elif printf '%s\n' "$rfdc_out" | grep -q '^WARNING:'; then
