@@ -5102,15 +5102,16 @@ const uint32_t kCyclicPairMapWord = 0xFFFFFFFFu;
 //!
 //! The group count is deliberately left at what the decode counted, so this
 //! literal carries a non-zero count sitting beside an all-ungrouped map. That
-//! pairing is not a disagreement a reader has to work out for themselves: on
-//! the documented getter path it is the register-only signature of a
-//! withdrawn grouping, and both documents that publish these registers name
-//! it as that. The claim "the register pair is a sufficient signature of a
-//! withdrawal and not a complete one", beside this one, shows the signature
-//! is sufficient and not complete: the raw decode path can withdraw a
-//! grouping with the count left at zero, and that reading publishes the same
-//! two words a board with no clock distribution publishes, so only the
-//! console report separates those two.
+//! pairing is not a disagreement a reader has to work out for themselves,
+//! and both documents that publish these registers state it per topology
+//! source. On the documented getter path, which is this constant's source, a
+//! non-zero count beside an all-ungrouped map means a grouping was withdrawn,
+//! and the claim
+//! "an all-ungrouped map is read beside the topology source"
+//! shows over every small getter topology that the pair decides the question
+//! there. On the raw decode path that pairing cannot occur, and the claim
+//! "a raw decode withdrawal and a board with no distribution publish the same register pair"
+//! shows a withdrawal there reads as no distribution.
 //!
 //! What the count field ought to count is a separate open question with four
 //! answers already on record, and nothing here answers it. This literal and
@@ -5330,21 +5331,22 @@ void scriptARawDecodeCycle() {
 }
 
 /*
- * One sub-check of the register pair signature claim, labelled so a single
+ * One sub-check of the raw decode register pair claim, labelled so a single
  * red one says which of the two halves moved.
  */
-void runRegisterPairSignatureCheck(const char *site, bool ok) {
+void runRawDecodeRegisterPairCheck(const char *site, bool ok) {
     const std::string label =
-        std::string("the register pair is a sufficient signature of a withdrawal and not a "
-                    "complete one [") +
+        std::string("a raw decode withdrawal and a board with no distribution publish the same "
+                    "register pair [") +
         site + "]";
 
     runCheck(label.c_str(), ok);
 }
 
 /*
- * A non-zero group count beside an all-ungrouped map is a sufficient
- * signature of a withdrawn grouping and not a complete one.
+ * On the raw decode path a real withdrawal and a board with no clock
+ * distribution publish the same two words, and only the console report
+ * separates them.
  *
  * The raw clock detect decode counts a group only inside its self-naming
  * test and only behind a non-zero follower count, so a topology in which two
@@ -5366,7 +5368,7 @@ void runRegisterPairSignatureCheck(const char *site, bool ok) {
  * says nothing about whether any board presents a cyclic clock detect
  * topology. No reading taken on this carrier has ever carried one.
  */
-void checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne() {
+void checkRawDecodeWithdrawalAndNoDistributionPublishTheSameRegisterPair() {
     {
         gScript.reset();
         gScript.ipType = 1;
@@ -5409,7 +5411,7 @@ void checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne() {
                     noneMap->getWord(0), cycleGroups, noneGroups, cycleLines, noneLines);
         }
 
-        runRegisterPairSignatureCheck("a raw decode withdrawal reads as no distribution", ok);
+        runRawDecodeRegisterPairCheck("a raw decode withdrawal reads as no distribution", ok);
     }
 
     {
@@ -5450,7 +5452,7 @@ void checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne() {
                     noneErrors.size(), cycleErrors.empty() ? "" : cycleErrors[0].c_str());
         }
 
-        runRegisterPairSignatureCheck("only the report separates them", ok);
+        runRawDecodeRegisterPairCheck("only the report separates them", ok);
     }
 }
 
@@ -7296,7 +7298,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkSlotWhoseSourceWasAlreadyTakenIsOrderedBehindAMaster();
     checkEveryNamedClockMasterNamesItself();
     checkACyclicMasterPairLeavesBothTilesUngrouped();
-    checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne();
+    checkRawDecodeWithdrawalAndNoDistributionPublishTheSameRegisterPair();
     checkAllUngroupedMapIsReadBesideTheTopologySource();
     checkPublishedGroupCountHasMoreThanOneProducer();
 
