@@ -584,22 +584,40 @@ beside it.
        neither half of the withdrawal has anything to withdraw and neither fires. That
        all-ungrouped reading is also what distinguishes a grouping that did not engage from one
        that did, and on a board with a
-       distribution it is now additionally what a withdrawn grouping reads as. A non-zero group
-       count at ``0x12010`` beside this word is the register-only signature of a withdrawn
-       grouping, and unlike a construction-time console line it is still there for a host
-       attaching later, a host after a bridge restart and a host after a log rotation. It is a
-       sufficient signature and not a complete one. The raw clock detect decode counts a group
-       only where it marks a master, which is only a tile that names itself and that at least
-       one other tile names, so a topology in which two tiles name each other, ADC 3 naming
-       DAC 0 and DAC 0 naming ADC 3, is counted as no group at all and is then withdrawn whole.
-       What that publishes is a zero count beside an all-ungrouped word, which reads exactly as a
-       board with no clock distribution reads, so a zero count beside ``0xFFFFFFFF`` does not
-       rule a withdrawal out. On that path the error line is the only evidence a withdrawal
-       happened at all, and on every path it is the only thing that says which tiles. Both
-       halves are asserted in tree rather than only written down: the board-free claim
-       ``the register pair is a sufficient signature of a withdrawal and not a complete one``
-       constructs that cycle and a board with nothing scripted, requires both to publish the same
-       two words, and requires the error line in the first and none in the second.
+       distribution it is now additionally what a withdrawn grouping reads as. Which of those two
+       readings the register pair can tell apart depends on the source in bits 7:0 of the status
+       word at ``0x12010``, so the pair is read beside that byte and readings of the two sources
+       are not pooled. When the source byte reads 1, the documented getter answered, and beside
+       this word a non-zero group count means a grouping was withdrawn and a zero count means
+       none was. On that source the count is non-zero only if the getter accepted a slot, and
+       the first slot it accepts places at least two tiles in a group, because a slot whose two
+       edges share a package index is skipped and every tile starts ungrouped. Only the
+       normalization's withdrawal returns a placed tile to ungrouped, and it always reports doing
+       so, while a zero count means no slot was accepted and nothing was placed. On that source
+       the pair therefore decides the question, and unlike a construction-time console line it is
+       still there for a host attaching later, a host after a bridge restart and a host after a
+       log rotation. When the source byte reads 2, the raw clock detect decode answered, and the
+       pair then carries no withdrawal information. Every group that source counts is a master
+       that names itself, whether the decode marked it or the normalization promoted it, and the
+       normalization never withdraws a master that names itself, so a count above zero always
+       leaves a master in this word. A word reading every tile ungrouped on that source therefore
+       always sits beside a zero count whether or not a grouping was withdrawn, which is the pair
+       a board with no clock distribution publishes on that source. One reachable withdrawal
+       there is a topology in which two tiles name each other, ADC 3 naming DAC 0 and DAC 0
+       naming ADC 3: the decode counts no group because neither tile names itself, the
+       normalization promotes nothing because each edge names another edge, and both tiles are
+       then withdrawn, leaving a zero count beside ``0xFFFFFFFF``. On that source the withdrawal
+       report is the only evidence a withdrawal happened at all, and on every source it is the
+       only thing that says which tiles. These statements are asserted in tree rather than only
+       written down: the board-free claim
+       ``an all-ungrouped map is read beside the topology source``
+       enumerates every documented getter topology of at most two distribution slots, 262,657
+       constructions, and every raw clock detect script in which at most three tiles name a
+       source, 30,529 constructions, and requires both directions on the first source and the
+       zero count, beside both a withdrawn and a not withdrawn reading, on the second. Past that
+       domain the statements rest on reading the counting and withdrawal conditions of
+       ``PyRFdc::cacheClkDistribution``, ``PyRFdc::decodeClkDistributionRaw`` and
+       ``PyRFdc::normalizeClkDistCache``, and not on a measurement.
    * - ``PyRFdc::ResetCycleCount``, at offset ``0x12018``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
