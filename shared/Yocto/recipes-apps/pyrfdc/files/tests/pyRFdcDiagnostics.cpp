@@ -6082,6 +6082,26 @@ bool hostModelDescription(const std::string &doc, const char *name, std::string 
 }
 
 /*
+ * The list-table row of the reference page that opens with the line opening:
+ * the text from a line beginning with it to the next line beginning a row.
+ */
+bool referencePageRow(const std::string &doc, const char *opening, std::string &out) {
+    const std::string rowStart = "\n   * - ";
+    out.clear();
+
+    size_t at = (doc.compare(0, std::strlen(opening), opening) == 0) ? 0 : std::string::npos;
+    if (at == std::string::npos) {
+        at = doc.find(std::string("\n") + opening);
+        if (at == std::string::npos) return false;
+        at++;
+    }
+
+    const size_t end = doc.find(rowStart, at + 1);
+    out = doc.substr(at, (end == std::string::npos) ? std::string::npos : end - at);
+    return !out.empty();
+}
+
+/*
  * The first thing wrong with a normalized text: a required fragment it lacks
  * or a forbidden one it carries, named with its kind. Empty when neither.
  */
@@ -6237,6 +6257,48 @@ void checkPublishedRegisterPairTextIsStatedPerSourceValue() {
 
         checkPublishedRegion("host model ClkDistStatus points at ClkDistMap and pools nothing",
                              kHostModelPath, located, problem);
+    }
+
+    {
+        std::string text;
+        const bool located =
+            referencePageRead &&
+            referencePageRow(referencePage, "   * - ``PyRFdc::ClkDistMap``, at offset ``0x12014``",
+                             text);
+        const std::string normalized = normalizeWhitespace(text);
+        std::string problem = sourceValueArmProblem(normalized);
+
+        if (problem.empty()) {
+            problem = firstTextProblem(
+                normalized,
+                {"readings of different source values are not pooled",
+                 "the two sources that answered"},
+                {"a board that has one it means the grouping was withdrawn",
+                 "two readings an operator has to tell apart",
+                 "readings of the two sources are not pooled",
+                 "On every source the report is the only thing that says which tiles",
+                 "on every source it is the only thing that says which tiles",
+                 "Which of those two readings"});
+        }
+
+        checkPublishedRegion("reference page ClkDistMap row states all four source values",
+                             kReferencePagePath, located, problem);
+    }
+
+    {
+        std::string text;
+        const bool located =
+            referencePageRead &&
+            referencePageRow(referencePage,
+                             "   * - ``PyRFdc::ClkDistStatus``, at offset ``0x12010``", text);
+        const std::string problem =
+            firstTextProblem(normalizeWhitespace(text),
+                             {"stated once per source value", "PyRFdc::ClkDistMap"},
+                             {"register-only signature", "attaching later",
+                              "against a non-zero source"});
+
+        checkPublishedRegion("reference page ClkDistStatus row points at ClkDistMap and pools nothing",
+                             kReferencePagePath, located, problem);
     }
 }
 
@@ -7701,7 +7763,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 135;
+const int kClaimsBeforeCountCheck = 137;
 
 /*
  * Every claim this file defines actually ran.
