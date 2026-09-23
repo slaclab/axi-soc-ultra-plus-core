@@ -18,6 +18,13 @@
  * carries log levels, filters and Python forwarding, none of which
  * PyRFdc.cpp or PyRFdc.h reaches.
  *
+ * The three format methods carry a printf format attribute, the argument
+ * positions counting the implicit this, so the host build checks every
+ * format string PyRFdc.cpp passes against its arguments and reports a
+ * runtime string passed as the format. The rogue header the image is built
+ * against declares the three with no such attribute, so this is a property
+ * of the host build only: the image build checks none of these formats.
+ *
  * Test-build only. See shim/rogue/Directives.h for why files/tests/ cannot
  * reach the Yocto image build.
  * ----------------------------------------------------------------------------
@@ -52,6 +59,7 @@ class Logging {
     }
 
     //! Record the formatted string, so a check can assert the console line.
+    __attribute__((format(printf, 2, 3)))
     void error(const char *fmt, ...) {
         va_list args;
         va_start(args, fmt);
@@ -60,6 +68,7 @@ class Logging {
     }
 
     //! Recorded separately from error(): a warning is not a failure report.
+    __attribute__((format(printf, 2, 3)))
     void warning(const char *fmt, ...) {
         va_list args;
         va_start(args, fmt);
@@ -68,6 +77,7 @@ class Logging {
     }
 
     //! Recorded so a check can assert progress through the constructor.
+    __attribute__((format(printf, 2, 3)))
     void debug(const char *fmt, ...) {
         va_list args;
         va_start(args, fmt);

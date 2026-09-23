@@ -497,7 +497,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
             // lines harder rather than easier to tell apart. Through the log
             // channel only, never through setDiagError or errMsg_, so no
             // transaction verdict moves and construction does not fail.
-            log_->error(std::string("clock distribution topology not obtained"
+            log_->error("%s", std::string("clock distribution topology not obtained"
                                     " because the documented getter returned"
                                     " non-success; reset falls back to per"
                                     " type ordering\n").c_str());
@@ -514,7 +514,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
         // console budget the failure report is held to and needs no omission
         // counter. Assembled with std::string and HexValue, matching the rest
         // of the message assembly in this file.
-        log_->error((std::string("clock distribution topology not obtained"
+        log_->error("%s", (std::string("clock distribution topology not obtained"
                                  " because the reported IP generation ")
                      + HexValue(ipType_)
                      + " is outside the range this driver asks; reset falls"
@@ -1131,7 +1131,7 @@ void PyRFdc::Reset(int Tile_Id) {
             // board with no distribution gains no per reset log output.
             const std::string deferral = buildDeferralMessage(uint32_t(entryType));
             if (!deferral.empty()) {
-                log_->warning(deferral.c_str());
+                log_->warning("%s", deferral.c_str());
             }
 
         // Else not a global reset
@@ -4676,7 +4676,7 @@ void PyRFdc::normalizeClkDistCache() {
         // At most eight tile names, which sits far inside the console budget
         // the failure report is held to, so there is no omission counter here.
         if (withdrawn > 0) {
-            log_->error((std::string("clock distribution grouping withdrawn from ")
+            log_->error("%s", (std::string("clock distribution grouping withdrawn from ")
                          + std::to_string(withdrawn)
                          + " tile(s) because the cached topology named no orderable"
                            " master:" + tiles
@@ -4888,9 +4888,14 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     // documented getter's refusal in the constructor has a report of its
     // own. No caller in this file can pass such an index today, so the line
     // is expected never to be emitted, and that is why it costs one line
-    // rather than a counter. The refused index and the arming tile are format
-    // arguments, so the compiler checks both specifiers, as it does for the
-    // dropped tile count further down.
+    // rather than a counter. The line has three format arguments, the refused
+    // index and the arming tile among them. The host test build's logging
+    // shim declares error with a printf format attribute, so in that build a
+    // specifier that does not match its argument is a compiler warning, as it
+    // is for the dropped tile count further down. The three are checked in
+    // that build only: the rogue header the image is built against carries
+    // no such attribute, so the image build checks none of them. Nothing runs
+    // it either: no board-free claim executes this line.
     if (masterIdx > 7) {
         log_->error("clock group recovery refused because master index %u named by %s%u"
                     " is out of range; no tile was reset and no recovery counter moved\n",
@@ -4992,7 +4997,8 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     // pass that then fails partway through the drive loop. One line for the
     // whole truncation rather than one per dropped tile, so it sits far
     // inside the console budget the failure report is held to. The count is
-    // a format argument so the compiler can check the specifier.
+    // a format argument, which the host test build checks through its
+    // logging shim's printf format attribute and the image build does not.
     if (dropped > 0) {
         log_->error("clock group recovery truncated at the bound of eight tiles;"
                     " %u tile(s) dropped from the group are neither reset nor cleared\n",
@@ -5103,7 +5109,7 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
         }
     }
 
-    log_->error((std::string("clock group recovery armed by ")
+    log_->error("%s", (std::string("clock group recovery armed by ")
                  + typeName[(armingIdx >> 2) & 0x1] + std::to_string(armingIdx & 0x3)
                  + ", group master " + typeName[(masterIdx >> 2) & 0x1]
                  + std::to_string(masterIdx & 0x3)
@@ -5927,7 +5933,7 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
     // Complete transaction with error message
     } else {
-        log_->error(errMsg_.c_str());
+        log_->error("%s", errMsg_.c_str());
         tran->errorStr(errMsg_);
     }
 
