@@ -6087,8 +6087,11 @@ std::string normalizeWhitespace(const std::string &text) {
 /*
  * The description literal of the host model variable called name: the text
  * between the first single quote after the first description following the
- * literal 'name', and the next single quote. Every description in that file is
- * one single-quoted literal, which is what makes the next quote its end.
+ * literal 'name', and the first single quote after it that no backslash
+ * escapes, which is where Python ends the literal. A description literal is
+ * followed by the comma that ends its keyword argument, so a literal that
+ * does not end that way, for example one continued by an adjacent literal,
+ * fails the site rather than being read short.
  */
 bool hostModelDescription(const std::string &doc, const char *name, std::string &out) {
     out.clear();
@@ -6102,8 +6105,14 @@ bool hostModelDescription(const std::string &doc, const char *name, std::string 
     const size_t open = doc.find('\'', key);
     if (open == std::string::npos) return false;
 
-    const size_t close = doc.find('\'', open + 1);
-    if (close == std::string::npos) return false;
+    size_t close = open + 1;
+    while ((close < doc.size()) && (doc[close] != '\'')) {
+        close += (doc[close] == '\\') ? 2 : 1;
+    }
+    if (close >= doc.size()) return false;
+
+    const size_t after = doc.find_first_not_of(" \t", close + 1);
+    if ((after == std::string::npos) || (doc[after] != ',')) return false;
 
     out = doc.substr(open + 1, close - open - 1);
     return !out.empty();
