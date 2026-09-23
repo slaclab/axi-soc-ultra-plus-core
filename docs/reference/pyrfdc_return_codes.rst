@@ -614,10 +614,16 @@ beside it.
        enumerates every documented getter topology of at most two distribution slots, 262,657
        constructions, and every raw clock detect script in which at most three tiles name a
        source, 30,529 constructions, and requires both directions on the first source and the
-       zero count, beside both a withdrawn and a not withdrawn reading, on the second. Past that
-       domain the statements rest on reading the counting and withdrawal conditions of
-       ``PyRFdc::cacheClkDistribution``, ``PyRFdc::decodeClkDistributionRaw`` and
-       ``PyRFdc::normalizeClkDistCache``, and not on a measurement.
+       zero count, beside both a withdrawn and a not withdrawn reading, on the second. The
+       board-free claim
+       ``a raw decode withdrawal and a board with no distribution publish the same register pair``
+       constructs the ADC 3 and DAC 0 cycle beside a board with nothing scripted, requires both to
+       publish the same two words, and requires the withdrawal line in the first and none in the
+       second, which is one instance on the raw decode path and asserts nothing about the
+       documented getter. Past the enumerated domain the statements rest on reading the counting
+       and withdrawal conditions of ``PyRFdc::cacheClkDistribution``,
+       ``PyRFdc::decodeClkDistributionRaw`` and ``PyRFdc::normalizeClkDistCache``, and not on a
+       measurement.
    * - ``PyRFdc::ResetCycleCount``, at offset ``0x12018``
      - None. The body reads members and names the driver instance nowhere.
      - The offset decoded to nothing, as above.
