@@ -5454,6 +5454,292 @@ void checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne() {
     }
 }
 
+//! The opening words of the one report PyRFdc::normalizeClkDistCache emits
+//! whenever it withdraws anything, copied from its message assembly. A
+//! captured error line carrying these words is a withdrawal report and no
+//! other line the constructor emits begins with them.
+const char kWithdrawalReportPrefix[] = "clock distribution grouping withdrawn from";
+
+//! What one enumeration saw, reading every construction's status word and
+//! map word beside the withdrawal reports that construction captured.
+//!
+//! The four report counters partition the constructions whose map reads
+//! every tile ungrouped, by whether the count byte of the status word is
+//! zero and whether a withdrawal report was captured. The remaining three
+//! counters are there so a sub-check can refuse an enumeration that built
+//! the wrong thing: how many constructions ran, how many did not publish the
+//! expected topology source, and how many captured more than one report.
+struct TopologySourceTally {
+    unsigned long constructions = 0;
+    unsigned long wrongSource = 0;
+    unsigned long allUngrouped = 0;
+    unsigned long nonZeroWithReport = 0;
+    unsigned long nonZeroWithoutReport = 0;
+    unsigned long zeroWithReport = 0;
+    unsigned long zeroWithoutReport = 0;
+    unsigned long moreThanOneReport = 0;
+};
+
+//! The domain sizes the two enumerations below cover, written out so a
+//! sub-check can require its enumeration to have constructed exactly its
+//! domain. The getter domain is the empty array, the 512 in-range single
+//! slots and the 512 * 512 ordered pairs. The raw decode domain is every
+//! choice of at most three of the eight tiles, each carrying one of eight
+//! single bit pair values: 1 + 8 * 8 + 28 * 64 + 56 * 512.
+const unsigned long kGetterTopologyCount = 262657ul;
+const unsigned long kRawDecodeScriptCount = 30529ul;
+
+/*
+ * Construct one driver from whatever the fixture holds now, read the two
+ * registers, and classify the reading into the tally.
+ *
+ * The caller has already reset the fixture and scripted the topology, so the
+ * withdrawal reports counted here are exactly the ones this construction
+ * emitted. The count byte is extracted with the shift and the mask
+ * PyRFdc::ClkDistStatus packs it with.
+ */
+void observeTopologySourceReading(uint32_t expectedSource, TopologySourceTally &t) {
+    PyRFdcPtr device = PyRFdc::create();
+    rim::TransactionPtr status = driveRead(device, kClkDistStatus);
+    rim::TransactionPtr map = driveRead(device, kClkDistMap);
+
+    t.constructions++;
+
+    const bool clean = status->doneCalled() && !status->errorStrCalled() &&
+                       map->doneCalled() && !map->errorStrCalled();
+    const uint32_t statusWord = status->getWord(0);
+    const uint32_t mapWord = map->getWord(0);
+
+    if (!clean || ((statusWord & 0xFFu) != expectedSource)) {
+        t.wrongSource++;
+    }
+
+    unsigned long reports = 0;
+    for (size_t i = 0; i < gScript.logErrors.size(); i++) {
+        if (gScript.logErrors[i].find(kWithdrawalReportPrefix) != std::string::npos) {
+            reports++;
+        }
+    }
+
+    if (reports > 1) {
+        t.moreThanOneReport++;
+    }
+
+    if (mapWord == 0xFFFFFFFFu) {
+        const uint32_t groups = (statusWord >> 16) & 0xFFu;
+
+        t.allUngrouped++;
+
+        if (groups != 0) {
+            if (reports > 0) {
+                t.nonZeroWithReport++;
+            } else {
+                t.nonZeroWithoutReport++;
+            }
+        } else {
+            if (reports > 0) {
+                t.zeroWithReport++;
+            } else {
+                t.zeroWithoutReport++;
+            }
+        }
+    }
+}
+
+/*
+ * The in-range distribution slot numbered n, for n in 0 to 511.
+ *
+ * Six fields, each within the range PyRFdc::cacheClkDistribution accepts:
+ * source type 0 or 1, source tile 0 to 3, each edge type 0 or 1 and each
+ * edge tile 0 to 3, which is 2 * 4 * 2 * 2 * 4 * 4 slots.
+ */
+XRFdcScriptDistribution inRangeDistributionSlot(uint32_t n) {
+    XRFdcScriptDistribution dist;
+
+    dist.sourceType = n & 0x1u;
+    dist.sourceTileId = (n >> 1) & 0x3u;
+    dist.edgeTypes[0] = (n >> 3) & 0x1u;
+    dist.edgeTypes[1] = (n >> 4) & 0x1u;
+    dist.edgeTileIds[0] = (n >> 5) & 0x3u;
+    dist.edgeTileIds[1] = (n >> 7) & 0x3u;
+
+    return dist;
+}
+
+/*
+ * Every documented getter topology of at most two distribution slots, at
+ * generation 2: the empty array, each in-range single slot and each ordered
+ * pair of in-range slots. Only the fixture's distribution list is scripted,
+ * so no fixture field is added.
+ */
+void enumerateGetterTopologies(TopologySourceTally &t) {
+    gScript.reset();
+    gScript.ipType = 2;
+    observeTopologySourceReading(PYRFDC_CLKDIST_SRC_API, t);
+
+    for (uint32_t a = 0; a < 512; a++) {
+        gScript.reset();
+        gScript.ipType = 2;
+        gScript.distributions.push_back(inRangeDistributionSlot(a));
+        observeTopologySourceReading(PYRFDC_CLKDIST_SRC_API, t);
+    }
+
+    for (uint32_t a = 0; a < 512; a++) {
+        for (uint32_t b = 0; b < 512; b++) {
+            gScript.reset();
+            gScript.ipType = 2;
+            gScript.distributions.push_back(inRangeDistributionSlot(a));
+            gScript.distributions.push_back(inRangeDistributionSlot(b));
+            observeTopologySourceReading(PYRFDC_CLKDIST_SRC_API, t);
+        }
+    }
+}
+
+/*
+ * Every raw clock detect script in which at most three of the eight tiles
+ * name a source, at generation 1.
+ *
+ * A naming tile carries one set bit pair 1 << (2 * i) at offset 0x80 for i
+ * in 0 to 7, which the raw decode reads as source package 7 - i, and every
+ * other tile scripts nothing and so reads zero. Tile index n is type * 4 +
+ * tile, the same index the map register uses. Only scripted registers are
+ * used, so no fixture field is added.
+ */
+void enumerateRawDecodeScripts(TopologySourceTally &t) {
+    for (uint32_t chosen = 0; chosen < 256; chosen++) {
+        uint32_t tiles[8];
+        uint32_t k = 0;
+
+        for (uint32_t n = 0; n < 8; n++) {
+            if ((chosen >> n) & 0x1u) {
+                tiles[k++] = n;
+            }
+        }
+
+        if (k > 3) {
+            continue;
+        }
+
+        uint32_t choices = 1;
+        for (uint32_t j = 0; j < k; j++) {
+            choices *= 8;
+        }
+
+        for (uint32_t v = 0; v < choices; v++) {
+            uint32_t digits = v;
+
+            gScript.reset();
+            gScript.ipType = 1;
+
+            for (uint32_t j = 0; j < k; j++) {
+                const uint32_t i = digits & 0x7u;
+                digits >>= 3;
+                gScript.scriptRegister(tiles[j] >> 2, tiles[j] & 0x3u, 0x80, 1u << (2 * i));
+            }
+
+            observeTopologySourceReading(PYRFDC_CLKDIST_SRC_RAW_DECODE, t);
+        }
+    }
+}
+
+/*
+ * One sub-check of the topology source reading claim, labelled so a single
+ * red one says which source and which half moved.
+ */
+void runTopologySourceReadingCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("an all-ungrouped map is read beside the topology source [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * What the status word and the map word say beside a map reading every tile
+ * ungrouped depends on the topology source in bits 7:0 of the status word,
+ * and this claim reads the pair beside that byte on each source separately.
+ *
+ * On the documented getter, source 1, the count rises once for every slot
+ * PyRFdc::cacheClkDistribution accepts, and the first slot it accepts places
+ * at least two tiles, because a slot whose two edges share a package index
+ * is skipped and every tile starts ungrouped. Only the withdrawal in
+ * PyRFdc::normalizeClkDistCache returns a placed tile to ungrouped, and it
+ * reports whenever it withdraws anything. So beside an all-ungrouped map a
+ * non-zero count means a withdrawal was reported and a zero count means none
+ * was. The first two sub-checks assert both directions.
+ *
+ * On the raw clock detect decode, source 2, PyRFdc::decodeClkDistributionRaw
+ * counts a group only where it marks a tile that names itself, the promote
+ * pass counts only where it writes a master naming itself, and the
+ * withdrawal never removes a master that names itself. So a count above zero
+ * always leaves a master in the map, and an all-ungrouped map on this source
+ * always sits beside a zero count, withdrawn or not. The third sub-check
+ * asserts that, and requires both a withdrawn and a not withdrawn reading
+ * among those it saw, so on this source the report is what says a
+ * withdrawal happened.
+ *
+ * What it measures. Every documented getter topology of at most two slots,
+ * 262,657 constructions, and every raw script in which at most three tiles
+ * name a source, 30,529 constructions. Two slots are the smallest getter
+ * input that can withdraw, and three naming tiles cover a master with two
+ * followers, every cycle of two or three tiles and every promotion. Every
+ * sub-check also requires its enumeration to have constructed exactly its
+ * domain, with every reading on the expected source and none capturing more
+ * than one report, so an enumeration that built nothing or the wrong thing
+ * cannot pass. Both tallies go to stderr on every run.
+ *
+ * Why the domain stops there. One construction costs about 14 to 15
+ * microseconds on a development host. Every ordered getter array of up to
+ * three slots is up to 134,217,728 constructions, about 33 minutes, and
+ * every raw script with each tile either zero or one single bit pair value is
+ * 9 to the 8th, 43,046,721 constructions, about 11 minutes, against a suite
+ * that is run many times a day.
+ *
+ * What it does not measure. Topologies past that domain, which rest on
+ * reading the counting and withdrawal conditions of the three functions
+ * named above and not on this claim. It is not a reading of any board
+ * either: no board has ever published a withdrawal.
+ */
+void checkAllUngroupedMapIsReadBesideTheTopologySource() {
+    TopologySourceTally getter;
+    TopologySourceTally raw;
+
+    enumerateGetterTopologies(getter);
+    enumerateRawDecodeScripts(raw);
+
+    fprintf(stderr,
+            "topology source reading, getter: constructions=%lu wrong source=%lu "
+            "all ungrouped=%lu non-zero with report=%lu non-zero without report=%lu "
+            "zero with report=%lu zero without report=%lu more than one report=%lu\n",
+            getter.constructions, getter.wrongSource, getter.allUngrouped,
+            getter.nonZeroWithReport, getter.nonZeroWithoutReport, getter.zeroWithReport,
+            getter.zeroWithoutReport, getter.moreThanOneReport);
+    fprintf(stderr,
+            "topology source reading, raw decode: constructions=%lu wrong source=%lu "
+            "all ungrouped=%lu non-zero with report=%lu non-zero without report=%lu "
+            "zero with report=%lu zero without report=%lu more than one report=%lu\n",
+            raw.constructions, raw.wrongSource, raw.allUngrouped, raw.nonZeroWithReport,
+            raw.nonZeroWithoutReport, raw.zeroWithReport, raw.zeroWithoutReport,
+            raw.moreThanOneReport);
+
+    const bool getterDomain = (getter.constructions == kGetterTopologyCount) &&
+                              (getter.wrongSource == 0) && (getter.moreThanOneReport == 0);
+    const bool rawDomain = (raw.constructions == kRawDecodeScriptCount) &&
+                           (raw.wrongSource == 0) && (raw.moreThanOneReport == 0);
+
+    runTopologySourceReadingCheck("getter, non-zero count means a withdrawal was reported",
+                                  getterDomain && (getter.nonZeroWithoutReport == 0) &&
+                                      (getter.nonZeroWithReport > 0));
+
+    runTopologySourceReadingCheck("getter, zero count means none was",
+                                  getterDomain && (getter.zeroWithReport == 0) &&
+                                      (getter.zeroWithoutReport > 0));
+
+    runTopologySourceReadingCheck("raw decode, count is zero withdrawn or not",
+                                  rawDomain && (raw.nonZeroWithReport == 0) &&
+                                      (raw.nonZeroWithoutReport == 0) &&
+                                      (raw.zeroWithReport > 0) && (raw.zeroWithoutReport > 0));
+}
+
 /*
  * One sub-check of the group count claim, labelled so a single red one says
  * which of the two readings moved.
@@ -6883,7 +7169,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 128;
+const int kClaimsBeforeCountCheck = 131;
 
 /*
  * Every claim this file defines actually ran.
@@ -7011,6 +7297,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkEveryNamedClockMasterNamesItself();
     checkACyclicMasterPairLeavesBothTilesUngrouped();
     checkRegisterPairIsASufficientSignatureOfAWithdrawalAndNotACompleteOne();
+    checkAllUngroupedMapIsReadBesideTheTopologySource();
     checkPublishedGroupCountHasMoreThanOneProducer();
 
     checkFailingEdgeTileArmsExactlyOneRecovery();
