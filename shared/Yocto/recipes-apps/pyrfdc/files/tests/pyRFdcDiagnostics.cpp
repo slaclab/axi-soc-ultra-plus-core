@@ -5881,6 +5881,21 @@ void checkPublishedGroupCountHasMoreThanOneProducer() {
 //! The read-only word the armed and succeeded counts are published through.
 const uint64_t kRecoveryCount = 0x1201C;
 
+//! The opening of the refusal line in PyRFdc::recoverClkGroup, copied from
+//! it. No other line this driver emits begins with these words.
+const char kRecoveryRefusalPrefix[] = "clock group recovery refused";
+
+//! How many captured error lines are refusal lines, in the same shape as
+//! recoveryReportCount further down.
+size_t recoveryRefusalLineCount() {
+    size_t n = 0;
+
+    for (size_t i = 0; i < gScript.logErrors.size(); i++) {
+        if (gScript.logErrors[i].find(kRecoveryRefusalPrefix) != std::string::npos) n++;
+    }
+    return n;
+}
+
 /*
  * One sub-check of the not-an-edge claim, labelled so a single red one is
  * identifiable.
@@ -5966,6 +5981,20 @@ void checkFailingEdgeTileArmsExactlyOneRecovery() {
  * re-established by resetting it again. Excluding it is the difference
  * between a bounded attempt and an attempt whose first act repeats the call
  * that just failed.
+ *
+ * What the ungrouped site sees. A role test that let an ungrouped tile
+ * through would form an out of range master index, and recoverClkGroup
+ * refuses such an index with a line on the error channel, moving no counter
+ * and issuing no reset. That line is what turns this site red, so the site
+ * named for the ungrouped half of the arming predicate is the one that sees
+ * that half regress, rather than three claims that count error lines for
+ * other reasons. The failing reset's own report is already one captured
+ * error line here, so the site counts refusal lines rather than asserting
+ * the list empty.
+ *
+ * What it cannot see. It sees the regression only while the refusal is
+ * audible. The same regression combined with a silent skip at the caller,
+ * or with a refusal that prints nothing, leaves this site green.
  */
 void checkFailingTileThatIsNotAnEdgeArmsNoRecovery() {
     // An ungrouped tile of this call's own type.
@@ -5988,10 +6017,13 @@ void checkFailingTileThatIsNotAnEdgeArmsNoRecovery() {
         // The ADC entry point owns ADC 0, 1 and 2 and nothing else, so three
         // resets and no fourth pass over any of them.
         if (ok) ok = (countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE) == 3);
+        if (ok) ok = (recoveryRefusalLineCount() == 0);
 
         if (!ok) {
-            fprintf(stderr, "ungrouped arms none: recoveries=0x%08X, adc reset=%zu\n",
-                    armed->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE));
+            fprintf(stderr, "ungrouped arms none: recoveries=0x%08X, adc reset=%zu,"
+                            " refusal lines=%zu\n",
+                    armed->getWord(0), countCallsForType("XRFdc_Reset", XRFDC_ADC_TILE),
+                    recoveryRefusalLineCount());
         }
 
         runNotAnEdgeCheck("ungrouped tile", ok);
