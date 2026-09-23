@@ -62,6 +62,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <string>
 
@@ -2033,6 +2034,155 @@ void checkFailedCfgInitializeLeavesSampleRateUnwritten() {
     }
 
     runCheck("a failed configuration initialize leaves the sample rate workaround unwritten", ok);
+}
+
+//! Read from the workaround loop in PyRFdc.cpp, which replaces a tile's
+//! MaxSampleRate with 5.9 on an ADC tile and 10.0 on a DAC tile when the
+//! configured value is not a plausible rate.
+const double kOverrideAdcRate = 5.9;
+const double kOverrideDacRate = 10.0;
+
+/*
+ * One live construction with the given configured rates, and the rate every
+ * tile of the driver instance holds once the constructor has returned.
+ *
+ * The instance is read while the device is still alive, because the pointer
+ * the configuration initialize stub recorded is into storage the device
+ * owns. Returns false when no instance was recorded, so a claim that read
+ * nothing cannot report success.
+ */
+bool constructWithConfiguredRates(double adcRate, double dacRate,
+                                  double adcOut[4], double dacOut[4]) {
+    gScript.reset();
+    gScript.adcMaxRate = adcRate;
+    gScript.dacMaxRate = dacRate;
+
+    PyRFdcPtr device = PyRFdc::create();
+    if ((device == nullptr) || (gScript.cfgInstance == nullptr)) return false;
+
+    for (int j = 0; j < 4; j++) {
+        adcOut[j] = gScript.cfgInstance->RFdc_Config.ADCTile_Config[j].MaxSampleRate;
+        dacOut[j] = gScript.cfgInstance->RFdc_Config.DACTile_Config[j].MaxSampleRate;
+    }
+    return true;
+}
+
+//! Configured rates no real tile can have: the zero an empty block reads as,
+//! a NaN, a negative rate and a rate above the fastest converter. Residue in
+//! a configuration the device tree never populated looks like these.
+const double kImplausibleRates[] = {
+    0.0, std::numeric_limits<double>::quiet_NaN(), -1.0, 12.0,
+};
+
+/*
+ * A configured ADC rate that is not a plausible rate is replaced.
+ *
+ * On a board whose device tree carries no RFDC configuration, the lookup
+ * copies nothing into the block and every tile's MaxSampleRate holds
+ * whatever the heap held. The workaround exists so such a board still runs
+ * with a usable rate, so each implausible value must end at exactly the
+ * workaround value. Exact equality, because the property is that the
+ * assignment happened, and a tolerance would pass for a value that was
+ * merely near it.
+ */
+void checkImplausibleAdcMaxSampleRateGetsWorkaround() {
+    bool ok = true;
+
+    for (double rate : kImplausibleRates) {
+        double adc[4] = {0.0, 0.0, 0.0, 0.0};
+        double dac[4] = {0.0, 0.0, 0.0, 0.0};
+        bool read = constructWithConfiguredRates(rate, 0.0, adc, dac);
+        bool here = read;
+        for (int j = 0; here && j < 4; j++) here = (adc[j] == kOverrideAdcRate);
+        if (!here) {
+            fprintf(stderr, "implausible adc rate %f: instance=%d ADC=%f %f %f %f\n",
+                    rate, read ? 1 : 0, adc[0], adc[1], adc[2], adc[3]);
+        }
+        ok = ok && here;
+    }
+
+    runCheck("an implausible adc sample rate from the configuration gets the workaround value", ok);
+}
+
+/*
+ * A configured DAC rate that is not a plausible rate is replaced.
+ *
+ * The DAC counterpart of the claim above, for the same reason and with the
+ * same exact comparison. Kept as its own claim so the DAC arm of the loop
+ * has a claim of its own to turn red.
+ */
+void checkImplausibleDacMaxSampleRateGetsWorkaround() {
+    bool ok = true;
+
+    for (double rate : kImplausibleRates) {
+        double adc[4] = {0.0, 0.0, 0.0, 0.0};
+        double dac[4] = {0.0, 0.0, 0.0, 0.0};
+        bool read = constructWithConfiguredRates(0.0, rate, adc, dac);
+        bool here = read;
+        for (int j = 0; here && j < 4; j++) here = (dac[j] == kOverrideDacRate);
+        if (!here) {
+            fprintf(stderr, "implausible dac rate %f: instance=%d DAC=%f %f %f %f\n",
+                    rate, read ? 1 : 0, dac[0], dac[1], dac[2], dac[3]);
+        }
+        ok = ok && here;
+    }
+
+    runCheck("an implausible dac sample rate from the configuration gets the workaround value", ok);
+}
+
+/*
+ * A plausible configured ADC rate survives construction.
+ *
+ * Once the device tree carries the design's configuration, its per tile
+ * rate is the one the driver must use, so the workaround must leave it
+ * alone. 5.0 is this carrier's ADC rate. 10.0 is the top of the window the
+ * constructor accepts, included so an upper bound that stopped short of it
+ * turns this claim red. Exact equality, because the property is that the
+ * value was not written at all.
+ */
+void checkPlausibleAdcMaxSampleRateSurvives() {
+    const double kPlausibleAdcRates[] = {5.0, 10.0};
+    bool ok = true;
+
+    for (double rate : kPlausibleAdcRates) {
+        double adc[4] = {0.0, 0.0, 0.0, 0.0};
+        double dac[4] = {0.0, 0.0, 0.0, 0.0};
+        bool read = constructWithConfiguredRates(rate, 0.0, adc, dac);
+        bool here = read;
+        for (int j = 0; here && j < 4; j++) here = (adc[j] == rate);
+        if (!here) {
+            fprintf(stderr, "plausible adc rate %f: instance=%d ADC=%f %f %f %f\n",
+                    rate, read ? 1 : 0, adc[0], adc[1], adc[2], adc[3]);
+        }
+        ok = ok && here;
+    }
+
+    runCheck("a plausible adc sample rate from the configuration survives the workaround", ok);
+}
+
+/*
+ * A plausible configured DAC rate survives construction.
+ *
+ * 9.5 rather than this carrier's DAC rate, because the carrier's 10.0 is the
+ * workaround value itself: a DAC arm that overwrote every tile would leave
+ * 10.0 in place and this claim could not tell. Exact equality for the same
+ * reason as the ADC claim.
+ */
+void checkPlausibleDacMaxSampleRateSurvives() {
+    const double kPlausibleDacRate = 9.5;
+
+    double adc[4] = {0.0, 0.0, 0.0, 0.0};
+    double dac[4] = {0.0, 0.0, 0.0, 0.0};
+    bool read = constructWithConfiguredRates(0.0, kPlausibleDacRate, adc, dac);
+    bool ok = read;
+    for (int j = 0; ok && j < 4; j++) ok = (dac[j] == kPlausibleDacRate);
+
+    if (!ok) {
+        fprintf(stderr, "plausible dac rate %f: instance=%d DAC=%f %f %f %f\n",
+                kPlausibleDacRate, read ? 1 : 0, dac[0], dac[1], dac[2], dac[3]);
+    }
+
+    runCheck("a plausible dac sample rate from the configuration survives the workaround", ok);
 }
 
 /*
@@ -7810,7 +7960,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 137;
+const int kClaimsBeforeCountCheck = 141;
 
 /*
  * Every claim this file defines actually ran.
@@ -7876,6 +8026,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkFailedCfgInitializeStopsTheConstructor();
     checkNoDriverCallFollowsAFailedCfgInitialize();
     checkFailedCfgInitializeLeavesSampleRateUnwritten();
+    checkImplausibleAdcMaxSampleRateGetsWorkaround();
+    checkImplausibleDacMaxSampleRateGetsWorkaround();
+    checkPlausibleAdcMaxSampleRateSurvives();
+    checkPlausibleDacMaxSampleRateSurvives();
     checkRepeatedRejectionIsByteIdentical();
     checkMultiWordRejectionReachesErrorStr();
     checkLiveDriverIsUnaffectedByTheGuard();

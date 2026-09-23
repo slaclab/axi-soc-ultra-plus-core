@@ -32,6 +32,7 @@
 #include "xrfdc_hw.h"
 
 #include <inttypes.h>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -271,11 +272,31 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
 
     log_->debug("PyRFdc::PyRFdc() Initialization Complete");
 
-    // Work around for MaxSampleRate until I figure out how to properly
-    //get the ConfigPtr (and/or devicetree) to set this configuration properly
+    // Each tile's MaxSampleRate is replaced only when the configuration did
+    // not supply a plausible one. On a board whose device tree node carries
+    // an empty param-list, the configuration lookup copies nothing into the
+    // block XRFdc_CfgInitialize was handed, so the field holds whatever that
+    // heap block held: zero, a NaN, a negative number or an absurd rate. The
+    // driver's sample rate checks would then run against garbage, so such a
+    // value is overwritten with the fixed rates this constructor has always
+    // written: 5.9 for an ADC tile and 10.0 for a DAC tile.
+    //
+    // A configuration generated from the design does carry the real rate,
+    // and that value must survive: overwriting it unconditionally would
+    // throw away exactly the information the device tree now provides. The
+    // window is finite, above zero and at most 10.0 GSPS, the DAC override
+    // and the top of the range either converter type is configured with.
+    // std::isfinite is tested first so a NaN, which fails every comparison,
+    // lands on the override rather than slipping through the bounds.
     for(j=0; j<4; j++) {
-        RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate = 5.9;
-        RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate = 10.0;
+        const double adcRate = RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate;
+        if (!(std::isfinite(adcRate) && adcRate > 0.0 && adcRate <= 10.0)) {
+            RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate = 5.9;
+        }
+        const double dacRate = RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate;
+        if (!(std::isfinite(dacRate) && dacRate > 0.0 && dacRate <= 10.0)) {
+            RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate = 10.0;
+        }
     }
 
     // The driver instance is usable from here and not before. This is the
