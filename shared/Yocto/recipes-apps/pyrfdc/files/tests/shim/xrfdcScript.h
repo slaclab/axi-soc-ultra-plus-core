@@ -192,6 +192,19 @@ class XRFdcScript {
     //! is consulted.
     uint32_t ipType = 0;
 
+    //! The MaxSampleRate the configuration lookup reports for every ADC
+    //! tile, which the production constructor keeps or replaces with its
+    //! sample rate workaround value. Zero by default, which is what the
+    //! lookup reported before this field existed, so every claim written
+    //! before it keeps its meaning. Set it before PyRFdc::create(), because
+    //! the constructor is where it is consulted.
+    double adcMaxRate = 0.0;
+
+    //! The MaxSampleRate the configuration lookup reports for every DAC
+    //! tile, the DAC counterpart of adcMaxRate. Zero by default for the same
+    //! reason, and set before PyRFdc::create() for the same reason.
+    double dacMaxRate = 0.0;
+
     //! The clock distribution topology XRFdc_GetClkDistribution hands back.
     //! Empty by default, which is no distribution at all, so the production
     //! cache keeps the ungrouped values it was declared with unless a claim
@@ -263,6 +276,8 @@ class XRFdcScript {
         registerQueues_.clear();
         pllEnabled = 0;
         ipType = 0;
+        adcMaxRate = 0.0;
+        dacMaxRate = 0.0;
         distributions.clear();
         distributionFillsOnRefusal = false;
         distributionFillsFoundSlotsOnly = false;

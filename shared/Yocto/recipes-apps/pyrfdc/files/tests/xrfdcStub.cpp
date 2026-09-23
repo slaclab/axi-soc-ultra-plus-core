@@ -147,11 +147,21 @@ XRFdc_Config *XRFdc_LookupConfig(u16 DeviceId) {
     //! A scripted failure makes this return null, which is the one condition
     //! the production constructor tests it for.
     if (rec("XRFdc_LookupConfig", DeviceId, ANY, ANY) != XRFDC_SUCCESS) return nullptr;
-    // The one field of this structure the production code branches on. The
-    // constructor issues its clock distribution query only when this is at
+    // The fields of this structure the production code branches on. The
+    // constructor issues its clock distribution query only when IPType is at
     // least XRFDC_GEN3, so a configuration that never carried it would leave
-    // that call site unreachable and any claim about it unprovable.
+    // that call site unreachable and any claim about it unprovable. The
+    // constructor also decides per tile whether MaxSampleRate is kept or
+    // replaced by its workaround value, so each tile's rate is scripted too.
+    //
+    // Written on every lookup rather than once, because gConfig is a static
+    // that outlives each claim: a rate one claim scripted would otherwise
+    // still be here for the next claim, which reset() cannot reach.
     gConfig.IPType = gScript.ipType;
+    for (int j = 0; j < 4; j++) {
+        gConfig.ADCTile_Config[j].MaxSampleRate = gScript.adcMaxRate;
+        gConfig.DACTile_Config[j].MaxSampleRate = gScript.dacMaxRate;
+    }
     return &gConfig;
 }
 
