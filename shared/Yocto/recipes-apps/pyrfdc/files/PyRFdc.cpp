@@ -698,8 +698,11 @@ void PyRFdc::Reset(int Tile_Id) {
     // the call rather than need a boundary of its own to be cleared on.
     uint32_t attempted[8];
     uint32_t attemptedLen = 0;
-    // The half of the arming pass bound a resize could break silently.
-    static_assert(sizeof(attempted) == sizeof(walk),
+    // The half of the arming pass bound a resize could break silently. The
+    // two sizes are compared as entry counts, so a change of element type
+    // neither passes it with the bound broken nor fails it with the bound
+    // intact.
+    static_assert(sizeof(attempted) / sizeof(attempted[0]) >= sizeof(walk) / sizeof(walk[0]),
                   "the attempted list holds one entry for every tile the walk can hold");
     bool sweepFailed = false;
 
@@ -1038,9 +1041,10 @@ void PyRFdc::Reset(int Tile_Id) {
                 // most one entry per iteration of this loop, and this loop
                 // runs walkLen times. walkLen is at most eight because
                 // buildOwnedTileWalk emits each tile index at most once, and
-                // attempted is declared the size of walk, which the
-                // static_assert beside the two declarations holds. So
-                // attemptedLen never exceeds walkLen and never exceeds eight.
+                // attempted is declared with at least as many entries as walk,
+                // which the static_assert beside the two declarations holds,
+                // comparing entry counts rather than bytes. So attemptedLen
+                // never exceeds walkLen and never exceeds eight.
                 if (masterIdx <= 7) {
                     for (a = 0; a < attemptedLen; a++) {
                         if (attempted[a] == masterIdx) {
