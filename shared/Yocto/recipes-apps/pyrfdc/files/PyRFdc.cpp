@@ -1003,33 +1003,26 @@ void PyRFdc::Reset(int Tile_Id) {
 
                 masterIdx = (uint32_t(armTile.masterType) * 4) + uint32_t(armTile.masterTile);
 
-                // Range check the index before it is used as one. An
-                // ungrouped tile carries 0xFF in both master fields, so the
-                // value formed above is 1275 for such a tile and would index
-                // far past the fixed member arrays, which hold 8 entries.
+                // Not range tested here, because recoverClkGroup
+                // owns the range refusal: it refuses an index above seven at
+                // its own entry, ahead of every write, and announces the
+                // refusal on the error channel.
                 //
-                // The role test above is what keeps the value in range
-                // today, but a bound that is a consequence of a predicate is
-                // not a property of the index, and the predicate is one edit
-                // away from changing. recoverClkGroup carries the same test
-                // at its own entry and announces the refusal on the error
-                // channel when it fires, so without this test an out of
-                // range master becomes a call the callee discards with a
-                // line beside it, not a write past the end of two fixed
-                // arrays. This test is kept anyway for a reason of its own:
-                // the pass below writes the master index into attempted
-                // before it calls, so without this test an impossible master
-                // would consume an attempt slot for a call that issues
-                // nothing, and attempted would name a master no recovery was
-                // run for. That is the whole of the cost. It is not slot
-                // exhaustion, because attempted gains at most one entry per
-                // walked tile and is sized to the walk, and it is not a lost
-                // attempt on a real group, because an out of range value
-                // never compares equal to a master in range.
-                if (masterIdx > 7) {
-                    continue;
-                }
-
+                // An ungrouped tile carries 0xFF in both master fields, so a
+                // tile that reached this point without the edge role would
+                // form 1275 above. The role test above is what keeps the
+                // value in range today. A silent skip here would hide exactly
+                // a regression in that role test, which is the input the
+                // callee's announcement exists to expose: the tile would be
+                // dropped with no line and the console would say nothing.
+                // That is why the refusal is left to the callee alone.
+                //
+                // What not testing here costs is one entry in attempted
+                // naming a master no recovery was run for, because the index
+                // is written there before the call. attempted is local to
+                // this call, gains at most one entry per walked tile and is
+                // sized to the walk, and an out of range value never compares
+                // equal to a master in range.
                 for (a = 0; a < attemptedLen; a++) {
                     if (attempted[a] == masterIdx) {
                         alreadyAttempted = true;
@@ -4955,7 +4948,7 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
         // Bounded on its own as well as by the entry test above, and the
         // redundancy is deliberate: it keeps both arrays safe from an
         // overrun even if a later edit removes that test on the grounds
-        // that the caller already range checks the master.
+        // that the caller's role test already keeps the master in range.
         //
         // What the bound trades the overrun for is not nothing. A tile it
         // turns away is neither reset nor has its diagnostic record

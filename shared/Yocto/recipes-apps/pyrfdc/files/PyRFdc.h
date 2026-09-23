@@ -640,7 +640,11 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! A masterIdx above seven is refused at entry: no reset is issued, no
     //! counter moves and no record changes, and the refusal is announced on
     //! the error channel. The call is accepted and discarded, not rejected
-    //! by a return value and not asserted.
+    //! by a return value and not asserted. The arming pass in PyRFdc::Reset
+    //! is the only call site and passes the composed index without a range
+    //! test of its own, so this refusal is the one guard on that path, and
+    //! an out of range index that reaches the pass is announced here rather
+    //! than skipped.
     //!
     //! A group holding more than eight tiles is truncated at eight. The
     //! dropped tiles are neither reset nor cleared, and the count of them is
