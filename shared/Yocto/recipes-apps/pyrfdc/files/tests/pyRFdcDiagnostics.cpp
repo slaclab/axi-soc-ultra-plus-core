@@ -90,6 +90,16 @@
 
 #include "xrfdcScript.h"
 
+/*
+ * The root of the submodule tree, which the published register text claim
+ * reads the host model and the reference page from. tests/Makefile passes it
+ * from its SUBMODULE_ROOT variable. Refusing to compile without it keeps that
+ * claim from being built against a root nobody chose.
+ */
+#ifndef PYRFDC_SUBMODULE_ROOT
+#error "PYRFDC_SUBMODULE_ROOT is not defined: build through tests/Makefile, which passes it from SUBMODULE_ROOT"
+#endif
+
 namespace {
 
 //! Count of claims that reported FAIL. main returns non-zero when non-zero.
@@ -5168,8 +5178,9 @@ void checkACyclicMasterPairLeavesBothTilesUngrouped() {
         runCyclicPairCheck("published word", ok);
     }
 
-    // The same two words read as the signature the two published descriptions
-    // now carry, as two readings rather than as one conjunction.
+    // The same two words read as the signature the ClkDistMap description in
+    // both documents states for source 1, as two readings rather than as one
+    // conjunction.
     //
     // The whole-word literals above already cover the conjunction, so
     // comparing the same two words again would add nothing. What this adds is
@@ -5985,6 +5996,248 @@ void checkAllUngroupedMapIsReadBesideTheTopologySource() {
     runTopologySourceReadingCheck("out of range generation, every tile ungrouped and nothing withdrawn",
                                   outOfRangeClean && (outOfRange.constructions == 255) &&
                                       (outOfRange.causeLineOnce == 255));
+}
+
+//! The two documents that publish the clock distribution register pair, as
+//! paths below PYRFDC_SUBMODULE_ROOT.
+const char kHostModelPath[] = "python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py";
+const char kReferencePagePath[] = "docs/reference/pyrfdc_return_codes.rst";
+
+/*
+ * Read one published document whole into text. Returns false, and leaves text
+ * empty, when the file cannot be opened or read, so a caller cannot mistake a
+ * missing document for one that says nothing forbidden.
+ */
+bool readPublishedDocument(const char *relativePath, std::string &text) {
+    const std::string path = std::string(PYRFDC_SUBMODULE_ROOT) + "/" + relativePath;
+    text.clear();
+
+    FILE *f = fopen(path.c_str(), "rb");
+    if (f == nullptr) {
+        return false;
+    }
+
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+        text.append(buf, n);
+    }
+
+    const bool ok = (ferror(f) == 0);
+    fclose(f);
+
+    if (!ok) {
+        text.clear();
+    }
+    return ok && !text.empty();
+}
+
+//! The text with every run of whitespace collapsed to one space, so a
+//! fragment is found whether or not a line break falls inside it.
+std::string normalizeWhitespace(const std::string &text) {
+    std::string out;
+    bool inSpace = false;
+
+    for (size_t i = 0; i < text.size(); i++) {
+        const char c = text[i];
+
+        if ((c == ' ') || (c == '\t') || (c == '\n') || (c == '\r') || (c == '\f') ||
+            (c == '\v')) {
+            inSpace = true;
+        } else {
+            if (inSpace && !out.empty()) {
+                out += ' ';
+            }
+            inSpace = false;
+            out += c;
+        }
+    }
+
+    return out;
+}
+
+/*
+ * The description literal of the host model variable called name: the text
+ * between the first single quote after the first description following the
+ * literal 'name', and the next single quote. Every description in that file is
+ * one single-quoted literal, which is what makes the next quote its end.
+ */
+bool hostModelDescription(const std::string &doc, const char *name, std::string &out) {
+    out.clear();
+
+    const size_t at = doc.find(std::string("'") + name + "',");
+    if (at == std::string::npos) return false;
+
+    const size_t key = doc.find("description", at);
+    if (key == std::string::npos) return false;
+
+    const size_t open = doc.find('\'', key);
+    if (open == std::string::npos) return false;
+
+    const size_t close = doc.find('\'', open + 1);
+    if (close == std::string::npos) return false;
+
+    out = doc.substr(open + 1, close - open - 1);
+    return !out.empty();
+}
+
+/*
+ * The first thing wrong with a normalized text: a required fragment it lacks
+ * or a forbidden one it carries, named with its kind. Empty when neither.
+ */
+std::string firstTextProblem(const std::string &text,
+                             const std::vector<const char *> &required,
+                             const std::vector<const char *> &forbidden) {
+    for (size_t i = 0; i < required.size(); i++) {
+        if (text.find(required[i]) == std::string::npos) {
+            return std::string("missing \"") + required[i] + "\"";
+        }
+    }
+    for (size_t i = 0; i < forbidden.size(); i++) {
+        if (text.find(forbidden[i]) != std::string::npos) {
+            return std::string("forbidden \"") + forbidden[i] + "\"";
+        }
+    }
+    return "";
+}
+
+/*
+ * The first thing wrong with the four source value arms of a normalized
+ * ClkDistMap text: each arm literal present and in ascending order, the arms
+ * for source values 0 and 3 each stating that the word reads every tile
+ * ungrouped whether or not the board has a distribution and that nothing can
+ * have been withdrawn, and the arm for 0 naming InitFailureReason by offset.
+ * An arm runs to the next arm literal, and the last arm to the end.
+ */
+std::string sourceValueArmProblem(const std::string &text) {
+    const char *const arms[] = {"When the source byte reads 0", "When the source byte reads 1",
+                                "When the source byte reads 2", "When the source byte reads 3"};
+    size_t at[4];
+
+    for (size_t i = 0; i < 4; i++) {
+        at[i] = text.find(arms[i]);
+        if (at[i] == std::string::npos) {
+            return std::string("missing \"") + arms[i] + "\"";
+        }
+        if ((i > 0) && (at[i] < at[i - 1])) {
+            return std::string("out of order \"") + arms[i] + "\"";
+        }
+    }
+
+    const std::string arm0 = text.substr(at[0], at[1] - at[0]);
+    const std::string arm3 = text.substr(at[3]);
+
+    std::string problem =
+        firstTextProblem(arm0,
+                         {"whether or not the board has a clock distribution",
+                          "nothing can have been withdrawn", "0x1200C"},
+                         {});
+    if (!problem.empty()) return "arm 0 " + problem;
+
+    problem = firstTextProblem(arm3,
+                               {"whether or not the board has a clock distribution",
+                                "nothing can have been withdrawn"},
+                               {});
+    if (!problem.empty()) return "arm 3 " + problem;
+
+    return "";
+}
+
+/*
+ * One site of the published register pair text claim, labelled so a single
+ * red one says which document and which register moved.
+ */
+void runPublishedRegisterPairTextCheck(const char *site, bool ok) {
+    const std::string label =
+        std::string("the published register pair text is stated per source value [") + site + "]";
+
+    runCheck(label.c_str(), ok);
+}
+
+/*
+ * One site: pass only when the region was located and nothing is wrong with
+ * it, and otherwise say on stderr which document and what was wrong.
+ */
+void checkPublishedRegion(const char *site, const char *path, bool located,
+                          const std::string &problem) {
+    if (!located) {
+        fprintf(stderr, "published register pair text [%s]: %s could not be read or the region "
+                        "was not located\n", site, path);
+    } else if (!problem.empty()) {
+        fprintf(stderr, "published register pair text [%s]: %s: %s\n", site, path,
+                problem.c_str());
+    }
+
+    runPublishedRegisterPairTextCheck(site, located && problem.empty());
+}
+
+/*
+ * The published text of ClkDistMap and ClkDistStatus states the register pair
+ * per source value, in both documents that publish it.
+ *
+ * The behavioural claims above execute what the pair publishes on each source
+ * value, and none of them can see a document regress: a published sentence
+ * can be replaced by a false one and every one of them still passes. The
+ * wording of these two registers has been corrected more than once, each time
+ * leaving a sibling sentence behind, so this claim reads the words
+ * themselves. ClkDistMap owns the per source value statement and must carry
+ * the four arms in ascending order, with the arms for source values 0 and 3
+ * saying nothing can have been withdrawn whatever the board, and must not
+ * carry a sentence the correction superseded. ClkDistStatus must point at it
+ * and carry no reading of its own.
+ *
+ * It reads text and never hardware, so it is board-free like everything else
+ * here. It checks required and forbidden fragments and cannot check that
+ * every sentence is true; that rests on the claims above and on reading the
+ * code. The two documents live outside files/, so a copy of files/ alone, or
+ * a build whose SUBMODULE_ROOT names no such tree, reads every site red: a
+ * document that could not be read or a region that could not be located
+ * fails its site rather than passing it. Whether each document was read goes
+ * to stderr on every run.
+ */
+void checkPublishedRegisterPairTextIsStatedPerSourceValue() {
+    std::string hostModel;
+    std::string referencePage;
+
+    const bool hostModelRead = readPublishedDocument(kHostModelPath, hostModel);
+    const bool referencePageRead = readPublishedDocument(kReferencePagePath, referencePage);
+
+    fprintf(stderr, "published register pair text: host model read=%d reference page read=%d\n",
+            hostModelRead ? 1 : 0, referencePageRead ? 1 : 0);
+
+    {
+        std::string text;
+        const bool located = hostModelRead && hostModelDescription(hostModel, "ClkDistMap", text);
+        const std::string normalized = normalizeWhitespace(text);
+        std::string problem = sourceValueArmProblem(normalized);
+
+        if (problem.empty()) {
+            problem = firstTextProblem(
+                normalized,
+                {"readings of different source values are not pooled",
+                 "the two sources that answered"},
+                {"a board that has one it means the grouping was withdrawn",
+                 "two readings an operator has to tell apart",
+                 "readings of the two sources are not pooled",
+                 "On every source the report is the only thing that says which tiles"});
+        }
+
+        checkPublishedRegion("host model ClkDistMap states all four source values",
+                             kHostModelPath, located, problem);
+    }
+
+    {
+        std::string text;
+        const bool located =
+            hostModelRead && hostModelDescription(hostModel, "ClkDistStatus", text);
+        const std::string problem =
+            firstTextProblem(normalizeWhitespace(text),
+                             {"stated once per source value", "ClkDistMap"},
+                             {"register-only signature", "attaching later"});
+
+        checkPublishedRegion("host model ClkDistStatus points at ClkDistMap and pools nothing",
+                             kHostModelPath, located, problem);
+    }
 }
 
 /*
@@ -7448,7 +7701,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 133;
+const int kClaimsBeforeCountCheck = 135;
 
 /*
  * Every claim this file defines actually ran.
@@ -7577,6 +7830,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkACyclicMasterPairLeavesBothTilesUngrouped();
     checkRawDecodeWithdrawalAndNoDistributionPublishTheSameRegisterPair();
     checkAllUngroupedMapIsReadBesideTheTopologySource();
+    checkPublishedRegisterPairTextIsStatedPerSourceValue();
     checkPublishedGroupCountHasMoreThanOneProducer();
 
     checkFailingEdgeTileArmsExactlyOneRecovery();

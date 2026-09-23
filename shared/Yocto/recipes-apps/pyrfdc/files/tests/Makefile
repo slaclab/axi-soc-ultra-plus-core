@@ -16,6 +16,13 @@
 #     pyRFdcDiagnostics.cpp for the list of claims and for the limits of what
 #     a green run establishes.
 #
+#     `make test` also reads two files from outside files/: the host model
+#     python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py and the reference
+#     page docs/reference/pyrfdc_return_codes.rst, located through
+#     SUBMODULE_ROOT, for the claim that pins the published register text. A
+#     copy of files/ alone therefore reads that claim red, by design: a claim
+#     that could not read its input must not pass.
+#
 #     Note for a caller that reads the verdict off the last line: invoking
 #     this from elsewhere as `make -C <dir> test` makes GNU make print its
 #     own entering and leaving directory lines around the harness output, so
@@ -34,6 +41,7 @@
 # ----------------------------------------------------------------------------
 
 SRC_DIR  := $(abspath ..)
+SUBMODULE_ROOT := $(abspath ../../../../../..)
 SHIM_DIR := $(abspath shim)
 
 CXX      ?= g++
@@ -42,7 +50,7 @@ CXX      ?= g++
 # -DNO_PYTHON keeps the boost.python blocks in PyRFdc.h and PyRFdc.cpp out,
 # so no boost or Python stub is needed.
 CXXFLAGS ?= -Wall -Wextra -O2 -std=c++11
-DEFINES  := -DNO_PYTHON -D__STDC_FORMAT_MACROS
+DEFINES  := -DNO_PYTHON -D__STDC_FORMAT_MACROS -DPYRFDC_SUBMODULE_ROOT='"$(SUBMODULE_ROOT)"'
 LDFLAGS  ?=
 
 # The shim path MUST come first on the include path. <xrfdc.h>, <xrfdc_hw.h>
