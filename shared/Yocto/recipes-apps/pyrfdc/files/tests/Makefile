@@ -18,10 +18,13 @@
 #
 #     `make test` also reads two files from outside files/: the host model
 #     python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py and the reference
-#     page docs/reference/pyrfdc_return_codes.rst, located through
-#     SUBMODULE_ROOT, for the claim that pins the published register text. A
-#     copy of files/ alone therefore reads that claim red, by design: a claim
-#     that could not read its input must not pass.
+#     page docs/reference/pyrfdc_return_codes.rst, for the claim that pins the
+#     published register text. The harness finds them from where its own
+#     binary sits, six directories below the submodule root, resolved through
+#     /proc/self/exe each time it runs, so a copied or moved tree
+#     reads its own documents and no path fixed at build time can name another
+#     tree. A copy of files/ alone therefore reads that claim red, by design: a
+#     claim that could not read its input must not pass.
 #
 #     Note for a caller that reads the verdict off the last line: invoking
 #     this from elsewhere as `make -C <dir> test` makes GNU make print its
@@ -41,7 +44,6 @@
 # ----------------------------------------------------------------------------
 
 SRC_DIR  := $(abspath ..)
-SUBMODULE_ROOT := $(abspath ../../../../../..)
 SHIM_DIR := $(abspath shim)
 
 CXX      ?= g++
@@ -50,7 +52,7 @@ CXX      ?= g++
 # -DNO_PYTHON keeps the boost.python blocks in PyRFdc.h and PyRFdc.cpp out,
 # so no boost or Python stub is needed.
 CXXFLAGS ?= -Wall -Wextra -O2 -std=c++11
-DEFINES  := -DNO_PYTHON -D__STDC_FORMAT_MACROS -DPYRFDC_SUBMODULE_ROOT='"$(SUBMODULE_ROOT)"'
+DEFINES  := -DNO_PYTHON -D__STDC_FORMAT_MACROS
 LDFLAGS  ?=
 
 # The shim path MUST come first on the include path. <xrfdc.h>, <xrfdc_hw.h>

@@ -60,9 +60,12 @@
  **/
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include <string>
+
+#include <unistd.h>
 
 /*
  * Compile the production source into this translation unit rather than
@@ -89,16 +92,6 @@
 #include "../PyRFdc.cpp"  // NOLINT(build/include) -- deliberate host compile of the production driver source
 
 #include "xrfdcScript.h"
-
-/*
- * The root of the submodule tree, which the published register text claim
- * reads the host model and the reference page from. tests/Makefile passes it
- * from its SUBMODULE_ROOT variable. Refusing to compile without it keeps that
- * claim from being built against a root nobody chose.
- */
-#ifndef PYRFDC_SUBMODULE_ROOT
-#error "PYRFDC_SUBMODULE_ROOT is not defined: build through tests/Makefile, which passes it from SUBMODULE_ROOT"
-#endif
 
 namespace {
 
@@ -5999,18 +5992,53 @@ void checkAllUngroupedMapIsReadBesideTheTopologySource() {
 }
 
 //! The two documents that publish the clock distribution register pair, as
-//! paths below PYRFDC_SUBMODULE_ROOT.
+//! paths below the root submoduleRoot() resolves.
 const char kHostModelPath[] = "python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py";
 const char kReferencePagePath[] = "docs/reference/pyrfdc_return_codes.rst";
 
 /*
- * Read one published document whole into text. Returns false, and leaves text
- * empty, when the file cannot be opened or read, so a caller cannot mistake a
- * missing document for one that says nothing forbidden.
+ * The root of the tree this binary sits in: the directory of /proc/self/exe,
+ * which is six directories below the root, with six parent steps appended and
+ * canonicalized. It is resolved each time the harness runs, so a copied or
+ * moved tree reads its own documents. An empty result, when any step fails,
+ * reads nothing and fails the claim rather than falling back to a path fixed
+ * at build time, which is how a copied tree used to read the original's
+ * documents.
  */
-bool readPublishedDocument(const char *relativePath, std::string &text) {
-    const std::string path = std::string(PYRFDC_SUBMODULE_ROOT) + "/" + relativePath;
+std::string submoduleRoot() {
+    char exe[4096];
+    const ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if ((n <= 0) || (static_cast<size_t>(n) >= sizeof(exe) - 1)) return "";
+    exe[n] = '\0';
+
+    std::string dir(exe);
+    const size_t slash = dir.rfind('/');
+    if (slash == std::string::npos) return "";
+    dir.erase(slash);
+    dir += "/../../../../../..";
+
+    char *resolved = realpath(dir.c_str(), nullptr);
+    if (resolved == nullptr) return "";
+
+    const std::string root(resolved);
+    free(resolved);
+    return root;
+}
+
+/*
+ * Read one published document, a path below root, whole into text. Returns
+ * false, and leaves text empty, when root is empty or the file cannot be
+ * opened or read, so a caller cannot mistake a missing document for one that
+ * says nothing forbidden.
+ */
+bool readPublishedDocument(const std::string &root, const char *relativePath,
+                           std::string &text) {
     text.clear();
+    if (root.empty()) {
+        return false;
+    }
+
+    const std::string path = root + "/" + relativePath;
 
     FILE *f = fopen(path.c_str(), "rb");
     if (f == nullptr) {
@@ -6209,21 +6237,26 @@ void checkPublishedRegion(const char *site, const char *path, bool located,
  * It reads text and never hardware, so it is board-free like everything else
  * here. It checks required and forbidden fragments and cannot check that
  * every sentence is true; that rests on the claims above and on reading the
- * code. The two documents live outside files/, so a copy of files/ alone, or
- * a build whose SUBMODULE_ROOT names no such tree, reads every site red: a
- * document that could not be read or a region that could not be located
- * fails its site rather than passing it. Whether each document was read goes
- * to stderr on every run.
+ * code. The two documents live outside files/ and are read below the root of
+ * the tree the binary sits in, resolved from where it sits each time it runs,
+ * so a copied or moved tree reads its own documents and a copy of files/
+ * alone reads every site red: a document that could not be read or a region
+ * that could not be located fails its site rather than passing it. Whether
+ * each document was read, and the root it was read from, go to stderr on
+ * every run.
  */
 void checkPublishedRegisterPairTextIsStatedPerSourceValue() {
     std::string hostModel;
     std::string referencePage;
 
-    const bool hostModelRead = readPublishedDocument(kHostModelPath, hostModel);
-    const bool referencePageRead = readPublishedDocument(kReferencePagePath, referencePage);
+    const std::string root = submoduleRoot();
+    const bool hostModelRead = readPublishedDocument(root, kHostModelPath, hostModel);
+    const bool referencePageRead = readPublishedDocument(root, kReferencePagePath, referencePage);
 
-    fprintf(stderr, "published register pair text: host model read=%d reference page read=%d\n",
-            hostModelRead ? 1 : 0, referencePageRead ? 1 : 0);
+    fprintf(stderr,
+            "published register pair text: root=%s host model read=%d reference page read=%d\n",
+            root.empty() ? "<unresolved>" : root.c_str(), hostModelRead ? 1 : 0,
+            referencePageRead ? 1 : 0);
 
     {
         std::string text;
