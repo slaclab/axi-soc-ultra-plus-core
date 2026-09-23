@@ -7857,6 +7857,163 @@ void checkASecondSweepClearsTheNotExactFlagWithTheCount() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* Quadrature update source on high speed ADC tiles.                         */
+/*                                                                           */
+/* The constructor captures each block's quadrature settings with            */
+/* XRFdc_GetQMCSettings, and the reset replays them with                     */
+/* XRFdc_SetQMCSettings. The getter reports the update source as a raw read  */
+/* of the block's QMC update register, and the setter refuses immediate and  */
+/* slice on a high speed (dual) ADC tile. Every ADC tile on this carrier is  */
+/* one, and their register reads immediate, so a replay of the raw capture   */
+/* fails every ADC tile the reset walks at XRFdc_SetQMCSettings. The stub    */
+/* models that refusal, so these claims hold the capture to what the setter  */
+/* accepts.                                                                  */
+/* ------------------------------------------------------------------------ */
+
+//! Host address of the quadrature EventSource field of one block: tile type
+//! at bit 15, tile id at bits 14:13, the block bit 12 set, block id at bits
+//! 11:10, and QMCSettings index 1 at block offset 0x044.
+uint64_t qmcEventSourceAddr(uint32_t type, uint32_t tile, uint32_t block) {
+    return (uint64_t(type) << 15) | (uint64_t(tile) << 13) | (1ULL << 12) |
+           (uint64_t(block) << 10) | 0x044;
+}
+
+//! The captured quadrature update source of one block, as a host reads it.
+uint32_t readQmcEventSource(PyRFdcPtr device, uint32_t type, uint32_t tile, uint32_t block) {
+    return driveRead(device, qmcEventSourceAddr(type, tile, block))->getWord(0);
+}
+
+/*
+ * The carrier's own case: every ADC tile high speed, every QMC update
+ * register reading immediate, this carrier's clock topology. Both global
+ * resets have to come back clean, the ADC one for ADC 0 to 2 and the DAC one
+ * for ADC 3, which it walks as an edge of DAC 0. Asserted on the libmetal
+ * text as well as on the transaction, because the refusal is what the
+ * carrier's journal showed and a reset that stopped reporting it without
+ * stopping it would satisfy the transaction alone.
+ */
+void checkHighSpeedAdcTileWithImmediateQmcSourceResetsClean() {
+    gScript.reset();
+    gScript.ipType = 2;
+    scriptThisCarriersDistribution();
+    gScript.scriptFailure("XRFdc_IsHighSpeedADC", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, 1);
+
+    PyRFdcPtr device = PyRFdc::create();
+    gScript.calls.clear();
+    gScript.metalLogs.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+    size_t refusals = 0;
+    for (size_t i = 0; i < gScript.metalLogs.size(); i++) {
+        if (gScript.metalLogs[i].find("not supported in 4GSPS ADC") != std::string::npos) {
+            refusals++;
+        }
+    }
+
+    bool ok = adc->doneCalled() && !adc->errorStrCalled();
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+    // Every enabled ADC block really was written, three tiles from the ADC
+    // reset and ADC 3 from the DAC reset, so the clean verdict is not an
+    // artifact of a sweep that skipped the setter.
+    if (ok) ok = (countCallsForType("XRFdc_SetQMCSettings", XRFDC_ADC_TILE) == 16);
+    if (ok) ok = (refusals == 0);
+
+    if (!ok) {
+        fprintf(stderr,
+                "high speed immediate: adc err=%u '%s', dac err=%u '%s', refusals=%zu\n",
+                adc->errorStrCalls(), adc->errorStrValue().c_str(), dac->errorStrCalls(),
+                dac->errorStrValue().c_str(), refusals);
+    }
+
+    runCheck("a high speed ADC tile whose QMC source reads immediate resets clean", ok);
+}
+
+/*
+ * Only a high speed ADC tile is changed. Tile 1 is scripted high speed and
+ * every other tile is not, so ADC 1 has its immediate source replaced by
+ * tile, ADC 0 (a quad tile, where the setter accepts immediate) keeps what
+ * it read, and DAC 1 keeps what it read even though it shares ADC 1's tile
+ * id, because the setter's refusal is an ADC one.
+ */
+void checkOnlyHighSpeedAdcTilesHaveTheirQmcSourceReplaced() {
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_IsHighSpeedADC", XRFDC_SCRIPT_ANY, 1, XRFDC_SCRIPT_ANY, 1);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    const uint32_t adc1 = readQmcEventSource(device, XRFDC_ADC_TILE, 1, 1);
+    const uint32_t adc0 = readQmcEventSource(device, XRFDC_ADC_TILE, 0, 0);
+    const uint32_t dac1 = readQmcEventSource(device, XRFDC_DAC_TILE, 1, 0);
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = (adc1 == XRFDC_EVNT_SRC_TILE);
+    if (ok) ok = (adc0 == XRFDC_EVNT_SRC_IMMEDIATE);
+    if (ok) ok = (dac1 == XRFDC_EVNT_SRC_IMMEDIATE);
+    if (ok) ok = adc->doneCalled() && !adc->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr, "only high speed: adc1=%u adc0=%u dac1=%u, reset err=%u '%s'\n", adc1,
+                adc0, dac1, adc->errorStrCalls(), adc->errorStrValue().c_str());
+    }
+
+    runCheck("only a high speed ADC tile has its QMC source replaced", ok);
+}
+
+/*
+ * Slice is the other source the setter refuses on a high speed ADC tile, one
+ * above immediate, and it is replaced the same way.
+ */
+void checkSliceQmcSourceOnHighSpeedAdcTileIsReplaced() {
+    gScript.reset();
+    gScript.qmcEventSource = XRFDC_EVNT_SRC_SLICE;
+    gScript.scriptFailure("XRFdc_IsHighSpeedADC", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, 1);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    const uint32_t source = readQmcEventSource(device, XRFDC_ADC_TILE, 2, 1);
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+    bool ok = (source == XRFDC_EVNT_SRC_TILE);
+    if (ok) ok = adc->doneCalled() && !adc->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr, "slice on high speed: source=%u, reset err=%u '%s'\n", source,
+                adc->errorStrCalls(), adc->errorStrValue().c_str());
+    }
+
+    runCheck("a slice QMC source on a high speed ADC tile is replaced", ok);
+}
+
+/*
+ * A source the setter accepts is kept exactly as read. Sysref, one above
+ * tile, is the nearest accepted value that is not the replacement itself,
+ * so a replacement that fired on anything other than the refused pair
+ * would show here.
+ */
+void checkAcceptedQmcSourceOnHighSpeedAdcTileIsKept() {
+    gScript.reset();
+    gScript.qmcEventSource = XRFDC_EVNT_SRC_TILE + 1;
+    gScript.scriptFailure("XRFdc_IsHighSpeedADC", XRFDC_SCRIPT_ANY, XRFDC_SCRIPT_ANY,
+                          XRFDC_SCRIPT_ANY, 1);
+
+    PyRFdcPtr device = PyRFdc::create();
+
+    const uint32_t source = readQmcEventSource(device, XRFDC_ADC_TILE, 0, 0);
+    const bool ok = (source == XRFDC_EVNT_SRC_TILE + 1);
+
+    if (!ok) {
+        fprintf(stderr, "accepted source kept: source=%u\n", source);
+    }
+
+    runCheck("an accepted QMC source on a high speed ADC tile is kept as read", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -7960,7 +8117,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 141;
+const int kClaimsBeforeCountCheck = 145;
 
 /*
  * Every claim this file defines actually ran.
@@ -8108,6 +8265,11 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkTwoFailingEdgesInOneGroupArmOneRecovery();
     checkRecoveryCounterIsReadOnlyAndAnswersADeadDriver();
     checkRecoveryRerunsTheGroupMasterFirst();
+
+    checkHighSpeedAdcTileWithImmediateQmcSourceResetsClean();
+    checkOnlyHighSpeedAdcTilesHaveTheirQmcSourceReplaced();
+    checkSliceQmcSourceOnHighSpeedAdcTileIsReplaced();
+    checkAcceptedQmcSourceOnHighSpeedAdcTileIsKept();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();

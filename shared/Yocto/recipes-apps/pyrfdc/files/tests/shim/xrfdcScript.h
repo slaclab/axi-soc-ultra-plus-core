@@ -205,6 +205,14 @@ class XRFdcScript {
     //! reason, and set before PyRFdc::create() for the same reason.
     double dacMaxRate = 0.0;
 
+    //! The EventSource XRFdc_GetQMCSettings reports for every block. The
+    //! driver fills it with a raw read of the block's QMC update register.
+    //! Zero by default, which is the value the zero-filled output carried
+    //! before this field existed, so every claim written before it keeps its
+    //! meaning. Set it before PyRFdc::create(), because the constructor is
+    //! where the default is captured.
+    uint32_t qmcEventSource = 0;
+
     //! The clock distribution topology XRFdc_GetClkDistribution hands back.
     //! Empty by default, which is no distribution at all, so the production
     //! cache keeps the ungrouped values it was declared with unless a claim
@@ -278,6 +286,7 @@ class XRFdcScript {
         ipType = 0;
         adcMaxRate = 0.0;
         dacMaxRate = 0.0;
+        qmcEventSource = 0;
         distributions.clear();
         distributionFillsOnRefusal = false;
         distributionFillsFoundSlotsOnly = false;

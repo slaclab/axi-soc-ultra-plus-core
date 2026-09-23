@@ -579,6 +579,20 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                     if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) == XRFDC_SUCCESS) {
 
                         if (XRFdc_GetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) == XRFDC_SUCCESS) {
+                            // The getter reports the update source as a raw
+                            // read of the block's QMC update register, and on
+                            // a high speed ADC tile that register can hold
+                            // immediate or slice, the two sources
+                            // XRFdc_SetQMCSettings refuses for that tile type.
+                            // Reset replays this default through that setter,
+                            // so such a capture fails the tile at every
+                            // reset. Tile is the default declared above and
+                            // the source XRFdc_UpdateEvent can trigger itself.
+                            if ((i == XRFDC_ADC_TILE) && (XRFdc_IsHighSpeedADC(RFdcInstPtr_, j) == 1) &&
+                                ((qmcDefault_[i][j][k].EventSource == XRFDC_EVNT_SRC_IMMEDIATE) ||
+                                 (qmcDefault_[i][j][k].EventSource == XRFDC_EVNT_SRC_SLICE))) {
+                                qmcDefault_[i][j][k].EventSource = XRFDC_EVNT_SRC_TILE;
+                            }
                             qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
                         }
 

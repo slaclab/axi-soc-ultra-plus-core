@@ -190,6 +190,14 @@ typedef int32_t s32;
 //! compared. Value from AMD PG269.
 #define XRFDC_EVNT_SRC_TILE 0x2U
 
+//! The two update sources XRFdc_SetQMCSettings refuses on a high speed ADC
+//! tile. Compared by the production constructor, which replaces either one
+//! in a captured quadrature default, and by the XRFdc_SetQMCSettings stub,
+//! which models the refusal. Values read out of xrfdc.h at embeddedsw
+//! 7637d1bd (xlnx_rel_v2026.1.1), byte-identical to the image sysroot copy.
+#define XRFDC_EVNT_SRC_IMMEDIATE 0x0U
+#define XRFDC_EVNT_SRC_SLICE 0x1U
+
 //! Opaque to the harness: assigned into mixer defaults and never compared.
 //! Values from AMD PG269.
 #define XRFDC_COARSE_MIX_OFF 0x20U

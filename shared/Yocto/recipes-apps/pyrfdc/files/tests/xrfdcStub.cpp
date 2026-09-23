@@ -30,6 +30,9 @@
  *   Zero is also what an unscripted XRFdc_ReadReg returns, so the two
  *   unscripted paths agree.
  *
+ * One body departs from step 3: XRFdc_SetQMCSettings also refuses the two
+ * update sources the driver refuses on a high speed ADC tile. See its body.
+ *
  * Recording convention for the four register primitives: the fourth field of
  * the recorded call is the register offset, not a block id. Those calls
  * carry no block, and an offset is what a check about them needs to name.
@@ -268,14 +271,33 @@ u32 XRFdc_GetQMCSettings(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id
                          XRFdc_QMC_Settings *Settings) {
     (void)InstancePtr;
     zero(Settings);
+    if (Settings != nullptr) Settings->EventSource = gScript.qmcEventSource;
     return rec("XRFdc_GetQMCSettings", Type, Tile_Id, Block_Id);
 }
 
+//! Refuses the two update sources the driver refuses on a high speed ADC
+//! tile, which is the check in xrfdc_ap.c that fails with "event source is
+//! not supported in 4GSPS ADC". A stub that accepted them would be kinder
+//! than the driver and would hide a reset that replays a captured source the
+//! setter cannot take. The tile's speed is read through the selector without
+//! recording a call, because the driver asks it internally and no production
+//! code made that call.
 u32 XRFdc_SetQMCSettings(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id,
                          XRFdc_QMC_Settings *Settings) {
     (void)InstancePtr;
-    (void)Settings;
-    return rec("XRFdc_SetQMCSettings", Type, Tile_Id, Block_Id);
+    const u32 status = rec("XRFdc_SetQMCSettings", Type, Tile_Id, Block_Id);
+    if (status != XRFDC_SUCCESS) return status;
+    if ((Type == XRFDC_ADC_TILE) && (Settings != nullptr) &&
+        (gScript.statusFor("XRFdc_IsHighSpeedADC", ANY, Tile_Id, ANY) == 1) &&
+        ((Settings->EventSource == XRFDC_EVNT_SRC_IMMEDIATE) ||
+         (Settings->EventSource == XRFDC_EVNT_SRC_SLICE))) {
+        metal_log(METAL_LOG_ERROR,
+                  "\n Invalid Event Source, event source is not supported in 4GSPS ADC (%u)"
+                  " for ADC %u block %u in %s\r\n",
+                  Settings->EventSource, Tile_Id, Block_Id, __func__);
+        return XRFDC_FAILURE;
+    }
+    return status;
 }
 
 u32 XRFdc_GetCoarseDelaySettings(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id,
