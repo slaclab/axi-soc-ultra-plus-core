@@ -642,10 +642,10 @@ beside it.
        beside both a withdrawn and a not withdrawn reading, on source 2. It also refuses the
        documented getter on every one of those getter topologies with the refusing driver writing
        each topology out first, fails driver initialization at three constructor steps with a
-       distribution scripted, and reports every generation above the bound, 255 constructions,
-       with a distribution scripted, and requires each of those readings to publish every tile
-       ungrouped with a zero count and no withdrawal, beside exactly one construction-time line
-       naming the cause or a non-zero reason. The board-free claim
+       distribution scripted, and reports every generation from 4 to 255 and three values above
+       255, 255 constructions, with a distribution scripted, and requires each of those readings
+       to publish every tile ungrouped with a zero count and no withdrawal, beside exactly one
+       construction-time line naming the cause or a non-zero reason. The board-free claim
        ``a raw decode withdrawal and a board with no distribution publish the same register pair``
        constructs the ADC 3 and DAC 0 cycle beside a board with nothing scripted, requires both to
        publish the same two words, and requires the withdrawal line in the first and none in the

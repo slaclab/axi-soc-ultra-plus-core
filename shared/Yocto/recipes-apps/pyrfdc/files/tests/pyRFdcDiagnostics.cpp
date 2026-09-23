@@ -5883,12 +5883,13 @@ void runTopologySourceReadingCheck(const char *site, bool ok) {
  * two sources that obtain no topology it also measures the same 262,657
  * getter topologies handed to a getter that writes each one out and then
  * refuses, a driver whose construction failed at each of three constructor
- * steps with a distribution scripted, and every reported generation above
- * the bound, 255 constructions, with a distribution scripted. Every
- * sub-check also requires its enumeration to have constructed exactly its
- * domain, with every reading on the expected source and none capturing more
- * than one report, so an enumeration that built nothing or the wrong thing
- * cannot pass. All five tallies go to stderr on every run.
+ * steps with a distribution scripted, and every reported generation from 4
+ * to 255 and three values above 255, 255 constructions, with a distribution
+ * scripted. Every sub-check also requires its enumeration to have
+ * constructed exactly its domain, with every reading on the expected source
+ * and none capturing more than one report, so an enumeration that built
+ * nothing or the wrong thing cannot pass. All five tallies go to stderr on
+ * every run.
  *
  * Why the domain stops there. One construction costs about 14 to 15
  * microseconds on a development host. Every ordered getter array of up to
@@ -5899,8 +5900,9 @@ void runTopologySourceReadingCheck(const char *site, bool ok) {
  *
  * What it does not measure. Topologies past that domain, which rest on
  * reading the counting and withdrawal conditions of the three functions
- * named above and not on this claim. It is not a reading of any board
- * either: no board has ever published a withdrawal.
+ * named above and not on this claim, and generations other than those run,
+ * which rest on reading the path selection in PyRFdc::PyRFdc. It is not a
+ * reading of any board either: no board has ever published a withdrawal.
  */
 void checkAllUngroupedMapIsReadBesideTheTopologySource() {
     TopologySourceTally getter;
