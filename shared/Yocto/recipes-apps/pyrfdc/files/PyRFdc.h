@@ -617,8 +617,9 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! the attempt and its outcome, and say in the log what happened.
     //!
     //! masterIdx is the tile index of the group's master and armingIdx the
-    //! tile index of the edge tile whose failure armed the attempt, carried
-    //! in only so the log line can name it.
+    //! tile index of the tile whose failure armed the attempt, carried in so
+    //! the log lines can name the arming tile: the recovery report and the
+    //! refusal both do.
     //!
     //! The explicit reset and never the PLL reconfigure. A tile that did not
     //! come back is not powered up, and the reconfigure performs no cycle at
@@ -639,12 +640,14 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //!
     //! A masterIdx above seven is refused at entry: no reset is issued, no
     //! counter moves and no record changes, and the refusal is announced on
-    //! the error channel. The call is accepted and discarded, not rejected
-    //! by a return value and not asserted. The arming pass in PyRFdc::Reset
-    //! is the only call site and passes the composed index without a range
-    //! test of its own, so this refusal is the one guard on that path, and
-    //! an out of range index that reaches the pass is announced here rather
-    //! than skipped.
+    //! the error channel, naming the refused index and the arming tile. The
+    //! call is accepted and discarded, not rejected by a return value and
+    //! not asserted. The arming pass in PyRFdc::Reset is the only call site.
+    //! It passes the composed index without a range guard of its own, so
+    //! this refusal is the one guard on that path, and it leaves an out of
+    //! range index out of its one attempt per group dedupe. The result is
+    //! that every out of range index that reaches the pass is announced
+    //! here, one line per arming tile.
     //!
     //! A group holding more than eight tiles is truncated at eight. The
     //! dropped tiles are neither reset nor cleared, and the count of them is

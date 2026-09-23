@@ -698,6 +698,9 @@ void PyRFdc::Reset(int Tile_Id) {
     // the call rather than need a boundary of its own to be cleared on.
     uint32_t attempted[8];
     uint32_t attemptedLen = 0;
+    // The half of the arming pass bound a resize could break silently.
+    static_assert(sizeof(attempted) == sizeof(walk),
+                  "the attempted list holds one entry for every tile the walk can hold");
     bool sweepFailed = false;
 
     // Check if read
@@ -1003,36 +1006,53 @@ void PyRFdc::Reset(int Tile_Id) {
 
                 masterIdx = (uint32_t(armTile.masterType) * 4) + uint32_t(armTile.masterTile);
 
-                // Not range tested here, because recoverClkGroup
+                // No range guard here, because recoverClkGroup
                 // owns the range refusal: it refuses an index above seven at
                 // its own entry, ahead of every write, and announces the
-                // refusal on the error channel.
+                // refusal on the error channel, naming the index and the
+                // arming tile. The one comparison with seven below decides
+                // only whether the value takes part in the one attempt per
+                // group bound, and it skips nothing: every value reaches the
+                // call except an in-range master already in the list.
                 //
-                // An ungrouped tile carries 0xFF in both master fields, so a
-                // tile that reached this point without the edge role would
-                // form 1275 above. The role test above is what keeps the
-                // value in range today. A silent skip here would hide exactly
-                // a regression in that role test, which is the input the
-                // callee's announcement exists to expose: the tile would be
-                // dropped with no line and the console would say nothing.
-                // That is why the refusal is left to the callee alone.
+                // An ungrouped tile carries 0xFF in both master fields, so an
+                // ungrouped tile that reached this point would form 1275
+                // above, while a master would form its own index, which is in
+                // range. No range test can catch a master that a regressed
+                // role test lets through. The only thing that catches it is
+                // the group master sub-check of the board-free claim
+                // a failing tile that is not an edge arms no recovery.
+                // The role test above is what keeps both out today.
                 //
-                // What not testing here costs is one entry in attempted
-                // naming a master no recovery was run for, because the index
-                // is written there before the call. attempted is local to
-                // this call, gains at most one entry per walked tile and is
-                // sized to the walk, and an out of range value never compares
-                // equal to a master in range.
-                for (a = 0; a < attemptedLen; a++) {
-                    if (attempted[a] == masterIdx) {
-                        alreadyAttempted = true;
+                // Why the dedupe runs on in-range values only. Every ungrouped
+                // tile forms the same value, so a dedupe on it would pass the
+                // first such arm in a pass and drop every later one with no
+                // line, which is exactly the silent skip a regression in the
+                // role test must not be hidden behind. Scoped to in-range
+                // values, the dedupe lets every out of range arm reach the
+                // refusal, which announces it once per arming tile. An out of
+                // range value names no group, so there is no group for the
+                // one attempt bound to protect.
+                //
+                // The bound. attempted holds only in-range masters, gains at
+                // most one entry per iteration of this loop, and this loop
+                // runs walkLen times. walkLen is at most eight because
+                // buildOwnedTileWalk emits each tile index at most once, and
+                // attempted is declared the size of walk, which the
+                // static_assert beside the two declarations holds. So
+                // attemptedLen never exceeds walkLen and never exceeds eight.
+                if (masterIdx <= 7) {
+                    for (a = 0; a < attemptedLen; a++) {
+                        if (attempted[a] == masterIdx) {
+                            alreadyAttempted = true;
+                        }
                     }
-                }
-                if (alreadyAttempted) {
-                    continue;
-                }
+                    if (alreadyAttempted) {
+                        continue;
+                    }
 
-                attempted[attemptedLen++] = masterIdx;
+                    attempted[attemptedLen++] = masterIdx;
+                }
                 recoverClkGroup(masterIdx, armIdx);
             }
 
@@ -4867,12 +4887,15 @@ void PyRFdc::recoverClkGroup(uint32_t masterIdx, uint32_t armingIdx) {
     // be inferred from the absence of a line, which is the same reason the
     // documented getter's refusal in the constructor has a report of its
     // own. No caller in this file can pass such an index today, so the line
-    // is expected never to be emitted, and that is why it costs one literal
-    // rather than a counter. A plain literal because the text has no runtime
-    // parts, so the compiler can check it as a format.
+    // is expected never to be emitted, and that is why it costs one line
+    // rather than a counter. The refused index and the arming tile are format
+    // arguments, so the compiler checks both specifiers, as it does for the
+    // dropped tile count further down.
     if (masterIdx > 7) {
-        log_->error("clock group recovery refused because the master index is out of range;"
-                    " no tile was reset and no recovery counter moved\n");
+        log_->error("clock group recovery refused because master index %u named by %s%u"
+                    " is out of range; no tile was reset and no recovery counter moved\n",
+                    unsigned(masterIdx), ((armingIdx >> 2) & 0x1) ? "DAC" : "ADC",
+                    unsigned(armingIdx & 0x3));
         return;
     }
 
