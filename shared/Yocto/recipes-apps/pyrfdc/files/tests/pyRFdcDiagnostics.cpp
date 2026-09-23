@@ -5662,13 +5662,16 @@ const char kOutOfRangeGenerationLinePrefix[] =
 
 //! What one enumeration of a path that obtains no topology saw.
 //!
-//! Every counter but the first two cause counters and the reason counter
-//! must stay zero for the path to have published what it is documented to:
-//! the expected source, every tile ungrouped, a zero count and no withdrawal
-//! report. The cause counters say whether each construction captured exactly
-//! one line naming its cause, and the reason counter how many read a
-//! non-zero InitFailureReason, so a sub-check can require one or the other
-//! on every construction.
+//! constructions counts what was built. wrongSource, notAllUngrouped,
+//! nonZeroCount and withdrawalReports must stay zero on every domain for the
+//! path to have published what it is documented to: the expected source,
+//! every tile ungrouped, a zero count and no withdrawal report.
+//! causeLineOnce and causeLineNotOnce are counted only when a cause prefix is
+//! given, by whether exactly one captured line carries it, and reasonSet only
+//! when none is, by whether InitFailureReason reads non-zero. So a domain with
+//! a cause line requires causeLineOnce equal to its constructions and
+//! causeLineNotOnce zero, and the domain without one requires reasonSet equal
+//! to its constructions.
 struct NoTopologyTally {
     unsigned long constructions = 0;
     unsigned long wrongSource = 0;
@@ -5966,19 +5969,19 @@ void checkAllUngroupedMapIsReadBesideTheTopologySource() {
                                       (raw.nonZeroWithoutReport == 0) &&
                                       (raw.zeroWithReport > 0) && (raw.zeroWithoutReport > 0));
 
-    // Every counter a path that obtains no topology must leave at zero, so an
-    // enumeration that built nothing or the wrong thing cannot pass.
+    // Each conjunction holds the counters its domain can move and must leave
+    // at zero. A counter a domain cannot move is not asserted, because a
+    // conjunct that holds by construction asserts nothing.
     const bool refusedClean = (refused.wrongSource == 0) && (refused.notAllUngrouped == 0) &&
                               (refused.nonZeroCount == 0) && (refused.withdrawalReports == 0) &&
-                              (refused.causeLineNotOnce == 0) && (refused.reasonSet == 0);
+                              (refused.causeLineNotOnce == 0);
     const bool uninitializedClean =
         (uninitialized.wrongSource == 0) && (uninitialized.notAllUngrouped == 0) &&
-        (uninitialized.nonZeroCount == 0) && (uninitialized.withdrawalReports == 0) &&
-        (uninitialized.causeLineOnce == 0) && (uninitialized.causeLineNotOnce == 0);
+        (uninitialized.nonZeroCount == 0) && (uninitialized.withdrawalReports == 0);
     const bool outOfRangeClean =
         (outOfRange.wrongSource == 0) && (outOfRange.notAllUngrouped == 0) &&
         (outOfRange.nonZeroCount == 0) && (outOfRange.withdrawalReports == 0) &&
-        (outOfRange.causeLineNotOnce == 0) && (outOfRange.reasonSet == 0);
+        (outOfRange.causeLineNotOnce == 0);
 
     runTopologySourceReadingCheck("no topology obtained, every tile ungrouped and nothing withdrawn",
                                   refusedClean && (refused.constructions == kGetterTopologyCount) &&
