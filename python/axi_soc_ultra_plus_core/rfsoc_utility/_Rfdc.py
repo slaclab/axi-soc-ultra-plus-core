@@ -640,10 +640,12 @@ class Rfdc(pr.Device):
         # rule that this file leaves the reset path alone. That rule exists to
         # avoid host and driver version skew on the path that performs a
         # reset: ResetAllAdc at 0x10010 and ResetAllDac at 0x10014 keep their
-        # offsets and their RemoteCommand form, and Init() is untouched, so a
-        # host and a driver built from different trees still agree on how a
-        # reset is requested. A read-only variable creates no such skew, since
-        # a driver that does not implement the offset simply refuses the read.
+        # offsets and their RemoteCommand form, and Init() requests a reset
+        # only through those two commands, so a host and a driver built from
+        # different trees still agree on how a reset is requested, and an
+        # older driver's two global resets also restart every enabled tile.
+        # A read-only variable creates no such skew, since a driver that does
+        # not implement the offset simply refuses the read.
         # Without these four the registers cannot be reached from the host at
         # all, because the read-only state capture tool reads by variable path
         # through this device model and never by literal address.
@@ -755,18 +757,16 @@ class Rfdc(pr.Device):
     def Init(self):
         print( f'{self.path}: Initialize RFDC')
         # Global RFDC Reset
+        #
+        # No per-tile reset follows these two. Between them they restart
+        # every enabled tile once, a clock distribution master before the
+        # tiles it clocks. A reset issued one tile at a time afterwards would
+        # restart a tile whose sample clock comes from another tile apart from
+        # the tile that drives it, or restart that driving tile under its
+        # running dependents. The per-tile Reset command remains for a caller
+        # that wants one tile.
         self.ResetAllAdc()
         self.ResetAllDac()
-
-        # Reset ADC Tiles
-        for i in range(4):
-            if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0):
-                self.AdcTile[i].Reset()
-
-        # Reset DAC Tiles
-        for i in range(4):
-            if self.enDacTile[i] and (self.CheckDacTileEnabled[i].get() != 0):
-                self.DacTile[i].Reset()
 
         # Update all the remote variables after the reset
         self.UpdateIsEnabled()

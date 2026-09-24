@@ -1271,10 +1271,9 @@ void checkFailingStepStillVisitsRemainingTiles() {
 /* StartUp, Shutdown, CustomStartUp and the single-tile branch of Reset all  */
 /* carry the bare message the global reset path carried before this work.    */
 /* They have no accumulation problem, one tile per call, so what they are    */
-/* missing is the diagnostic detail and nothing else. _Rfdc.py's Init()      */
-/* calls AdcTile[i].Reset() per tile after the two global resets, so a       */
-/* failure on that path is reachable on the same boot as the one this        */
-/* project keeps seeing.                                                     */
+/* missing is the diagnostic detail and nothing else. The host's per-tile    */
+/* Reset command reaches the single-tile branch, so a failure on that path   */
+/* is reachable whenever a caller issues it.                                 */
 /* ------------------------------------------------------------------------ */
 
 //! Transaction address of ADC tile 3's tile-only register block. Bit 15
