@@ -8013,6 +8013,156 @@ void checkAcceptedQmcSourceOnHighSpeedAdcTileIsKept() {
 }
 
 /* ------------------------------------------------------------------------ */
+/* Mixer default of a block whose capture failed.                            */
+/*                                                                           */
+/* The constructor declares every block's mixer default as both mixers off   */
+/* and replaces it with XRFdc_GetMixerSettings only when that capture        */
+/* succeeds. The reset sweep replays the default with XRFdc_SetMixerSettings */
+/* and the driver accepts the off pair, dispatching it to XRFdc_MixersOff,   */
+/* so a block whose capture failed was switched off at every global reset    */
+/* with no failure recorded, and its converter delivered frames of zeros.    */
+/* The setter stub records what it was handed, so these claims ask what the  */
+/* sweep wrote into the block and not only whether it wrote.                 */
+/* ------------------------------------------------------------------------ */
+
+//! How many recorded XRFdc_SetMixerSettings calls carried the constructor's
+//! declared off default into this block.
+size_t offDefaultWritesTo(uint32_t type, uint32_t tile, uint32_t block) {
+    size_t n = 0;
+    for (size_t i = 0; i < gScript.mixerWrites.size(); i++) {
+        const XRFdcScriptMixerWrite &w = gScript.mixerWrites[i];
+        if ((w.type == type) && (w.tile == tile) && (w.block == block) &&
+            (w.mixerType == XRFDC_MIXER_TYPE_OFF) && (w.coarseMixFreq == XRFDC_COARSE_MIX_OFF)) {
+            n++;
+        }
+    }
+    return n;
+}
+
+//! How many recorded XRFdc_SetMixerSettings calls of this tile type went to
+//! any block other than this one.
+size_t mixerWritesElsewhere(uint32_t type, uint32_t tile, uint32_t block) {
+    size_t n = 0;
+    for (size_t i = 0; i < gScript.mixerWrites.size(); i++) {
+        const XRFdcScriptMixerWrite &w = gScript.mixerWrites[i];
+        if ((w.type == type) && !((w.tile == tile) && (w.block == block))) n++;
+    }
+    return n;
+}
+
+/*
+ * The failure this carrier showed. ADC 1 block 0 fails its capture at
+ * construction, and the global ADC reset must not hand it the declared off
+ * default. The other fifteen enabled ADC blocks captured and are still
+ * replayed, so the claim cannot pass on a sweep that stopped writing mixers
+ * altogether, and the reset still completes clean.
+ */
+void checkAdcBlockWithFailedMixerCaptureIsNotGivenTheOffDefault() {
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_GetMixerSettings", XRFDC_ADC_TILE, 1, 0, XRFDC_FAILURE);
+
+    PyRFdcPtr device = PyRFdc::create();
+    const bool captureTried = gScript.sawCall("XRFdc_GetMixerSettings", XRFDC_ADC_TILE, 1, 0);
+    gScript.calls.clear();
+    gScript.mixerWrites.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+    const size_t offWrites = offDefaultWritesTo(XRFDC_ADC_TILE, 1, 0);
+    const size_t others = mixerWritesElsewhere(XRFDC_ADC_TILE, 1, 0);
+
+    bool ok = captureTried;
+    if (ok) ok = (offWrites == 0);
+    if (ok) ok = (others == 15);
+    if (ok) ok = adc->doneCalled() && !adc->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr,
+                "failed ADC mixer capture: tried=%d off default writes=%zu, other writes=%zu, "
+                "reset err=%u '%s'\n",
+                static_cast<int>(captureTried), offWrites, others, adc->errorStrCalls(),
+                adc->errorStrValue().c_str());
+    }
+
+    runCheck("an ADC block whose mixer capture failed is not given the off default by the reset",
+             ok);
+}
+
+/*
+ * The same replay reached a DAC block whose capture failed, through the same
+ * setter call, and switched its mixers off the same way.
+ */
+void checkDacBlockWithFailedMixerCaptureIsNotGivenTheOffDefault() {
+    gScript.reset();
+    gScript.scriptFailure("XRFdc_GetMixerSettings", XRFDC_DAC_TILE, 0, 0, XRFDC_FAILURE);
+
+    PyRFdcPtr device = PyRFdc::create();
+    const bool captureTried = gScript.sawCall("XRFdc_GetMixerSettings", XRFDC_DAC_TILE, 0, 0);
+    gScript.calls.clear();
+    gScript.mixerWrites.clear();
+
+    rim::TransactionPtr dac = driveWrite(device, kResetAllDac, 1);
+
+    const size_t offWrites = offDefaultWritesTo(XRFDC_DAC_TILE, 0, 0);
+    const size_t others = mixerWritesElsewhere(XRFDC_DAC_TILE, 0, 0);
+
+    bool ok = captureTried;
+    if (ok) ok = (offWrites == 0);
+    if (ok) ok = (others == 15);
+    if (ok) ok = dac->doneCalled() && !dac->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr,
+                "failed DAC mixer capture: tried=%d off default writes=%zu, other writes=%zu, "
+                "reset err=%u '%s'\n",
+                static_cast<int>(captureTried), offWrites, others, dac->errorStrCalls(),
+                dac->errorStrValue().c_str());
+    }
+
+    runCheck("a DAC block whose mixer capture failed is not given the off default by the reset",
+             ok);
+}
+
+/*
+ * The capture skipped on every block at once. The constructor captures only
+ * while the instance's UpdateMixerScale reads at most one, and neither the
+ * driver nor PyRFdc initializes that field, so an allocation that left a
+ * larger value there skips the capture for all blocks. Two, the smallest
+ * value the guard refuses, stands in for that memory. No enabled ADC block
+ * may then receive the off default, and the reset still completes clean.
+ */
+void checkSkippedMixerCaptureOnEveryBlockWritesNoOffDefault() {
+    gScript.reset();
+    gScript.instanceUpdateMixerScale = 2;
+
+    PyRFdcPtr device = PyRFdc::create();
+    const size_t captures = gScript.countCalls("XRFdc_GetMixerSettings");
+    gScript.calls.clear();
+    gScript.mixerWrites.clear();
+
+    rim::TransactionPtr adc = driveWrite(device, kResetAllAdc, 1);
+
+    size_t offWrites = 0;
+    for (uint32_t tile = 0; tile < 4; tile++) {
+        for (uint32_t block = 0; block < 4; block++) {
+            offWrites += offDefaultWritesTo(XRFDC_ADC_TILE, tile, block);
+        }
+    }
+
+    bool ok = (captures == 0);
+    if (ok) ok = (offWrites == 0);
+    if (ok) ok = adc->doneCalled() && !adc->errorStrCalled();
+
+    if (!ok) {
+        fprintf(stderr, "capture skipped everywhere: captures=%zu off default writes=%zu, "
+                        "reset err=%u '%s'\n",
+                captures, offWrites, adc->errorStrCalls(), adc->errorStrValue().c_str());
+    }
+
+    runCheck("a mixer capture skipped on every block leaves the reset writing no off default", ok);
+}
+
+/* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
 /* Everything above asserts something about PyRFdc.cpp. These three assert   */
@@ -8116,7 +8266,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 145;
+const int kClaimsBeforeCountCheck = 148;
 
 /*
  * Every claim this file defines actually ran.
@@ -8269,6 +8419,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkOnlyHighSpeedAdcTilesHaveTheirQmcSourceReplaced();
     checkSliceQmcSourceOnHighSpeedAdcTileIsReplaced();
     checkAcceptedQmcSourceOnHighSpeedAdcTileIsKept();
+
+    checkAdcBlockWithFailedMixerCaptureIsNotGivenTheOffDefault();
+    checkDacBlockWithFailedMixerCaptureIsNotGivenTheOffDefault();
+    checkSkippedMixerCaptureOnEveryBlockWritesNoOffDefault();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();

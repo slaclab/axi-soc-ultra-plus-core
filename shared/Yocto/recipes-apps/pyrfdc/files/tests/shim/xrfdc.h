@@ -198,12 +198,20 @@ typedef int32_t s32;
 #define XRFDC_EVNT_SRC_IMMEDIATE 0x0U
 #define XRFDC_EVNT_SRC_SLICE 0x1U
 
-//! Opaque to the harness: assigned into mixer defaults and never compared.
-//! Values from AMD PG269.
-#define XRFDC_COARSE_MIX_OFF 0x20U
+//! The mixer values the constructor declares as every block's default. NOT
+//! opaque: the XRFdc_SetMixerSettings stub records the settings it was
+//! handed, and a claim compares MixerType and CoarseMixFreq against the off
+//! pair to tell the declared default from a captured one. The zero fill the
+//! getter stub performs must therefore read as that default, which it does
+//! only with the driver's own values. Read out of the rfdc_v13_1 xrfdc.h
+//! shipped with Vitis 2026.1.
+#define XRFDC_COARSE_MIX_OFF 0x0U
 #define XRFDC_MIXER_MODE_OFF 0x0U
+#define XRFDC_MIXER_TYPE_OFF 0x0U
+
+//! Opaque to the harness: assigned into mixer defaults and never compared.
+//! Value from AMD PG269.
 #define XRFDC_MIXER_SCALE_0P7 0x2U
-#define XRFDC_MIXER_TYPE_OFF 0x3U
 
 //! Opaque to the harness: passed to XRFdc_UpdateEvent, which is a stub that
 //! records its argument rather than acting on it. Values from AMD PG269.

@@ -151,6 +151,17 @@ struct XRFdcScriptDistribution {
     uint32_t edgeTileIds[2];
 };
 
+//! One XRFdc_SetMixerSettings call as the stub received it: the indices the
+//! recorded form carries, plus the two settings fields that tell the
+//! constructor's declared off default from a captured one.
+struct XRFdcScriptMixerWrite {
+    uint32_t type;
+    uint32_t tile;
+    uint32_t block;
+    uint32_t mixerType;
+    uint32_t coarseMixFreq;
+};
+
 //! Key for a scripted register value.
 struct XRFdcScriptRegKey {
     uint32_t type;
@@ -177,6 +188,12 @@ class XRFdcScript {
     //! Text the libmetal log stub was asked to print, kept apart from the
     //! rogue log lines because they reach different places on the target.
     std::vector<std::string> metalLogs;
+
+    //! Every XRFdc_SetMixerSettings call with the settings it was handed, in
+    //! call order. The recorded call list names the block a write went to
+    //! but not what was written, and whether the reset sweep replays the
+    //! declared off default is a question about what was written.
+    std::vector<XRFdcScriptMixerWrite> mixerWrites;
 
     //! The Enabled field XRFdc_GetPLLConfig reports. Read by the production
     //! constructor into pllDefault_, which the reset sweep then tests before
@@ -212,6 +229,16 @@ class XRFdcScript {
     //! meaning. Set it before PyRFdc::create(), because the constructor is
     //! where the default is captured.
     uint32_t qmcEventSource = 0;
+
+    //! What the driver instance's UpdateMixerScale holds when the production
+    //! constructor first reads it. XRFdc_CfgInitialize never writes that
+    //! field and PyRFdc never initializes the instance, so in production it
+    //! is whatever the allocation left there; the XRFdc_CfgInitialize stub
+    //! stores this value into it so a claim can choose that memory rather
+    //! than inherit the heap's. The constructor captures a block's mixer
+    //! settings only when the field reads at most one. Zero by default,
+    //! which is what a zeroed instance holds. Set it before PyRFdc::create().
+    uint32_t instanceUpdateMixerScale = 0;
 
     //! The clock distribution topology XRFdc_GetClkDistribution hands back.
     //! Empty by default, which is no distribution at all, so the production
@@ -279,6 +306,7 @@ class XRFdcScript {
         logWarnings.clear();
         logDebugs.clear();
         metalLogs.clear();
+        mixerWrites.clear();
         failures_.clear();
         registers_.clear();
         registerQueues_.clear();
@@ -287,6 +315,7 @@ class XRFdcScript {
         adcMaxRate = 0.0;
         dacMaxRate = 0.0;
         qmcEventSource = 0;
+        instanceUpdateMixerScale = 0;
         distributions.clear();
         distributionFillsOnRefusal = false;
         distributionFillsFoundSlotsOnly = false;

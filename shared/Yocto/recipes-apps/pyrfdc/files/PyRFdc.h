@@ -218,6 +218,11 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     XRFdc_Mixer_Settings mixerDefault_[2][4][4];
     XRFdc_Mixer_Settings mixerConfig_[2][4][4];
 
+    //! Whether the constructor captured this block's mixerDefault_ from the
+    //! driver. Reset replays the default only where this is set, because the
+    //! declared default it otherwise holds is both mixers off.
+    bool mixerCaptured_[2][4][4];
+
     //! What one tile of a global reset did, and what its control and status
     //! registers said at the moment it did it.
     //!

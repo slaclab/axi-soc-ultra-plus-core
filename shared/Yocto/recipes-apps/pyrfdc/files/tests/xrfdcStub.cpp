@@ -174,6 +174,11 @@ u32 XRFdc_CfgInitialize(XRFdc *InstancePtr, XRFdc_Config *ConfigPtr) {
     //! this call declined, and there is no other handle on it.
     gScript.cfgInstance = InstancePtr;
     if (InstancePtr != nullptr && ConfigPtr != nullptr) InstancePtr->RFdc_Config = *ConfigPtr;
+    //! Not a write the driver makes. The driver leaves UpdateMixerScale as
+    //! the caller's memory held it, and this stands in for that memory, so
+    //! the value the constructor's mixer capture guard reads is the one a
+    //! claim chose instead of whatever the heap held.
+    if (InstancePtr != nullptr) InstancePtr->UpdateMixerScale = gScript.instanceUpdateMixerScale;
     return rec("XRFdc_CfgInitialize", ANY, ANY, ANY);
 }
 
@@ -260,10 +265,17 @@ u32 XRFdc_GetMixerSettings(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_
     return rec("XRFdc_GetMixerSettings", Type, Tile_Id, Block_Id);
 }
 
+//! Also keeps the two settings fields that tell the constructor's declared
+//! off default from a captured one, so a claim can ask what the reset sweep
+//! wrote into a block and not only whether it wrote.
 u32 XRFdc_SetMixerSettings(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id,
                            XRFdc_Mixer_Settings *Settings) {
     (void)InstancePtr;
-    (void)Settings;
+    if (Settings != nullptr) {
+        XRFdcScriptMixerWrite write = {Type, Tile_Id, Block_Id, Settings->MixerType,
+                                       Settings->CoarseMixFreq};
+        gScript.mixerWrites.push_back(write);
+    }
     return rec("XRFdc_SetMixerSettings", Type, Tile_Id, Block_Id);
 }
 

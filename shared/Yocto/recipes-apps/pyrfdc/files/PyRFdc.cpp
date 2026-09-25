@@ -373,6 +373,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                 mixerDefault_[i][j][k].FineMixerScale = XRFDC_MIXER_SCALE_0P7;
                 mixerDefault_[i][j][k].MixerType = XRFDC_MIXER_TYPE_OFF;
                 mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+                mixerCaptured_[i][j][k] = false;
             }
         }
     }
@@ -603,6 +604,7 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
                                 // Get the mixer setting
                                 if ( XRFdc_GetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) == XRFDC_SUCCESS) {
                                     mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+                                    mixerCaptured_[i][j][k] = true;
                                 }
                             }
                         }
@@ -967,14 +969,27 @@ void PyRFdc::Reset(int Tile_Id) {
                                     // the documented pair no longer raises
                                     // an event for settings it may not
                                     // have applied.
-                                    uint32_t mixerStatus = XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
-                                    if (mixerStatus != XRFDC_SUCCESS) {
-                                        recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_SetMixerSettings");
-                                    }
-                                    if (mixerStatus == XRFDC_SUCCESS) {
-                                        uint32_t mixerEventStatus = XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
-                                        if (mixerEventStatus != XRFDC_SUCCESS) {
-                                            recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_UpdateEvent");
+                                    //
+                                    // Only a captured default is replayed.
+                                    // A block whose capture did not happen
+                                    // or failed still holds the declared
+                                    // default, both mixers off, which the
+                                    // driver accepts and applies through
+                                    // XRFdc_MixersOff, so replaying it
+                                    // would switch that block's mixers off
+                                    // at every reset with no failure
+                                    // recorded. Such a block keeps the
+                                    // mixer the tile already holds.
+                                    if (mixerCaptured_[i][j][k]) {
+                                        uint32_t mixerStatus = XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]);
+                                        if (mixerStatus != XRFDC_SUCCESS) {
+                                            recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_SetMixerSettings");
+                                        }
+                                        if (mixerStatus == XRFDC_SUCCESS) {
+                                            uint32_t mixerEventStatus = XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
+                                            if (mixerEventStatus != XRFDC_SUCCESS) {
+                                                recordTileFailure(uint32_t(i), uint8_t(j), "XRFdc_UpdateEvent");
+                                            }
                                         }
                                     }
                                 }
