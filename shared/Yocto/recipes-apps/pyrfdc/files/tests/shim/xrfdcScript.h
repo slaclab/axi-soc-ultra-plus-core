@@ -240,6 +240,14 @@ class XRFdcScript {
     //! which is what a zeroed instance holds. Set it before PyRFdc::create().
     uint32_t instanceUpdateMixerScale = 0;
 
+    //! Whether the XRFdc_CfgInitialize stub leaves UpdateMixerScale exactly
+    //! as the instance's own initialization left it, instead of storing
+    //! instanceUpdateMixerScale there. False by default, so every claim
+    //! written against the knob above keeps its meaning. A claim that sets
+    //! it asks what PyRFdc itself puts in the field. Set it before the
+    //! instance is constructed.
+    bool instanceUpdateMixerScaleLeftAlone = false;
+
     //! The clock distribution topology XRFdc_GetClkDistribution hands back.
     //! Empty by default, which is no distribution at all, so the production
     //! cache keeps the ungrouped values it was declared with unless a claim
@@ -316,6 +324,7 @@ class XRFdcScript {
         dacMaxRate = 0.0;
         qmcEventSource = 0;
         instanceUpdateMixerScale = 0;
+        instanceUpdateMixerScaleLeftAlone = false;
         distributions.clear();
         distributionFillsOnRefusal = false;
         distributionFillsFoundSlotsOnly = false;

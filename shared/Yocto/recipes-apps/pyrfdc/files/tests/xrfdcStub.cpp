@@ -178,7 +178,9 @@ u32 XRFdc_CfgInitialize(XRFdc *InstancePtr, XRFdc_Config *ConfigPtr) {
     //! the caller's memory held it, and this stands in for that memory, so
     //! the value the constructor's mixer capture guard reads is the one a
     //! claim chose instead of whatever the heap held.
-    if (InstancePtr != nullptr) InstancePtr->UpdateMixerScale = gScript.instanceUpdateMixerScale;
+    if ((InstancePtr != nullptr) && !gScript.instanceUpdateMixerScaleLeftAlone) {
+        InstancePtr->UpdateMixerScale = gScript.instanceUpdateMixerScale;
+    }
     return rec("XRFdc_CfgInitialize", ANY, ANY, ANY);
 }
 

@@ -8162,6 +8162,40 @@ void checkSkippedMixerCaptureOnEveryBlockWritesNoOffDefault() {
     runCheck("a mixer capture skipped on every block leaves the reset writing no off default", ok);
 }
 
+/*
+ * The instance's own initialization decides the capture guard. The fixture
+ * leaves UpdateMixerScale alone, and the object is constructed into storage
+ * filled with a nonzero pattern first, so a driver instance PyRFdc does not
+ * initialize reads that pattern whatever the allocator would have handed
+ * back. The constructor must still read zero there and attempt the mixer
+ * capture on every enabled block: four tiles of four blocks of each type.
+ */
+void checkConstructorAttemptsMixerCaptureOnEveryEnabledBlock() {
+    gScript.reset();
+    gScript.instanceUpdateMixerScaleLeftAlone = true;
+
+    void *storage = ::operator new(sizeof(PyRFdc));
+    memset(storage, 0xA5, sizeof(PyRFdc));
+    PyRFdc *device = new (storage) PyRFdc();
+
+    const size_t captures = gScript.countCalls("XRFdc_GetMixerSettings");
+    const uint32_t scale =
+        (gScript.cfgInstance != nullptr) ? gScript.cfgInstance->UpdateMixerScale : 0xFFFFFFFFu;
+
+    device->~PyRFdc();
+    ::operator delete(storage);
+
+    bool ok = (captures == 32);
+    if (ok) ok = (scale == 0);
+
+    if (!ok) {
+        fprintf(stderr, "instance initialization: captures=%zu UpdateMixerScale=0x%08X\n",
+                captures, scale);
+    }
+
+    runCheck("the constructor attempts the mixer capture on every enabled block", ok);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Meta-assertions.                                                          */
 /*                                                                           */
@@ -8266,7 +8300,7 @@ void checkRecordedCallListIsNotEmpty() {
 //! Claims that run before the count check itself. Update deliberately when a
 //! claim is added or removed, so a claim that silently stops being invoked
 //! turns this one red instead of shrinking the suite unnoticed.
-const int kClaimsBeforeCountCheck = 148;
+const int kClaimsBeforeCountCheck = 149;
 
 /*
  * Every claim this file defines actually ran.
@@ -8423,6 +8457,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     checkAdcBlockWithFailedMixerCaptureIsNotGivenTheOffDefault();
     checkDacBlockWithFailedMixerCaptureIsNotGivenTheOffDefault();
     checkSkippedMixerCaptureOnEveryBlockWritesNoOffDefault();
+    checkConstructorAttemptsMixerCaptureOnEveryEnabledBlock();
 
     checkFixtureResetEmptiesRecordedState();
     checkRecordedCallListIsNotEmpty();

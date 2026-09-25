@@ -129,8 +129,10 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     //! Lock
     std::mutex mtx_;
 
-    //! RFdc driver instance
-    XRFdc RFdcInst_;
+    //! RFdc driver instance. Value-initialized, because XRFdc_CfgInitialize
+    //! does not write every field and the constructor's mixer capture guard
+    //! reads UpdateMixerScale, which only XRFdc_SetMixerSettings writes.
+    XRFdc RFdcInst_{};
     XRFdc *RFdcInstPtr_ = &RFdcInst_;
 
     //! Local variables
