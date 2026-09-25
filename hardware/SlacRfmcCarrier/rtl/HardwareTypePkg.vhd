@@ -97,7 +97,7 @@ package HardwareTypePkg is
 
    constant GPIO_DEVICE_MAP_C : I2cAxiLiteDevArray(0 to 0) := (
       0              => MakeI2cAxiLiteDevType(
-         i2cAddress  => "0100000",      -- PCA9555
+         i2cAddress  => "0100000",      -- PCA9506
          dataSize    => 8,              -- in units of bits
          addrSize    => 8,              -- in units of bits
          endianness  => '0',            -- Little endian
