@@ -446,12 +446,14 @@ create_clock -name ethClkP  -period  6.4 [get_ports {ethClkP}]
 # set_property PACKAGE_PIN Y5 [get_ports { adcClkP[3] }]; # ADC227_CLK_P
 # set_property PACKAGE_PIN Y4 [get_ports { adcClkN[3] }]; # ADC227_CLK_N
 
+# Note: DCLK_OUT4_P/N swapped at LMK in schematics for dacClkP[0]/dacClkN[0]
 # set_property PACKAGE_PIN R5 [get_ports { dacClkP[0] }]; # DAC228_CLK_P
 # set_property PACKAGE_PIN R4 [get_ports { dacClkN[0] }]; # DAC228_CLK_N
 
 # set_property PACKAGE_PIN N5 [get_ports { dacClkP[1] }]; # DAC230_CLK_P
 # set_property PACKAGE_PIN N4 [get_ports { dacClkN[1] }]; # DAC230_CLK_N
 
+# Note: SDCLK_OUT5_P/N swapped at LMK in schematics for rfdcSysRefP/rfdcSysRefN
 # set_property PACKAGE_PIN U5 [get_ports { rfdcSysRefP }]
 # set_property PACKAGE_PIN U4 [get_ports { rfdcSysRefN }]
 

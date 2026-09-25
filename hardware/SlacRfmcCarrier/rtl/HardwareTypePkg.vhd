@@ -68,20 +68,36 @@ package HardwareTypePkg is
       1 => "10",                        -- OUT[1] = IN[2], FPGA  = backplane
       0 => "00");  -- OUT[0] = IN[0], RTM0  = RTM0 (loopback)
 
-   constant I2C_SCL_FREQ_C : real := 400.0E+3;
+   constant I2C_SCL_FREQ_C : real := 100.0E+3;
 
    constant XBAR_I2C_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, MUX_I2C_ADDR_C, 20, 16);
 
-   constant DDR_DEVICE_MAP_C : I2cAxiLiteDevArray(0 to 0) := (
+   -- Every entry below has addrSize => 8, so maxAddrSize(DDR_DEVICE_MAP_C) is 8 and
+   -- I2cRegMasterAxiBridge's I2C_REG_ADDR_SIZE_C is 8. The device-select field is
+   -- araddr(I2C_DEV_AXI_ADDR_HIGH_C downto 10) with a width of log2(DDR_DEVICE_MAP_C'length),
+   -- and surf's log2 rounds up, so three entries still give a two-bit field at
+   -- araddr(11 downto 10): device i occupies the 0x400-byte window starting at i*0x400,
+   -- SPD 0x000-0x3FC, SPA0 0x400, SPA1 0x800.
+   constant DDR_DEVICE_MAP_C : I2cAxiLiteDevArray(0 to 2) := (
       0             => MakeI2cAxiLiteDevType(
          i2cAddress => "1010000",  -- SRD Memory (1010) (Lookup tool at www.micron.com/spd)
+         dataSize   => 8,               -- in units of bits
+         addrSize   => 8,               -- in units of bits
+         endianness => '1'),            -- Big endian
+      1             => MakeI2cAxiLiteDevType(
+         i2cAddress => "0110110",  -- SPA0 (0x36): DDR4 SPD set-page-address-0 command slave
+         dataSize   => 8,               -- in units of bits
+         addrSize   => 8,               -- in units of bits
+         endianness => '1'),            -- Big endian
+      2             => MakeI2cAxiLiteDevType(
+         i2cAddress => "0110111",  -- SPA1 (0x37): DDR4 SPD set-page-address-1 command slave
          dataSize   => 8,               -- in units of bits
          addrSize   => 8,               -- in units of bits
          endianness => '1'));           -- Big endian
 
    constant GPIO_DEVICE_MAP_C : I2cAxiLiteDevArray(0 to 0) := (
       0              => MakeI2cAxiLiteDevType(
-         i2cAddress  => "0100000",      -- PCA9555
+         i2cAddress  => "0100000",      -- PCA9506
          dataSize    => 8,              -- in units of bits
          addrSize    => 8,              -- in units of bits
          endianness  => '0',            -- Little endian
