@@ -337,9 +337,9 @@ set_property -dict { PACKAGE_PIN AU8 IOSTANDARD LVCMOS33 } [get_ports {ledRed}]
 set_property -dict { PACKAGE_PIN AV5 IOSTANDARD LVCMOS33 } [get_ports {ipmcScl}]
 set_property -dict { PACKAGE_PIN AV6 IOSTANDARD LVCMOS33 } [get_ports {ipmcSda}]
 
-set_property -dict { PACKAGE_PIN AU1 IOSTANDARD LVCMOS33 } [get_ports {muxRstL}]
-set_property -dict { PACKAGE_PIN AU2 IOSTANDARD LVCMOS33 } [get_ports {muxScl}]
-set_property -dict { PACKAGE_PIN AV2 IOSTANDARD LVCMOS33 } [get_ports {muxSda}]
+set_property -dict { PACKAGE_PIN AU1 IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 12 } [get_ports {muxRstL}]
+set_property -dict { PACKAGE_PIN AU2 IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 12 } [get_ports {muxScl}]
+set_property -dict { PACKAGE_PIN AV2 IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 12 } [get_ports {muxSda}]
 
 set_property -dict { PACKAGE_PIN AV3 IOSTANDARD LVCMOS33 } [get_ports {lmkSync}]
 set_property -dict { PACKAGE_PIN AW3 IOSTANDARD LVCMOS33 } [get_ports {lmkCsL}]
