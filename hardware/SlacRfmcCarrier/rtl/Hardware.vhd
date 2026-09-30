@@ -301,7 +301,9 @@ begin
    U_PWR_I2C : entity surf.AxiLitePMbusMasterCore
       generic map (
          TPD_G          => TPD_G,
-         I2C_ADDR_G     => b"0101_000",
+         I2C_ADDR_G     => b"0100_110",  -- BMR467 SA shorted to PREF = 26h (Revision C00)
+--       I2C_ADDR_G     => b"1110_010",  -- BMR474 SA shorted to PREF = 72h (Revision C01 and later)
+         RD_GAP_TIME_G  => 2.0E-3,  -- BMR467/BMR474 need 2 ms idle after a PMBus read
          I2C_SCL_FREQ_G => I2C_SCL_FREQ_C,
          AXI_CLK_FREQ_G => AXIL_CLK_FREQ_G)
       port map (

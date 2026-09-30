@@ -31,6 +31,11 @@ class Hardware(pr.Device):
                 offset = 0x04000000 + i*0x01000000,
             ))
 
+        self.add(hw.PMbus(
+            offset  = 0x0604_0000,
+            enabled = False, # Not enabled as this is a slow I2C transaction
+        ))
+
         spdDomain = {0: 'PS', 1: 'PL'}
         spdMuxChannel = {0: 0, 1: 1}
         for i in range(2):
