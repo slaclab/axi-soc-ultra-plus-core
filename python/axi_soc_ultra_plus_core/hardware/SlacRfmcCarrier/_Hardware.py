@@ -10,7 +10,10 @@
 
 import pyrogue as pr
 
+import surf.devices.micron as micron
 import surf.devices.ti as ti
+
+import axi_soc_ultra_plus_core.hardware.SlacRfmcCarrier as hw
 
 class Hardware(pr.Device):
     def __init__(self,**kwargs):
@@ -28,6 +31,28 @@ class Hardware(pr.Device):
                 offset = 0x04000000 + i*0x01000000,
             ))
 
+        spdDomain = {0: 'PS', 1: 'PL'}
+        spdMuxChannel = {0: 0, 1: 1}
+        for i in range(2):
+            self.add(micron.DdrSpd(
+                name        = f'DdrSpd[{i}]',
+                offset      = 0x0600_0000 + i * 0x0001_0000,
+                enabled     = False,  # Not enabled as this is a slow I2C transaction
+                description = (
+                    f"DDR4 {spdDomain[i]} SO-DIMM SPD EEPROM, behind I2C mux "
+                    f"channel {spdMuxChannel[i]}, slave address 0x50. The mux "
+                    "crossbar sets its channel control byte inline per "
+                    "transaction and exposes no channel-select register, so "
+                    "this description is the only place in the tree "
+                    "recording the domain and mux channel this device "
+                    "answers behind."
+                ),
+            ))
+
+        self.add(hw.I2cGpio(
+            offset = 0x0607_0000,
+        ))
+
     def _start(self):
         super()._start()
 
@@ -43,6 +68,13 @@ class Hardware(pr.Device):
             lmxCfg = [lmxConfig[0] for i in range(2)]
         else:
             lmxCfg = lmxConfig
+
+        # Power up the LMX chips if used
+        for i in range(2):
+            if lmxCfg[i] is not None:
+                self.I2cGpio.LMX_ENABLE[i].set(1)
+            else:
+                self.I2cGpio.LMX_ENABLE[i].set(0)
 
         # Seems like 1st time after power up that need to load twice
         for x in range(2):
