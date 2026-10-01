@@ -240,17 +240,17 @@ set_property -dict { PACKAGE_PIN AL8 IOSTANDARD LVCMOS18 } [get_ports {rfmcIoP[4
 set_property -dict { PACKAGE_PIN AM9 IOSTANDARD LVCMOS18 } [get_ports {rfmcIoN[3]}]
 set_property -dict { PACKAGE_PIN AL9 IOSTANDARD LVCMOS18 } [get_ports {rfmcIoP[3]}]
 
-set_property -dict { PACKAGE_PIN AN7 IOSTANDARD LVDS } [get_ports {lmkClkInN}]
-set_property -dict { PACKAGE_PIN AN8 IOSTANDARD LVDS } [get_ports {lmkClkInP}]
+set_property -dict { PACKAGE_PIN AN7 IOSTANDARD LVDS } [get_ports {lmkClkInN}]; # LMK_CLKIN1_N
+set_property -dict { PACKAGE_PIN AN8 IOSTANDARD LVDS } [get_ports {lmkClkInP}]; # LMK_CLKIN1_P
 
-set_property -dict { PACKAGE_PIN AM7 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkSysRefN}]
-set_property -dict { PACKAGE_PIN AM8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkSysRefP}]
+set_property -dict { PACKAGE_PIN AM7 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plSysRefN}]; # LMK_SYSREF_N = SDCLK_OUT9_N
+set_property -dict { PACKAGE_PIN AM8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plSysRefP}]; # LMK_SYSREF_P = SDCLK_OUT9_P
 
-set_property -dict { PACKAGE_PIN AR9 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutN[1]}]
-set_property -dict { PACKAGE_PIN AP9 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutP[1]}]
+set_property -dict { PACKAGE_PIN AR8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plRefClkN}]; # LMK_CLKOUT_N0 = DCLK_OUT10_N
+set_property -dict { PACKAGE_PIN AP8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plRefClkP}]; # LMK_CLKOUT_P0 = DCLK_OUT10_P
 
-set_property -dict { PACKAGE_PIN AR8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutN[0]}]
-set_property -dict { PACKAGE_PIN AP8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutP[0]}]
+set_property PACKAGE_PIN T31 [get_ports {lmkRefClkP}]; # LMK_CLKOUT_P1 = SDCLK_OUT11_P
+set_property PACKAGE_PIN T32 [get_ports {lmkRefClkN}]; # LMK_CLKOUT_N1 = SDCLK_OUT11_N
 
 set_property -dict { PACKAGE_PIN AP10 IOSTANDARD LVCMOS18 } [get_ports {adcIo[8]}]
 set_property -dict { PACKAGE_PIN AN10 IOSTANDARD LVCMOS18 } [get_ports {adcIo[9]}]
