@@ -384,6 +384,32 @@ set_property PACKAGE_PIN N39  [get_ports {timingRxN}]
 set_property PACKAGE_PIN W33  [get_ports {timingRefClkInP}]
 set_property PACKAGE_PIN W34  [get_ports {timingRefClkInN}]
 
+#######################################################################
+# By default we map the rtmPtp to an unused GT lane on the hardware
+# Application .xdc file can override this setting to map it to the
+# particular RTM GT lane that we want to use this PTP for.
+#
+# Example of application .xdc file:
+#
+#  # Map rtmPtp to the acutal rtmHs[Lane=0]
+#  set_property PACKAGE_PIN D31  [get_ports {rtmPtpTxP}]
+#  set_property PACKAGE_PIN D32  [get_ports {rtmPtpTxN}]
+#  set_property PACKAGE_PIN E38  [get_ports {rtmPtpRxP}]
+#  set_property PACKAGE_PIN E39  [get_ports {rtmPtpRxN}]
+#
+#  # Map rtmHs to an unused GT lane that's not connected to anything
+#  set_property PACKAGE_PIN Y35  [get_ports {rtmHsTxP[0]}]
+#  set_property PACKAGE_PIN Y36  [get_ports {rtmHsTxN[0]}]
+#  set_property PACKAGE_PIN AA38 [get_ports {rtmHsRxP[0]}]
+#  set_property PACKAGE_PIN AA39 [get_ports {rtmHsRxN[0]}]
+#######################################################################
+
+# Map rtmPtp to an unused GT lane that's not connected to anything
+set_property PACKAGE_PIN Y35  [get_ports {rtmPtpTxP}]
+set_property PACKAGE_PIN Y36  [get_ports {rtmPtpTxN}]
+set_property PACKAGE_PIN AA38 [get_ports {rtmPtpRxP}]
+set_property PACKAGE_PIN AA39 [get_ports {rtmPtpRxN}]
+
 ######################################################################
 # Commented out because it could be defined in RfmcCarrierCoreZone3Eth
 ######################################################################
