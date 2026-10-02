@@ -165,6 +165,9 @@ begin
       -- Hardware Type
       userValues(6) <= HW_TYPE_C;
 
+      -- IS_RFSOC Flag
+      userValues(7)(0) <= toSl(IS_RFSOC_C);
+
    end process;
 
    ---------------------------------

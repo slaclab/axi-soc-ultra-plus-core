@@ -103,6 +103,16 @@ class AxiVersion(axi.AxiVersion):
             },
         ))
 
+        self.add(pr.RemoteVariable(
+            name         = 'IS_RFSOC_C',
+            description  = 'Is this a RFSoC VHDL flag',
+            offset       = 0x400+(4*7),
+            bitSize      = 1,
+            bitOffset    = 0,
+            mode         = 'RO',
+            base         = pr.Bool,
+        ))
+
     def printStatus(self):
         super().printStatus()
         print("DMA_SIZE_G     = {}".format(hex(self.DMA_SIZE_G.get())))
