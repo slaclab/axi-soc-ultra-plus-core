@@ -32,6 +32,9 @@ package AxiSocUltraPlusPkg is
    -- Application Address Offset
    constant APP_ADDR_OFFSET_C : slv(31 downto 0) := x"8000_0000";
 
+   -- PYRFDC_CONFIG ROM slot (read by roguetcpbridge at 0x4_0000_1000 through /dev/axi_memory_map)
+   constant PYRFDC_ADDR_C : slv(31 downto 0) := x"0000_1000";
+
    -- SOC AXI Configuration
    constant AXI_SOC_CONFIG_C : AxiConfigType := (
       ADDR_WIDTH_C => 40,               -- 40-bit address interface
