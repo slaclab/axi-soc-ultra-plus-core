@@ -26,6 +26,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -52,7 +53,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     std::mutex mtx_;
 
     //! RFdc driver instance
-    XRFdc RFdcInst_;
+    XRFdc RFdcInst_{};
     XRFdc *RFdcInstPtr_ = &RFdcInst_;
 
     //! Local variables
@@ -61,6 +62,12 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     double doubleTestReg_;
     bool metalLogLevel_;
     bool ignoreMetalError_;
+
+    //! RFDC config ROM status (loaded from the PYRFDC_CONFIG ROM at construction)
+    uint32_t cfgStatus_;
+    std::string cfgMessage_;
+    uint32_t cfgHeader_[8];
+    uint32_t cfgRomBytes_;
 
     bool rdTxn_;
     bool isADC_;
@@ -195,15 +202,20 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     uint32_t DoubleToUint32(double value, bool upper);
     double RemapDoubleWithUint32(double original, uint32_t newPart, bool upper);
 
+    //! RFDC config ROM status block (0x14000 to 0x141FC) and the not-initialized guard
+    void ConfigStatusReg(uint32_t addr);
+    bool DriverFree(uint32_t addr) const;
+    void SetConfigStatus(uint32_t status, const std::string& msg);
+
   public:
     //! Class factory which returns a pointer
-    static std::shared_ptr<PyRFdc> create();
+    static std::shared_ptr<PyRFdc> create(const std::string& cfg);
 
     //! Setup class for use in python
     static void setup_python();
 
-    //! Create a PyRFdc device
-    PyRFdc();
+    //! Create a PyRFdc device, decoding the RFDC config ROM bytes read by the launcher
+    PyRFdc(const std::string& cfg);
 
     //! Destroy the PyRFdc
     ~PyRFdc();

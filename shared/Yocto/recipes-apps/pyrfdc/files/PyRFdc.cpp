@@ -29,7 +29,14 @@
 #include "xrfdc_hw.h"
 
 #include <inttypes.h>
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <string>
+
+#ifndef __BAREMETAL__
+#include <openssl/sha.h>
+#endif
 
 #include "rogue/GilRelease.h"
 #include "rogue/interfaces/memory/Constants.h"
@@ -53,63 +60,41 @@ namespace bp = boost::python;
 #define printf xil_printf
 #endif
 
+// The PYRFDC_CONFIG ROM payload is the raw XRFdc_Config image written by
+// scripts/pyrfdc_mem.py; this tripwire fails the build loudly if the sysroot's
+// librfdc layout ever changes size instead of silently decoding garbage.
+static_assert(sizeof(XRFdc_Config) == 1880,
+    "librfdc XRFdc_Config layout changed: rebuild the bitstreams with a pyrfdc_mem.py that matches this librfdc");
+
+// ROM header constants (scripts/pyrfdc_mem.py is the generator)
+static const uint32_t PYRFDC_ROM_MAGIC          = 0x52464443U; // "RFDC"
+static const uint32_t PYRFDC_ROM_FORMAT_VERSION = 1U;
+static const uint32_t PYRFDC_ROM_HEADER_BYTES   = 32U;
+
+// Config status codes, exposed at 0x14000 and mirrored by _Rfdc.py ConfigStatus
+enum {
+    CfgNotLoaded          = 0,
+    CfgOk                 = 1,
+    CfgMissing            = 2,
+    CfgBadMagic           = 3,
+    CfgBadVersion         = 4,
+    CfgBadSize            = 5,
+    CfgIpVersionMismatch  = 6,
+    CfgTileEnableMismatch = 7,
+    CfgDriverBringUpFailed = 8,
+    CfgBadHash            = 9,
+};
+
 //! Create a block, class creator
-PyRFdcPtr PyRFdc::create() {
-    PyRFdcPtr b = std::make_shared<PyRFdc>();
+PyRFdcPtr PyRFdc::create(const std::string& cfg) {
+    PyRFdcPtr b = std::make_shared<PyRFdc>(cfg);
     return (b);
 }
 
 //! Create an block
-PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
-    int i, j, k;
-    log_ = rogue::Logging::create("PyRFdc");
-
-#ifdef __BAREMETAL__
-    // Ensure baremetal driver is ready
-    if (XRFdc_LookupConfig(RFDC_DEVICE_ID) == NULL) {
-        log_->error("PyRFdc: Baremetal RFdc Configuration Lookup Failed!");
-        return;
-    }
-#endif
-
-    // Initialize libmetal (should be after ensuring baremetal is ready)
-    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
-    if (metal_init(&init_param)) {
-        log_->error("PyRFdc: Failed to initialize libmetal");
-        metal_finish();
-        return;
-    }
-
-    // Initialize RFdc Configuration
-    XRFdc_Config *ConfigPtr = XRFdc_LookupConfig(RFDC_DEVICE_ID);
-    if (ConfigPtr == NULL) {
-        log_->error("PyRFdc: RFdc Config Failure");
-        metal_finish();
-        return;
-    }
-
-#ifndef __BAREMETAL__
-    struct metal_device *deviceptr;
-    if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) != XRFDC_SUCCESS) {
-        log_->error("PyRFdc: XRFdc_RegisterMetal() Failure");
-        metal_device_close(deviceptr);
-        metal_finish();
-        return;
-    }
-#endif
-
-    XRFdc_CfgInitialize(RFdcInstPtr_, ConfigPtr);
-
-    log_->debug("PyRFdc::PyRFdc() Initialization Complete");
-
-    // Work around for MaxSampleRate until I figure out how to properly
-    //get the ConfigPtr (and/or devicetree) to set this configuration properly
-    for(j=0; j<4; j++) {
-        RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate = 5.9;
-        RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate = 10.0;
-    }
-
-    // Init local variables
+PyRFdc::PyRFdc(const std::string& cfg) : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
+    // Init local variables (moved to the top so a not-initialized object still
+    // serves the allow-listed registers deterministically)
     errMsg_.clear();
     scratchPad_ = 0;
     doubleTestReg_ = 0.0;
@@ -122,6 +107,161 @@ PyRFdc::PyRFdc() : rim::Slave(4,0x1000) { // Set min=4B and max=4kB
     tileType_ = 0;
     blockId_ = 0;
     data_ = 0;
+
+    log_ = rogue::Logging::create("PyRFdc");
+
+    // RFDC config ROM status: not loaded until the ladder below decides otherwise
+    cfgStatus_ = CfgNotLoaded;
+    cfgMessage_ = "NotLoaded: PyRFdc has not decoded a config";
+    cfgRomBytes_ = uint32_t(cfg.size());
+    std::memset(cfgHeader_, 0, sizeof(cfgHeader_));
+    std::memcpy(cfgHeader_, cfg.data(), std::min(cfg.size(), size_t(PYRFDC_ROM_HEADER_BYTES)));
+
+#ifdef __BAREMETAL__
+    // Ensure baremetal driver is ready
+    if (XRFdc_LookupConfig(RFDC_DEVICE_ID) == NULL) {
+        log_->error("PyRFdc: Baremetal RFdc Configuration Lookup Failed!");
+        return;
+    }
+#endif
+
+    // Initialize libmetal (should be after ensuring baremetal is ready)
+    struct metal_init_params init_param = METAL_INIT_DEFAULTS;
+    if (metal_init(&init_param)) {
+        metal_finish();
+        SetConfigStatus(CfgDriverBringUpFailed, "DriverBringUpFailed: metal_init failed; the RFDC driver is not initialized");
+        log_->error("%s", cfgMessage_.c_str());
+        return;
+    }
+
+#ifndef __BAREMETAL__
+    struct metal_device *deviceptr;
+    if (XRFdc_RegisterMetal(RFdcInstPtr_, RFDC_DEVICE_ID, &deviceptr) != XRFDC_SUCCESS) {
+        metal_device_close(deviceptr);
+        metal_finish();
+        SetConfigStatus(CfgDriverBringUpFailed, "DriverBringUpFailed: XRFdc_RegisterMetal failed; the RFDC driver is not initialized");
+        log_->error("%s", cfgMessage_.c_str());
+        return;
+    }
+#endif
+
+    // ------------------------------------------------------------------
+    // Validate the PYRFDC_CONFIG ROM bytes handed in by the launcher.
+    // First failing check decides the status; never read past cfg.size().
+    // ------------------------------------------------------------------
+    char msgBuf[256];
+
+    if (cfg.size() == 0) {
+        SetConfigStatus(CfgMissing,
+            "Missing: no RFDC config ROM could be read at 0x4_0000_1000 (read failed or empty); "
+            "rebuild the firmware with the PYRFDC_CONFIG ROM (AddPyRfdcMem after the RFDC .xci)");
+
+    } else if (cfg.size() < 4) {
+        std::snprintf(msgBuf, sizeof(msgBuf),
+            "Missing: ROM read returned only %zu byte(s), need at least 4 to read the magic word",
+            cfg.size());
+        SetConfigStatus(CfgMissing, msgBuf);
+
+    } else if (cfgHeader_[0] != PYRFDC_ROM_MAGIC) {
+        std::snprintf(msgBuf, sizeof(msgBuf),
+            "BadMagic: ROM word 0 is 0x%08X, not 0x%08X; this bitstream has no PYRFDC_CONFIG ROM; "
+            "rebuild the firmware with a core that has it", cfgHeader_[0], PYRFDC_ROM_MAGIC);
+        SetConfigStatus(CfgBadMagic, msgBuf);
+
+    } else if (cfg.size() < PYRFDC_ROM_HEADER_BYTES) {
+        std::snprintf(msgBuf, sizeof(msgBuf),
+            "BadSize: ROM read returned %zu bytes, the header needs %u", cfg.size(), PYRFDC_ROM_HEADER_BYTES);
+        SetConfigStatus(CfgBadSize, msgBuf);
+
+    } else if (cfgHeader_[1] != PYRFDC_ROM_FORMAT_VERSION) {
+        std::snprintf(msgBuf, sizeof(msgBuf),
+            "BadVersion: ROM format version %u, expected %u; rebuild the firmware with a matching "
+            "axi-soc-ultra-plus-core", cfgHeader_[1], PYRFDC_ROM_FORMAT_VERSION);
+        SetConfigStatus(CfgBadVersion, msgBuf);
+
+    } else if (cfgHeader_[2] != uint32_t(sizeof(XRFdc_Config))) {
+        std::snprintf(msgBuf, sizeof(msgBuf),
+            "BadSize: ROM payload size %u, sizeof(XRFdc_Config) is %zu for this librfdc; rebuild the "
+            "bitstream with a matching pyrfdc_mem.py", cfgHeader_[2], sizeof(XRFdc_Config));
+        SetConfigStatus(CfgBadSize, msgBuf);
+
+    } else if (cfg.size() < size_t(PYRFDC_ROM_HEADER_BYTES) + cfgHeader_[2]) {
+        std::snprintf(msgBuf, sizeof(msgBuf),
+            "BadSize: ROM read returned %zu bytes, header plus payload need %u",
+            cfg.size(), PYRFDC_ROM_HEADER_BYTES + cfgHeader_[2]);
+        SetConfigStatus(CfgBadSize, msgBuf);
+
+    } else {
+        // Header is self-consistent; check the payload hash (T-01-09 tamper
+        // mitigation) before trusting the payload for the live sanity checks.
+        unsigned char digest[SHA256_DIGEST_LENGTH];
+        SHA256(reinterpret_cast<const unsigned char*>(cfg.data() + PYRFDC_ROM_HEADER_BYTES),
+               sizeof(XRFdc_Config), digest);
+
+        if (std::memcmp(digest, &cfgHeader_[4], 16) != 0) {
+            SetConfigStatus(CfgBadHash,
+                "BadHash: ROM payload sha256 does not match header words 4 to 7; the ROM may be "
+                "corrupt or tampered, rebuild the firmware with a matching pyrfdc_mem.py");
+
+        } else {
+            // Live sanity checks: need only the io region set up by XRFdc_RegisterMetal
+            uint32_t ipVerReg = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_IP_BASE, 0x0);
+            if (ipVerReg != cfgHeader_[3]) {
+                std::snprintf(msgBuf, sizeof(msgBuf),
+                    "IpVersionMismatch: RFDC IP version register 0x%08X, ROM expects 0x%08X; the "
+                    "bitstream and its ROM disagree, rebuild with make clean", ipVerReg, cfgHeader_[3]);
+                SetConfigStatus(CfgIpVersionMismatch, msgBuf);
+
+            } else {
+                XRFdc_Config romCfg;
+                std::memcpy(&romCfg, cfg.data() + PYRFDC_ROM_HEADER_BYTES, sizeof(XRFdc_Config));
+
+                uint32_t tilesEnabledReg = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_IP_BASE, XRFDC_TILES_ENABLED_OFFSET) & 0xFFU;
+                uint32_t tilesEnabledRom = 0;
+                for (int t = 0; t < 4; t++) {
+                    if (romCfg.ADCTile_Config[t].Enable != 0) {
+                        tilesEnabledRom |= (1U << t);
+                    }
+                    if (romCfg.DACTile_Config[t].Enable != 0) {
+                        tilesEnabledRom |= (1U << (4 + t));
+                    }
+                }
+
+                if (tilesEnabledReg != tilesEnabledRom) {
+                    std::snprintf(msgBuf, sizeof(msgBuf),
+                        "TileEnableMismatch: tiles-enabled register 0x%02X, ROM config 0x%02X; "
+                        "rebuild with make clean", tilesEnabledReg, tilesEnabledRom);
+                    SetConfigStatus(CfgTileEnableMismatch, msgBuf);
+
+                } else if (XRFdc_CfgInitialize(RFdcInstPtr_, &romCfg) != XRFDC_SUCCESS) {
+                    SetConfigStatus(CfgDriverBringUpFailed,
+                        "DriverBringUpFailed: XRFdc_CfgInitialize failed on a valid ROM config");
+
+                } else {
+                    std::snprintf(msgBuf, sizeof(msgBuf),
+                        "Ok: XRFdc_Config loaded from the PYRFDC_CONFIG ROM (format 1, %zu bytes, IP 0x%08X)",
+                        sizeof(XRFdc_Config), cfgHeader_[3]);
+                    SetConfigStatus(CfgOk, msgBuf);
+                }
+            }
+        }
+    }
+
+    if (cfgStatus_ != CfgOk) {
+        log_->error("%s", cfgMessage_.c_str());
+        return;
+    }
+    log_->info("%s", cfgMessage_.c_str());
+
+    log_->debug("PyRFdc::PyRFdc() Initialization Complete");
+
+    // Work around for MaxSampleRate until I figure out how to properly
+    //get the ConfigPtr (and/or devicetree) to set this configuration properly
+    int i, j, k;
+    for(j=0; j<4; j++) {
+        RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate = 5.9;
+        RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate = 10.0;
+    }
 
     // Loop through type indexes
     for(i=0; i<2; i++) {
@@ -242,6 +382,63 @@ PyRFdc::~PyRFdc() {
 #endif
 
     log_->debug("PyRFdc::~PyRFdc() completed");
+}
+
+//! Record the config status and the human-readable message (truncated, ASCII)
+void PyRFdc::SetConfigStatus(uint32_t status, const std::string& msg) {
+    cfgStatus_ = status;
+    cfgMessage_ = msg.substr(0, 255);
+}
+
+//! True only for the registers a not-initialized PyRFdc must still serve
+bool PyRFdc::DriverFree(uint32_t addr) const {
+    if (addr == 0x12000 || addr == 0x12004 || addr == 0x12008) {
+        return true;
+    }
+    if (addr >= 0x13000 && addr <= 0x13004) {
+        return true;
+    }
+    if (addr >= 0x14000 && addr <= 0x141FC) {
+        return true;
+    }
+    return false;
+}
+
+//! Serve the config status block at 0x14000 to 0x141FC
+void PyRFdc::ConfigStatusReg(uint32_t addr) {
+    if (!rdTxn_) {
+        errMsg_ = "ConfigStatus(): read-only\n";
+        return;
+    }
+
+    if (addr == 0x14000) {
+        data_ = cfgStatus_;
+
+    } else if (addr >= 0x14004 && addr <= 0x1401C) {
+        data_ = cfgHeader_[1 + ((addr - 0x14004) >> 2)];
+
+    } else if (addr == 0x14020) {
+        data_ = cfgHeader_[0];
+
+    } else if (addr == 0x14024) {
+        data_ = cfgRomBytes_;
+
+    } else if (addr >= 0x14028 && addr <= 0x140FC) {
+        data_ = 0;
+
+    } else if (addr >= 0x14100 && addr <= 0x141FC) {
+        uint32_t wordIdx = (addr - 0x14100) >> 2;
+        uint32_t word = 0;
+        for (uint32_t b = 0; b < 4; b++) {
+            size_t charIdx = size_t(wordIdx) * 4 + b;
+            uint8_t ch = (charIdx < cfgMessage_.size()) ? uint8_t(cfgMessage_[charIdx]) : 0;
+            word |= uint32_t(ch) << (8 * b);
+        }
+        data_ = word;
+
+    } else {
+        data_ = 0;
+    }
 }
 
 void PyRFdc::StartUp(int Tile_Id) {
@@ -3254,6 +3451,7 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
     uint32_t blockAddr = 0;
     uint32_t wrdIdx = 0;
     bool tileOnly = false;
+    bool refused = false;
 
      // Initialize as an empty string
      errMsg_.clear();
@@ -3292,9 +3490,20 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
             blockAddr = addr&0x3FF;
 
             ////////////////////////////////////////////////////////////////
+            // Not-initialized guard: refuse everything outside the allow-list
+            // while the RFDC config ROM has not loaded a valid XRFdc_Config
+            ////////////////////////////////////////////////////////////////
+            if ((cfgStatus_ != CfgOk) && !DriverFree(addr)) {
+                errMsg_ = "PyRFdc not initialized: " + cfgMessage_;
+                refused = true;
+                if (rdTxn_) {
+                    data_ = 0;
+                }
+
+            ////////////////////////////////////////////////////////////////
             // 1st check for the global registers access and commands
             ////////////////////////////////////////////////////////////////
-            if (addr==0x10000) {
+            } else if (addr==0x10000) {
                 tileType_ = XRFDC_ADC_TILE;
                 StartUp(-1);
 
@@ -3454,6 +3663,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if ( (addr >= 0x13000) && (addr <= 0x13004) ) {
                 DoubleTestReg(bool((addr>>2)&0x1));
+
+            } else if ( (addr >= 0x14000) && (addr <= 0x141FC) ) {
+                ConfigStatusReg(addr);
 
             } else if (addr<0x10000) {
 
@@ -3747,7 +3959,7 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                 memcpy(ptr+wrdIdx, &data_, sizeof(uint32_t));
             }
 
-            if (ignoreMetalError_) {
+            if (ignoreMetalError_ && !refused) {
                 errMsg_.clear();
             }
 
@@ -3765,7 +3977,12 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
     // Complete transaction with error message
     } else {
-        log_->error(errMsg_.c_str());
+        // Refusals are logged at debug level so a polling GUI cannot flood the journal
+        if (refused) {
+            log_->debug("%s", errMsg_.c_str());
+        } else {
+            log_->error("%s", errMsg_.c_str());
+        }
         tran->errorStr(errMsg_);
     }
 
@@ -3775,7 +3992,7 @@ void PyRFdc::setup_python() {
 #ifndef NO_PYTHON
     bp::class_<PyRFdc, PyRFdcPtr, bp::bases<rim::Slave>, boost::noncopyable>(
         "PyRFdc",
-        bp::init<>());
+        bp::init<std::string>());
     bp::implicitly_convertible<PyRFdcPtr, rim::SlavePtr>();
 #endif
 }

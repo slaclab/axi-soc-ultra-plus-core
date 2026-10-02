@@ -24,8 +24,10 @@ include_directories(${Python3_INCLUDE_DIRS})
 # Source files
 add_library(PyRFdc MODULE PyRFdc.cpp)
 
-# Link against Rogue, rfdc, and metal
-target_link_libraries(PyRFdc ${Boost_LIBRARIES} ${Python3_LIBRARIES} rogue-core rfdc metal)
+# Link against Rogue, rfdc, metal, and crypto (SHA-256 of the PYRFDC_CONFIG
+# ROM payload for the BadHash check; build-time dependency only, the runtime
+# library already ships in the image)
+target_link_libraries(PyRFdc ${Boost_LIBRARIES} ${Python3_LIBRARIES} rogue-core rfdc metal crypto)
 
 # Set output properties for the Python module
 set_target_properties(PyRFdc PROPERTIES PREFIX "" SUFFIX ".so")
