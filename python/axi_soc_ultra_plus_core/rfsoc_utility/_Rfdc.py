@@ -603,6 +603,97 @@ class Rfdc(pr.Device):
             hidden       = True,
         ))
 
+        # No poll interval on purpose. A polled variable adds a background
+        # transaction every interval to a driver that may be dead, on a register
+        # path that has been measured degrading once a converter fails. The
+        # matching driver body is PyRFdc::InitFailReason(), which reads a member
+        # and never touches the driver instance, so this register still answers
+        # when every other one is being refused. It is read when someone asks.
+        self.add(pr.RemoteVariable(
+            name         = 'InitFailureReason',
+            description  = 'Reports which driver initialization step failed. A non-zero value means the driver instance was never initialized, so register access is refused',
+            offset       = 0x1200C,
+            bitSize      = 32,
+            mode         = 'RO',
+            enum         = {
+                0 : "PYRFDC_INIT_OK",
+                1 : "PYRFDC_INIT_FAIL_NOT_COMPLETED",
+                2 : "PYRFDC_INIT_FAIL_BAREMETAL_LOOKUP",
+                3 : "PYRFDC_INIT_FAIL_METAL_INIT",
+                4 : "PYRFDC_INIT_FAIL_CONFIG_LOOKUP",
+                5 : "PYRFDC_INIT_FAIL_REGISTER_METAL",
+            },
+            hidden       = True,
+        ))
+
+        # No poll interval on any of the four below, for the same reason the
+        # register above states. A polled variable adds a background
+        # transaction every interval to a register path that has been measured
+        # degrading once a converter fails. The matching driver bodies are
+        # PyRFdc::ClkDistStatus(), PyRFdc::ClkDistMap(),
+        # PyRFdc::ResetCycleCount() and PyRFdc::RecoveryCount(), and each of
+        # them reads a member and never touches the driver instance, so all
+        # four still answer when every other register is being refused. They
+        # are read when someone asks.
+        #
+        # Adding these four is a deliberate choice and not an oversight of the
+        # rule that this file leaves the reset path alone. That rule exists to
+        # avoid host and driver version skew on the path that performs a
+        # reset: ResetAllAdc at 0x10010 and ResetAllDac at 0x10014 keep their
+        # offsets and their RemoteCommand form, and Init() requests a reset
+        # only through those two commands, so a host and a driver built from
+        # different trees still agree on how a reset is requested, and an
+        # older driver's two global resets also restart every enabled tile.
+        # A read-only variable creates no such skew, since a driver that does
+        # not implement the offset simply refuses the read.
+        # Without these four the registers cannot be reached from the host at
+        # all, because the read-only state capture tool reads by variable path
+        # through this device model and never by literal address.
+        #
+        # disp is a full width hexadecimal word on all four because every one
+        # of them packs fields into a word rather than reporting a quantity.
+        # Printed as 0x11111111 the per tile nibbles and the two counter
+        # halves are read off directly, which is the point of publishing them.
+        self.add(pr.RemoteVariable(
+            name         = 'ClkDistStatus',
+            description  = 'Where the cached clock distribution topology came from. Bits 7:0 report the source (0 nothing was obtained, 1 the documented distribution getter answered, 2 a raw clock detect decode answered, 3 the reported IP generation was outside the range this driver knows how to ask so no source was consulted at all), bits 15:8 report the IP generation the driver holds for this part, and bits 23:16 report how many distribution groups this driver counted while it built the cache, a count with more than one producer rather than one. The documented getter counts one for every distribution slot it accepted, whether or not it could mark that slot a master, while the raw clock detect decode counts one only where it marks a master, and the normalization contributes plus one for each tile the normalization promoted to master because an edge named it and no decode marked it, so a board with one distribution slot whose source lies outside its own edge range publishes a count of two. The count is never decremented, so it is not the same as how many groupings the cache still holds: a grouping the normalization could not resolve to an orderable master is withdrawn from the map without changing this count. What this count says beside a ClkDistMap word reading every tile ungrouped depends on the source in bits 7:0 and is stated once per source value in the ClkDistMap description at 0x12014 rather than here. Both byte fields saturate rather than wrap, so a generation byte reading 0xFF is either a true 255 or a field that was never set and the two cannot be told apart from that byte alone, which is what the fourth source value exists to resolve',
+            offset       = 0x12010,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ClkDistMap',
+            description  = 'Cached clock distribution map, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble reads 0xF when the tile is ungrouped, and otherwise the tile index (tile type times four plus tile id) of the master that tile takes its clock from. A nibble naming a master always names a tile whose own nibble equals its own index, which is an invariant of the cache rather than an accident of a decode, so a word violating it indicates a driver older than this one. A tile whose grouping the cache cannot order has its grouping withdrawn and reads the ungrouped nibble instead, for any of three causes: the master chain contains a cycle, the chain names a master index out of range, or the tile is marked as a master that does not name itself, in which case every edge naming that tile is withdrawn with it. One report on the error channel names every tile that was withdrawn. What a word reading every tile ungrouped says depends on the source in bits 7:0 of ClkDistStatus at 0x12010, so the word is read beside that byte and readings of different source values are not pooled. When the source byte reads 0 no topology was obtained, either because the documented distribution getter was asked and refused, which a construction-time line saying the documented getter returned non-success reports, or because the driver never initialized far enough to ask, which InitFailureReason at 0x1200C reports by reading non-zero. Either way the cache keeps its declared ungrouped values and the group count is zero, so this word reads every tile ungrouped whether or not the board has a clock distribution, nothing can have been withdrawn, and the pair says nothing about the distribution, which leaves that line or that register as the evidence. When the source byte reads 1 the documented distribution getter answered, and beside this word a non-zero group count means a grouping was withdrawn and a zero count means none was: on that source the count is non-zero only if the getter accepted a slot, the first slot it accepts places at least two tiles in a group, and only the normalization withdrawal returns a placed tile to ungrouped and it always reports doing so, while a zero count means no slot was accepted and nothing was placed. On that source the pair is what a host attaching later, a host after a bridge restart and a host after a log rotation still has, where the report is a construction-time console line. When the source byte reads 2 the raw clock detect decode answered, and the pair then carries no withdrawal information: every group that source counts is a master that names itself, whether the decode marked it or the normalization promoted it, and the normalization never withdraws a master that names itself, so a count above zero always leaves a master in this word. This word reading every tile ungrouped therefore always sits beside a zero count on that source whether or not a grouping was withdrawn, which is the pair a board with no clock distribution publishes on that source, so there the report is the only evidence a withdrawal happened. When the source byte reads 3 the reported IP generation was above the range this driver asks, so no source was consulted and no topology query was made. The cache keeps its declared ungrouped values and the group count is zero, so this word reads every tile ungrouped whether or not the board has a clock distribution, nothing can have been withdrawn, and the construction-time line naming the reported generation is the evidence. A withdrawal can happen only on the two sources that answered, 1 and 2, and there the report is the only thing that says which tiles',
+            offset       = 0x12014,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetCycleCount',
+            description  = 'IPSM cycles the last global reset issued per tile, four bits per tile, ADC 0 in bits 3:0 through DAC 3 in bits 31:28. A nibble counts the cycles that reset issued for that tile, whether from an explicit reset or from the internal restart the PLL reconfigure performs, and one per tile is the expected reading on a healthy boot. A nibble reading 0xF means the count for that tile is not exact, because the tile PLL reconfigure returned non-success at a point where the driver cannot tell whether the call had already cycled it, so the true figure is one or two; a real count is capped at 0xE so it can never be confused with the reserved value; and a nibble of 2 means the tile took two cycles, of which there are two producers rather than one: a tile PLL reconfigure that measurably left the tile unpowered followed by the compensating reset, or one cycle taken in the reset sweep followed by a clock group recovery that re-ran the tile. RecoveryCount at 0x1201C rules one producer out but does not identify the other: its armed half reading zero means no recovery has ever fired on this driver instance, so the nibble came from the reconfigure, while a non-zero armed half attributes nothing, because that half counts groups rather than tiles and is cumulative since construction while this count is cleared at the start of every reset. What attributes a recovery to a tile is the clock group recovery report, which names the arming tile and the group master. On a boot where the register path has degraded that register may not answer, and the clock group recovery report on the log is then the remaining evidence',
+            offset       = 0x12018,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'RecoveryCount',
+            description  = 'Clock group recoveries counted since construction. Bits 15:0 count the recoveries armed and bits 31:16 count the ones that succeeded. A word reading zero on a clean boot means no recovery was ever armed, which is a different statement from a recovery that was not needed',
+            offset       = 0x1201C,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
         self.add(pr.RemoteVariable(
             name         = 'DoubleTestReg',
             description  = 'Test register (no impact to RFDC module)',
@@ -666,18 +757,16 @@ class Rfdc(pr.Device):
     def Init(self):
         print( f'{self.path}: Initialize RFDC')
         # Global RFDC Reset
+        #
+        # No per-tile reset follows these two. Between them they restart
+        # every enabled tile once, a clock distribution master before the
+        # tiles it clocks. A reset issued one tile at a time afterwards would
+        # restart a tile whose sample clock comes from another tile apart from
+        # the tile that drives it, or restart that driving tile under its
+        # running dependents. The per-tile Reset command remains for a caller
+        # that wants one tile.
         self.ResetAllAdc()
         self.ResetAllDac()
-
-        # Reset ADC Tiles
-        for i in range(4):
-            if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0):
-                self.AdcTile[i].Reset()
-
-        # Reset DAC Tiles
-        for i in range(4):
-            if self.enDacTile[i] and (self.CheckDacTileEnabled[i].get() != 0):
-                self.DacTile[i].Reset()
 
         # Update all the remote variables after the reset
         self.UpdateIsEnabled()
