@@ -568,6 +568,104 @@ class Rfdc(pr.Device):
         self.add(Mts())
 
         #######################################################################################
+        # RFDC config ROM status: loaded at PyRFdc construction from the read-only
+        # PYRFDC_CONFIG ROM in the bitstream. Read-only, no pollInterval: the status
+        # is fixed once the process starts and never changes without a reboot.
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigStatus',
+            description  = 'RFDC config ROM validation status decided at PyRFdc construction',
+            offset       = 0x14000,
+            bitSize      = 32,
+            mode         = 'RO',
+            enum         = {
+                0 : "NotLoaded",
+                1 : "Ok",
+                2 : "Missing",
+                3 : "BadMagic",
+                4 : "BadVersion",
+                5 : "BadSize",
+                6 : "IpVersionMismatch",
+                7 : "TileEnableMismatch",
+                8 : "DriverBringUpFailed",
+                9 : "BadHash",
+            },
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigFormatVersion',
+            description  = 'PYRFDC_CONFIG ROM header format version',
+            offset       = 0x14004,
+            bitSize      = 32,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigPayloadSize',
+            description  = 'PYRFDC_CONFIG ROM header payload size in bytes (sizeof(XRFdc_Config) for the librfdc the ROM was built against)',
+            offset       = 0x14008,
+            bitSize      = 32,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigIpVersion',
+            description  = 'Expected RFDC IP version register value from the PYRFDC_CONFIG ROM header',
+            offset       = 0x1400C,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigHash',
+            description  = 'First 128 bits of the SHA-256 over the PYRFDC_CONFIG ROM payload (XRFdc_Config bytes), from the ROM header',
+            offset       = 0x14010,
+            bitSize      = 128,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigMagic',
+            description  = 'PYRFDC_CONFIG ROM header magic word as read (0x52464443 is valid)',
+            offset       = 0x14020,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigRomBytes',
+            description  = 'Number of bytes roguetcpbridge read from the PYRFDC_CONFIG ROM before handing them to PyRFdc',
+            offset       = 0x14024,
+            bitSize      = 32,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ConfigMessage',
+            description  = 'Human-readable RFDC config ROM status message, naming the fix when not Ok',
+            offset       = 0x14100,
+            bitSize      = 8*256,
+            mode         = 'RO',
+            base         = pr.String,
+        ))
+
+        self.add(pr.LinkVariable(
+            name         = 'ConfigPayloadSha256',
+            description  = 'First 32 hex digits of the SHA-256 over the 1880 byte XRFdc_Config payload, matching header words 4 to 7 of PYRFDC_CONFIG.mem (not a hash of the .xci file)',
+            mode         = 'RO',
+            linkedGet    = lambda read: self.ConfigHash.get(read=read).to_bytes(16, 'little').hex(),
+            dependencies = [self.ConfigHash],
+        ))
+
+        #######################################################################################
         #######################################################################################
         #######################################################################################
 
@@ -665,6 +763,17 @@ class Rfdc(pr.Device):
 
     def Init(self):
         print( f'{self.path}: Initialize RFDC')
+
+        # Refuse to run on a bad config: PyRFdc never calls XRFdc_CfgInitialize
+        # unless the PYRFDC_CONFIG ROM validated, so every reset command below
+        # would be refused anyway. Fail loudly here instead of letting the
+        # first reset command raise an opaque "not initialized" error.
+        status = self.ConfigStatus.get(read=True)
+        if status != 1:
+            label = self.ConfigStatus.getDisp(read=False)
+            message = self.ConfigMessage.get(read=True)
+            raise ValueError(f'{self.path}.Init: RFDC driver is not initialized (ConfigStatus={label}): {message}')
+
         # Global RFDC Reset
         self.ResetAllAdc()
         self.ResetAllDac()
