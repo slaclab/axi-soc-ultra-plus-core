@@ -117,6 +117,9 @@ architecture mapping of Hardware is
          addrBits     => 24,
          connectivity => x"FFFF"));
 
+   -- Rebased onto AXIL_BASE_ADDR_G because the I2C mux crossbar decodes the full 32-bit address
+   constant I2C_XBAR_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, MUX_I2C_ADDR_C+AXIL_BASE_ADDR_G, 20, 16);
+
    signal mAxilWriteMasters : AxiLiteWriteMasterArray(NUM_AXI_MASTERS_C-1 downto 0);
    signal mAxilWriteSlaves  : AxiLiteWriteSlaveArray(NUM_AXI_MASTERS_C-1 downto 0) := (others => AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C);
    signal mAxilReadMasters  : AxiLiteReadMasterArray(NUM_AXI_MASTERS_C-1 downto 0);
@@ -254,7 +257,7 @@ begin
          AXIL_CLK_FREQ_G    => AXIL_CLK_FREQ_G,
          -- AXI-Lite Crossbar Generics
          NUM_MASTER_SLOTS_G => 8,
-         MASTERS_CONFIG_G   => XBAR_I2C_CONFIG_C)
+         MASTERS_CONFIG_G   => I2C_XBAR_CONFIG_C)
       port map (
          -- Clocks and Resets
          axilClk           => axilClk,
@@ -298,7 +301,9 @@ begin
    U_PWR_I2C : entity surf.AxiLitePMbusMasterCore
       generic map (
          TPD_G          => TPD_G,
-         I2C_ADDR_G     => b"0101_000",
+         I2C_ADDR_G     => b"0100_110",  -- BMR467 SA shorted to PREF = 26h (Revision C00)
+--       I2C_ADDR_G     => b"1110_010",  -- BMR474 SA shorted to PREF = 72h (Revision C01 and later)
+         RD_GAP_TIME_G  => 2.0E-3,  -- BMR467/BMR474 need 2 ms idle after a PMBus read
          I2C_SCL_FREQ_G => I2C_SCL_FREQ_C,
          AXI_CLK_FREQ_G => AXIL_CLK_FREQ_G)
       port map (
