@@ -54,6 +54,11 @@ for _t in range(4):
 ABSENT_OK = frozenset(ABSENT_OK)
 
 # ROM header, format version 1: eight little-endian 32-bit words
+#   0: MAGIC "RFDC"
+#   1: FORMAT_VERSION
+#   2: payload length in bytes
+#   3: IP version (major, minor, revision)
+#   4-7: first 128 bits of the SHA-256 over the payload (not over the .xci file)
 MAGIC          = 0x52464443          # "RFDC"
 FORMAT_VERSION = 1
 HEADER_WORDS   = 8
@@ -190,6 +195,8 @@ def ipVersionWord(doc):
 
 
 def buildRomImage(xciPath, baseAddr):
+    # The raw bytes are read only for the IP version word; the header hash
+    # covers the canonicalized payload (see below).
     with open(xciPath, 'rb') as f:
         raw = f.read()
     mp = loadModelParameters(xciPath)
@@ -197,7 +204,13 @@ def buildRomImage(xciPath, baseAddr):
     if len(payload) != LAYOUT_SIZE:
         raise ParamListError("internal layout error: blob is %d bytes, layout says %d" % (len(payload), LAYOUT_SIZE))
     ipVer = ipVersionWord(json.loads(raw.decode('utf-8')))
-    digest = hashlib.sha256(raw).digest()[:16]
+    # Hash the canonicalized parameter payload, not the raw .xci bytes. Vivado
+    # rewrites the project copy of the .xci after the ROM is generated (observed
+    # 29 s apart in the LclsTiming build), so a raw-bytes digest cannot be
+    # reproduced from the .xci the build leaves behind. The payload is the
+    # extracted XRFdc_Config image, so it is identical across every .xci copy
+    # that describes the same configuration and stays verifiable on the board.
+    digest = hashlib.sha256(payload).digest()[:16]
     header = struct.pack(
         '<8I', MAGIC, FORMAT_VERSION, len(payload), ipVer, *struct.unpack('<4I', digest))
     return header + payload
