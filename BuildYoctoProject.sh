@@ -13,7 +13,7 @@
 #echo -ne "\033c"
 
 function show_help {
-   echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA -T PATH [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-i IMAGE] [-m MODE] [-R XCI] [-e] [-c]"
+   echo "USAGE: $0 -p PATH -n NAME -h HWTYPE -x XSA -T PATH [-l LANES] [-d DESTS] [-t TXCNT] [-r RXCNT] [-s BUFFSZ] [-i IMAGE] [-m MODE] [-e] [-c]"
    echo ""
    echo "Required:"
    echo " -p PATH      - Path to the build dir"
@@ -33,7 +33,6 @@ function show_help {
    echo "                  'sd-only'   skips netboot entirely; fastest boot, no TFTP server needed"
    echo "                  'fallback'  tries TFTP first, then boots from SD if that fails"
    echo "                  'tftp-only' tries TFTP first, then halts instead of booting from SD"
-   echo " -R XCI       - Path to the RFDC .xci (RfDataConverterIpCore.xci); required for hardware with the rfsoc MACHINE_FEATURE"
    echo " -e           - Activate the Yocto environment and drop into a shell in the build dir"
    echo "                (instead of running bitbake)"
    echo " -c           - Force reconfigure if the project has already been configured"
@@ -45,9 +44,8 @@ doConfigure=0
 image=petalinux-image-minimal
 uboot_netboot_mode=sd-only
 modeExplicit=0
-rfdcXci=""
 activateEnv=0
-while getopts p:n:h:x:l:d:t:r:s:ceHT:i:m:R: flag
+while getopts p:n:h:x:l:d:t:r:s:ceHT:i:m: flag
 do
     case "${flag}" in
         p) path=${OPTARG};;
@@ -64,7 +62,6 @@ do
         T) projTop=${OPTARG};;
         i) image=${OPTARG};;
         m) uboot_netboot_mode=${OPTARG}; modeExplicit=1;;
-        R) rfdcXci=${OPTARG};;
         H) show_help;;
     esac
 done
@@ -181,23 +178,6 @@ then
    exit 1
 fi
 
-# Hardware with the rfsoc MACHINE_FEATURE needs a valid RFDC param-list in its
-# devicetree, which the device-tree recipe generates from the RFDC .xci. Fail
-# here, before any download or configure step, if the .xci is not usable.
-isRfsoc=0
-if grep -q 'MACHINE_FEATURES:append = " rfsoc"' "$hwDir/Yocto/zynqmp-user.conf"; then
-   isRfsoc=1
-fi
-if [ $isRfsoc -eq 1 ]; then
-   [ -n "$rfdcXci" ] || die "Hardware type $hwType has the rfsoc MACHINE_FEATURE: pass -R RFDC_XCI (path to the RFDC .xci)"
-   [ -f "$rfdcXci" ] || die "-R RFDC_XCI: '$rfdcXci' is not a file"
-   rfdcXci=$(readlink -f "$rfdcXci")
-   [[ "$rfdcXci" =~ ^[A-Za-z0-9._/+-]+$ ]] || die "-R RFDC_XCI: '$rfdcXci' has characters outside A-Za-z0-9._/+-"
-elif [ -n "$rfdcXci" ]; then
-   echo "Hardware type $hwType has no rfsoc MACHINE_FEATURE: -R is ignored"
-   rfdcXci=""
-fi
-
 # Check if the XSA file exists and has .xsa extension
 if [ ! -f "$xsa" ] || [[ "${xsa##*.}" != "xsa" ]]; then
    echo "File $xsa does NOT exist or is not a .xsa file"
@@ -213,7 +193,6 @@ echo "Project Name: $Name";
 echo "Hardware Type: $hwType";
 echo "XSA File Path: $xsa";
 echo "Image File Path: $imageDump";
-echo "RFDC XCI: ${rfdcXci:-none}";
 echo "Number of DMA lanes: $numLane";
 echo "Number of DEST per lane: $numDest";
 echo "Number of DMA TX Buffers: $dmaTxBuffCount";
@@ -432,26 +411,6 @@ then
    fi
    setBitstreamAttr "$localConf"
    echo "U-Boot boot mode: ${uboot_netboot_mode}"
-fi
-
-##############################################################################
-# Re-sync RFDC_XCI on every run
-##############################################################################
-
-# Like UBOOT_NETBOOT_MODE, local.conf is only written on a fresh/-c configure,
-# so a changed or relocated -R path would otherwise be silently ignored. The
-# path was restricted to A-Za-z0-9._/+- above, so it is safe in the sed
-# replacement and in the quoted local.conf assignment.
-if [ $isRfsoc -eq 1 ]
-then
-   localConf="$proj_dir/build/conf/local.conf"
-   if grep -q '^RFDC_XCI = ' "$localConf"
-   then
-      sed -i "s|^RFDC_XCI = .*|RFDC_XCI = \"${rfdcXci}\"|" "$localConf"
-   else
-      echo "RFDC_XCI = \"${rfdcXci}\"" >> "$localConf"
-   fi
-   echo "RFDC XCI: ${rfdcXci}"
 fi
 
 ##############################################################################
