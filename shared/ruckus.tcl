@@ -43,3 +43,63 @@ loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/ip/AxiPcie16BCrossbarI
 
 # Load External FW utilities
 loadRuckusTcl "$::DIR_PATH/rfsoc-utility"
+
+# Directory of axi-soc-ultra-plus-core (captured now: $::DIR_PATH is restored by loadRuckusTcl before any later call)
+set ::axiSocUltraPlusDir [file normalize "$::DIR_PATH/.."]
+
+## Generate PYRFDC_CONFIG.mem next to the application's RFDC IP core and add it to the project.
+## Call right after the application's loadIpCore of the RFDC .xci (RFSoC parts only).
+## This is a no-op on non-RFSoC architectures.
+proc AddPyRfdcMem { } {
+   # Only the zynquplusRFSOC architecture carries the RFDC
+   if { [getFpgaArch] ne {zynquplusRFSOC} } {
+      return
+   }
+   set ipList [get_ips -quiet -filter {IPDEF =~ "xilinx.com:ip:usp_rf_data_converter:*"}]
+   if { [llength ${ipList}] != 1 } {
+      puts "\n\n*********************************************************"
+      puts "AddPyRfdcMem: exactly one usp_rf_data_converter IP core is required, found [llength ${ipList}]: ${ipList}"
+      puts "*********************************************************\n\n"
+      exit -1
+   }
+   set ip       [lindex ${ipList} 0]
+   set xci_file [get_property IP_FILE ${ip}]
+   set xci_dir  [file dirname ${xci_file}]
+   set mem_file [file join ${xci_dir} PYRFDC_CONFIG.mem]
+   set rc [catch {exec python [file join $::axiSocUltraPlusDir scripts pyrfdc_mem.py] --xci ${xci_file} --out ${mem_file}.tmp 2>@1} msg opts]
+   if { ${rc} && [string match {CHILDSTATUS *} [dict get ${opts} -errorcode]] } {
+      puts "\n\n*********************************************************"
+      puts "AddPyRfdcMem: pyrfdc_mem.py failed for ${xci_file}\n${msg}"
+      puts "*********************************************************\n\n"
+      exit -1
+   }
+   set fh [open ${mem_file}.tmp r]
+   set newData [read ${fh}]
+   close ${fh}
+   set oldData ""
+   if { [file exists ${mem_file}] } {
+      set fh [open ${mem_file} r]
+      set oldData [read ${fh}]
+      close ${fh}
+   }
+   set isNew [expr { [get_files -quiet ${mem_file}] eq "" }]
+   if { ${newData} ne ${oldData} } {
+      file rename -force ${mem_file}.tmp ${mem_file}
+      set changed 1
+      puts "AddPyRfdcMem: wrote ${mem_file}"
+   } else {
+      file delete ${mem_file}.tmp
+      set changed 0
+      puts "AddPyRfdcMem: ${mem_file} unchanged"
+   }
+   if { ${isNew} } {
+      add_files -norecurse ${mem_file}
+   }
+   if { ${changed} || ${isNew} } {
+      reset_run synth_1
+      puts "AddPyRfdcMem: reset_run synth_1"
+   }
+}
+
+# A missing XPM init file (for example an RFSoC application that forgot AddPyRfdcMem) must fail synthesis
+set_msg_config -id {Synth 8-4445} -new_severity ERROR
