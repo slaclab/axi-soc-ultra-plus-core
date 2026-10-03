@@ -206,14 +206,21 @@ class DevGui(object):
         self._logFh = None
 
     def start(self, logPath):
+        # Pitfall: stdout redirected to a regular file is fully block-buffered
+        # (not line-buffered), so without -u the readiness poll below sees no
+        # output until devGui exits and flushes, making a successful start()
+        # look like a hang for its entire duration.
         self.logPath = logPath
         self._logFh = open(logPath, 'a')
+        env = dict(os.environ)
+        env['PYTHONUNBUFFERED'] = '1'
         self.proc = subprocess.Popen(
-            list(DEVGUI_ARGS),
+            [DEVGUI_ARGS[0], '-u'] + list(DEVGUI_ARGS[1:]),
             cwd=self.softwareDir,
             stdout=self._logFh,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            env=env,
         )
 
     def _tailLog(self, n=40):
@@ -294,8 +301,29 @@ class AttachedGui(object):
 
 
 def attach(port, host='localhost'):
+    # VirtualClient itself exposes only .root (plus the link/transport API);
+    # the device tree (client.root.Rfdc...) hangs off .root, not the client.
+    # VirtualClient spawns non-daemon ZMQ IO/Reaper threads that keep the
+    # process alive indefinitely unless client.stop() is called explicitly
+    # (observed: a soak run that otherwise completed and wrote its rc file
+    # never actually exited). Stash the client on the root so cleanup can
+    # find and stop it; closeClient() below is the only reader.
     import pyrogue.interfaces
-    return pyrogue.interfaces.VirtualClient(addr=host, port=port)
+    client = pyrogue.interfaces.VirtualClient(addr=host, port=port)
+    root = client.root
+    root._soakVirtualClient = client
+    return root
+
+
+def closeClient(root):
+    """Stop the VirtualClient stashed on root by attach(), if any. Safe to
+    call on a stub root (StubRoot has no _soakVirtualClient attribute)."""
+    client = getattr(root, '_soakVirtualClient', None)
+    if client is not None:
+        try:
+            client.stop()
+        except Exception:
+            pass
 
 
 #-----------------------------------------------------------------------------
@@ -537,15 +565,22 @@ def attachAndCheck(ctx, gui, cycle):
     t0 = time.monotonic()
     err = None
     ok = True
+    newRoot = None
     try:
         gui.start(logPath)
         gui.waitPort(timeout=ctx.args.ready_timeout)
         gui.waitReady(timeout=ctx.args.start_timeout)
-        ctx.root = ctx.attachFn(gui.port)
-        ctx.adcTiles, ctx.dacTiles = enabledTiles(ctx.root)
+        newRoot = ctx.attachFn(gui.port)
+        ctx.adcTiles, ctx.dacTiles = enabledTiles(newRoot)
+        ctx.root = newRoot
     except Exception as e:
         ok = False
         err = str(e)
+        # A client may have attached before a later step in this same
+        # attempt failed (e.g. enabledTiles()); never leak its background
+        # threads just because this BootStart is being reported as failed.
+        if newRoot is not None:
+            closeClient(newRoot)
     durationS = time.monotonic() - t0
 
     bId = None
@@ -592,6 +627,9 @@ def attachAndCheck(ctx, gui, cycle):
 def doReboot(ctx, gui, cycle):
     """Reboot step: stop the devGui, ssh reboot, wait for a new boot_id,
     then for readiness (ConfigStatus must read Ok)."""
+    if ctx.root is not None:
+        closeClient(ctx.root)
+        ctx.root = None
     gui.stop()
     t0 = time.monotonic()
     err = None
@@ -678,93 +716,97 @@ def runSoak(ctx):
         ctx.waitReadyFn = lambda board, timeout: waitReady(board, timeout)
 
     t0 = time.monotonic()
-    gui = ctx.devGuiFactory()
-    result = attachAndCheck(ctx, gui, cycle=0)
-    if result == 'refused':
-        gui.stop()
-        return 2
-    if result is not True:
-        gui.stop()
-        ctx.write(buildSummary(ctx, 0, 0, 0, time.monotonic() - t0, 'fail'))
-        return 1
-
-    status = int(ctx.root.Rfdc.ConfigStatus.get())
-    if status != CONFIG_STATUS_OK:
-        message = ctx.root.Rfdc.ConfigMessage.get()
-        ctx.write({'type': 'config', 'cycle': 0, 'configStatus': status, 'message': message})
-        gui.stop()
-        return 2
-
-    ctx.write({
-        'type': 'start',
-        'args': vars(args),
-        'board': args.board,
-        'bootId': ctx.lastBootId,
-        'configStatus': status,
-        'configPayloadSha256': ctx.root.Rfdc.ConfigPayloadSha256.get(),
-        'ipCoreVersion': int(ctx.root.Rfdc.IpCoreVersion.get()),
-    })
-
-    exitCode = 0
-    reboots = 0
-    bootFailures = 0
-    cyclesRun = 0
+    # A mutable holder (not a bare local) so the finally below always stops
+    # whichever devGui instance is current, including after a mid-loop
+    # reboot reassigns it, and even if an unexpected exception escapes the
+    # cycle loop (D-17/safety: never leave a devGui orphaned on the host).
+    guiHolder = {'gui': ctx.devGuiFactory()}
     try:
-        for cycle in range(1, args.cycles + 1):
-            cyclesRun = cycle
-            if ctx.hostTreeAvailable:
-                for name, fn in cycleSteps(ctx):
-                    ok = runStep(ctx, cycle, name, fn)
-                    ctx.stepsRun += 1
+        result = attachAndCheck(ctx, guiHolder['gui'], cycle=0)
+        if result == 'refused':
+            return 2
+        if result is not True:
+            ctx.write(buildSummary(ctx, 0, 0, 0, time.monotonic() - t0, 'fail'))
+            return 1
+
+        status = int(ctx.root.Rfdc.ConfigStatus.get())
+        if status != CONFIG_STATUS_OK:
+            message = ctx.root.Rfdc.ConfigMessage.get()
+            ctx.write({'type': 'config', 'cycle': 0, 'configStatus': status, 'message': message})
+            return 2
+
+        ctx.write({
+            'type': 'start',
+            'args': vars(args),
+            'board': args.board,
+            'bootId': ctx.lastBootId,
+            'configStatus': status,
+            'configPayloadSha256': ctx.root.Rfdc.ConfigPayloadSha256.get(),
+            'ipCoreVersion': str(ctx.root.Rfdc.IpCoreVersion.get()),
+        })
+
+        exitCode = 0
+        reboots = 0
+        bootFailures = 0
+        cyclesRun = 0
+        try:
+            for cycle in range(1, args.cycles + 1):
+                cyclesRun = cycle
+                if ctx.hostTreeAvailable:
+                    for name, fn in cycleSteps(ctx):
+                        ok = runStep(ctx, cycle, name, fn)
+                        ctx.stepsRun += 1
+                        if not ok:
+                            ctx.stepsFailed += 1
+                            exitCode = 1
+                            if not args.continue_:
+                                raise _StopSoak()
+                else:
+                    # D-17/F6: no host tree since the last BootStart failure;
+                    # this cycle's reset steps are skipped until the next reboot.
+                    for name in stepNames(ctx):
+                        ctx.write({
+                            'type': 'step', 'cycle': cycle, 'step': name,
+                            'durationS': 0.0, 'ok': None, 'failureKind': None,
+                            'error': None, 'skipped': 'no host tree', 'diag': [],
+                            'metalLog': None, 'configStatus': None,
+                            'bootId': None, 'tiles': {},
+                        })
+                        ctx.stepsSkipped += 1
+
+                if args.reboot_every and (cycle % args.reboot_every == 0):
+                    reboots += 1
+                    ok = doReboot(ctx, guiHolder['gui'], cycle)
                     if not ok:
-                        ctx.stepsFailed += 1
                         exitCode = 1
                         if not args.continue_:
                             raise _StopSoak()
-            else:
-                # D-17/F6: no host tree since the last BootStart failure;
-                # this cycle's reset steps are skipped until the next reboot.
-                for name in stepNames(ctx):
-                    ctx.write({
-                        'type': 'step', 'cycle': cycle, 'step': name,
-                        'durationS': 0.0, 'ok': None, 'failureKind': None,
-                        'error': None, 'skipped': 'no host tree', 'diag': [],
-                        'metalLog': None, 'configStatus': None,
-                        'bootId': None, 'tiles': {},
-                    })
-                    ctx.stepsSkipped += 1
 
-            if args.reboot_every and (cycle % args.reboot_every == 0):
-                reboots += 1
-                ok = doReboot(ctx, gui, cycle)
-                if not ok:
-                    exitCode = 1
-                    if not args.continue_:
-                        raise _StopSoak()
+                    guiHolder['gui'] = ctx.devGuiFactory()
+                    result = attachAndCheck(ctx, guiHolder['gui'], cycle)
+                    if result == 'refused':
+                        return 2
+                    if result is not True:
+                        bootFailures += 1
+                        ctx.hostTreeAvailable = False
+                        exitCode = 1
+                        if not args.continue_:
+                            raise _StopSoak()
+                    else:
+                        ctx.hostTreeAvailable = True
+        except _StopSoak:
+            pass
 
-                gui = ctx.devGuiFactory()
-                result = attachAndCheck(ctx, gui, cycle)
-                if result == 'refused':
-                    gui.stop()
-                    return 2
-                if result is not True:
-                    bootFailures += 1
-                    ctx.hostTreeAvailable = False
-                    exitCode = 1
-                    if not args.continue_:
-                        raise _StopSoak()
-                else:
-                    ctx.hostTreeAvailable = True
-    except _StopSoak:
-        pass
+        summary = buildSummary(
+            ctx, cyclesRun, reboots, bootFailures, time.monotonic() - t0,
+            'pass' if exitCode == 0 else 'fail')
+        ctx.write(summary)
+        return exitCode
     finally:
-        gui.stop()
-
-    summary = buildSummary(
-        ctx, cyclesRun, reboots, bootFailures, time.monotonic() - t0,
-        'pass' if exitCode == 0 else 'fail')
-    ctx.write(summary)
-    return exitCode
+        if ctx.root is not None:
+            closeClient(ctx.root)
+            ctx.root = None
+        guiHolder['gui'].stop()
 
 
 #-----------------------------------------------------------------------------
@@ -787,7 +829,7 @@ def buildArgParser():
              '--reboot-every other than 0')
     ap.add_argument('--ready-timeout', type=float, default=180)
     ap.add_argument('--boot-timeout', type=float, default=300)
-    ap.add_argument('--start-timeout', type=float, default=900)
+    ap.add_argument('--start-timeout', type=float, default=1200)
     ap.add_argument('--selftest', action='store_true')
     return ap
 
