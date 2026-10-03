@@ -29,8 +29,8 @@ if { $::env(GEN_XSA_IMAGE) == 0 } {
    exit -1
 }
 
-# Check for version 2021.2 of Vivado (or later)
-if { [VersionCheck 2021.2] < 0 } {exit -1}
+# Check for version 2023.1 of Vivado (or later)
+if { [VersionCheck 2023.1] < 0 } {exit -1}
 
 # Load Source Code
 loadSource -lib axi_soc_ultra_plus_core -dir "$::DIR_PATH/rtl"
