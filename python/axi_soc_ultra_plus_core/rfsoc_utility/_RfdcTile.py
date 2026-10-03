@@ -75,6 +75,94 @@ class RfdcTile(pr.Device):
         ))
 
         #######################################################################################
+        # DIAG-03 (D-12): tile register 0x38, PG269 v2.6 p.43. Counts automatic
+        # restarts after a supply, clock, or PLL loss; saturates at 255.
+        # Software restarts (Reset/StartUp/CustomStartUp) do not increment it.
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ResetCount',
+            description  = 'Automatic restart count after a supply, clock, or PLL loss (PG269 p.43). Saturates at 255. Software restarts do not increment it.',
+            offset       =  0x814,
+            bitSize      =  8,
+            bitOffset    =  0,
+            mode         = 'RO',
+            disp         = '{:d}',
+        ))
+
+        #######################################################################################
+        # DIAG-04 (D-12): per-tile restart record, read-only, written by PyRFdc
+        # before IgnoreMetalError can swallow a failure. Sequence bits 31:16,
+        # command bits 11:8, result bits 3:0.
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecord',
+            description  = 'Per-tile restart record: sequence[31:16], command[11:8], result[3:0]',
+            offset       =  0x818,
+            bitSize      =  32,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecordStateAtFailure',
+            description  = 'CurrentState captured at the moment of the last recorded restart failure',
+            offset       =  0x81C,
+            bitSize      =  8,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecordCommonStatusAtFailure',
+            description  = 'Common Status (0x228) captured at the moment of the last recorded restart failure',
+            offset       =  0x820,
+            bitSize      =  8,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecordClockDetectorAtFailure',
+            description  = 'Clock detector (0x84) captured at the moment of the last recorded restart failure',
+            offset       =  0x824,
+            bitSize      =  8,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        #######################################################################################
+        # DIAG-04 (D-12): sticky results fed only from the read-only record
+        # registers above, never from exception text.
+        #######################################################################################
+        self.add(pr.LocalVariable(
+            name         = 'LastResetResult',
+            description  = 'Result of the last Reset/StartUp/CustomStartUp on this tile',
+            mode         = 'RO',
+            value        = 'None',
+        ))
+
+        self.add(pr.LocalVariable(
+            name         = 'StateAtFailure',
+            description  = 'CurrentState at the time of the last recorded restart failure (-1 if none)',
+            mode         = 'RO',
+            value        = -1,
+        ))
+
+        self.add(pr.LocalVariable(
+            name         = 'FailureCount',
+            description  = 'Number of distinct recorded restart failures on this tile',
+            mode         = 'RO',
+            value        = 0,
+        ))
+
+        self.add(pr.LocalCommand(
+            name         = 'RefreshResetRecord',
+            description  = 'Re-read ResetRecord and update LastResetResult/StateAtFailure/FailureCount if it changed',
+            function     = self._refreshResetRecord,
+            hidden       = True,
+        ))
+
+        #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
         #######################################################################################
         self.add(pr.RemoteCommand(
@@ -82,7 +170,7 @@ class RfdcTile(pr.Device):
             description  = 'This API function restarts a given tile',
             offset       = 0x000,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: self._restartCmd(cmd),
             hidden       = True,
         ))
 
@@ -106,7 +194,7 @@ class RfdcTile(pr.Device):
             description  = 'This API function resets a given tile',
             offset       = 0x008,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: self._restartCmd(cmd),
         ))
 
         #######################################################################################
@@ -728,3 +816,44 @@ class RfdcTile(pr.Device):
                 offset     = 0x1000+0x400*i,
                 enableDeps = [self.IsADCBlockEnabled[i]] if isAdc else [self.IsDACBlockEnabled[i]],
             ))
+
+        # Last ResetRecord sequence number seen by _refreshResetRecord (DIAG-04
+        # idempotency: a re-read with no new restart in between must not
+        # re-count the same failure)
+        self._lastResetSeq = None
+
+    #######################################################################################
+    # DIAG-04 (D-12, D-21): read-only RfdcTile.ResetRecord decode, mapped to the
+    # D-13 DIAG-01 key names: ClockPresent, SupplyUp, PowerUp, PllLocked, ClkDet,
+    # ClkSrc map 1:1 to this device's ClockPresent, SupplyStable, PoweredUp,
+    # PllLocked, ClockDetector, ClockSource (PllStatus sub-device). No parsing
+    # of exception text; this reads only the record registers PyRFdc wrote.
+    #######################################################################################
+    def _refreshResetRecord(self):
+        record = self.ResetRecord.get(read=True)
+        seq = (record >> 16) & 0xFFFF
+        if seq == self._lastResetSeq:
+            return
+        self._lastResetSeq = seq
+
+        command = (record >> 8) & 0xF
+        result = record & 0xF
+        opName = {1: 'Reset', 2: 'StartUp', 3: 'CustomStartUp'}.get(command, 'Unknown')
+        ok = (result == 1)
+
+        self.LastResetResult.set(f'{opName} {"Ok" if ok else "Failed"}')
+
+        if not ok:
+            self.FailureCount.set(self.FailureCount.value() + 1)
+            self.StateAtFailure.set(self.ResetRecordStateAtFailure.get(read=True))
+
+    #######################################################################################
+    # Pattern 4 (D-12): Reset and StartUp go through this wrapper so a failure
+    # (raised or swallowed by IgnoreMetalError) always refreshes the sticky
+    # variables from the read-only record before re-raising.
+    #######################################################################################
+    def _restartCmd(self, cmd):
+        try:
+            cmd.set(1)
+        finally:
+            self._refreshResetRecord()
