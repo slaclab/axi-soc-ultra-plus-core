@@ -832,6 +832,11 @@ class RfdcTile(pr.Device):
     def _refreshResetRecord(self):
         record = self.ResetRecord.get(read=True)
         seq = (record >> 16) & 0xFFFF
+        if seq == 0:
+            # No restart command has ever been recorded for this tile (DIAG-04
+            # boundary/empty): leave LastResetResult/StateAtFailure/FailureCount
+            # at their construction-time defaults, do not treat this as a record.
+            return
         if seq == self._lastResetSeq:
             return
         self._lastResetSeq = seq
