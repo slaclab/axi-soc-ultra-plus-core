@@ -30,13 +30,18 @@
 
 #include <inttypes.h>
 #include <algorithm>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <string>
+#include <vector>
 
 #ifndef __BAREMETAL__
 #include <openssl/sha.h>
 #endif
+
+#include <metal/log.h>
 
 #include "rogue/GilRelease.h"
 #include "rogue/interfaces/memory/Constants.h"
@@ -85,6 +90,96 @@ enum {
     CfgBadHash            = 9,
 };
 
+// ----------------------------------------------------------------------------
+// D-11, D-71, D-72, F5, Pattern 2: libmetal log ring. File-static because the
+// libmetal log handler is a plain C function pointer with no `this`. Keeps the
+// most recent 16 lines, sequence-numbered so a failing restart command can
+// select only the lines logged since it started (DIAG-02 concurrency).
+// The handler never calls back into PyRFdc or libmetal state.
+// ----------------------------------------------------------------------------
+namespace {
+
+struct MetalLogLine {
+    uint64_t seq;
+    int level;
+    std::string text;
+};
+
+std::mutex g_metalRingMtx;
+std::deque<MetalLogLine> g_metalRing;
+uint64_t g_metalSeq = 0;
+std::shared_ptr<rogue::Logging> g_metalLog;
+
+uint64_t metalRingSeqNow() {
+    std::lock_guard<std::mutex> l(g_metalRingMtx);
+    return g_metalSeq;
+}
+
+std::vector<std::string> metalRingSince(uint64_t seq) {
+    std::vector<std::string> out;
+    std::lock_guard<std::mutex> l(g_metalRingMtx);
+    for (const auto& line : g_metalRing) {
+        if (line.seq > seq) {
+            out.push_back(line.text);
+        }
+    }
+    return out;
+}
+
+void metalLogHandler(enum metal_log_level level, const char* fmt, ...) {
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    std::string t(buf);
+    while (!t.empty() && (t.back() == '\n' || t.back() == '\r')) {
+        t.pop_back();
+    }
+    while (!t.empty() && (t.front() == '\n' || t.front() == '\r' || t.front() == ' ')) {
+        t.erase(0, 1);
+    }
+
+    {
+        std::lock_guard<std::mutex> l(g_metalRingMtx);
+        g_metalRing.push_back({++g_metalSeq, int(level), t});
+        if (g_metalRing.size() > 16) {
+            g_metalRing.pop_front();
+        }
+    }
+
+    if (g_metalLog) {
+        uint32_t rogueLevel;
+        switch (level) {
+            case METAL_LOG_EMERGENCY:
+            case METAL_LOG_ALERT:
+            case METAL_LOG_CRITICAL:
+                rogueLevel = rogue::Logging::Critical;
+                break;
+            case METAL_LOG_ERROR:
+                rogueLevel = rogue::Logging::Error;
+                break;
+            case METAL_LOG_WARNING:
+                rogueLevel = rogue::Logging::Warning;
+                break;
+            case METAL_LOG_NOTICE:
+            case METAL_LOG_INFO:
+                rogueLevel = rogue::Logging::Info;
+                break;
+            default:
+                rogueLevel = rogue::Logging::Debug;
+                break;
+        }
+        g_metalLog->log(rogueLevel, "%s", t.c_str());
+    }
+
+    // Chain to the default handler so journal output is unchanged (D-71, D-72)
+    metal_default_log_handler(level, "%s\n", t.c_str());
+}
+
+}  // namespace
+
 //! Create a block, class creator
 PyRFdcPtr PyRFdc::create(const std::string& cfg) {
     PyRFdcPtr b = std::make_shared<PyRFdc>(cfg);
@@ -107,6 +202,17 @@ PyRFdc::PyRFdc(const std::string& cfg) : rim::Slave(4,0x1000) { // Set min=4B an
     tileType_ = 0;
     blockId_ = 0;
     data_ = 0;
+
+    // Per-tile restart records (DIAG-03, DIAG-04): no record yet, no failure yet
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 4; j++) {
+            resetRecord_[i][j] = 0;
+            resetSeq_[i][j] = 0;
+            stateAtFailure_[i][j] = 0xFF;
+            commonAtFailure_[i][j] = 0xFF;
+            clkDetAtFailure_[i][j] = 0xFF;
+        }
+    }
 
     log_ = rogue::Logging::create("PyRFdc");
 
@@ -133,6 +239,14 @@ PyRFdc::PyRFdc(const std::string& cfg) : rim::Slave(4,0x1000) { // Set min=4B an
         log_->error("%s", cfgMessage_.c_str());
         return;
     }
+
+    // D-11, D-71, Pitfall 8: install only AFTER a successful metal_init, which
+    // overwrites the handler. g_metalLog is created once; a re-constructed
+    // PyRFdc (never happens in this process, but kept defensive) reuses it.
+    if (!g_metalLog) {
+        g_metalLog = rogue::Logging::create("PyRFdc.metal");
+    }
+    metal_set_log_handler(metalLogHandler);
 
 #ifndef __BAREMETAL__
     struct metal_device *deviceptr;
@@ -255,13 +369,10 @@ PyRFdc::PyRFdc(const std::string& cfg) : rim::Slave(4,0x1000) { // Set min=4B an
 
     log_->debug("PyRFdc::PyRFdc() Initialization Complete");
 
-    // Work around for MaxSampleRate until I figure out how to properly
-    //get the ConfigPtr (and/or devicetree) to set this configuration properly
+    // DT-02 (D-34): the MaxSampleRate override is gone now that the ROM
+    // delivers a valid XRFdc_Config; RFdcInst_ is value-initialized (PyRFdc.h)
+    // so UpdateMixerScale is 0 on a fresh instance, not indeterminate (F8).
     int i, j, k;
-    for(j=0; j<4; j++) {
-        RFdcInstPtr_->RFdc_Config.ADCTile_Config[j].MaxSampleRate = 5.9;
-        RFdcInstPtr_->RFdc_Config.DACTile_Config[j].MaxSampleRate = 10.0;
-    }
 
     // Loop through type indexes
     for(i=0; i<2; i++) {
@@ -348,8 +459,10 @@ PyRFdc::PyRFdc(const std::string& cfg) : rim::Slave(4,0x1000) { // Set min=4B an
                             qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
                         }
 
-                        // Get the default Mixer configuration
-                        if ((XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) && (RFdcInstPtr_->UpdateMixerScale<=0x1U)) {
+                        // Get the default Mixer configuration (DT-02, D-34: the old
+                        // UpdateMixerScale guard is gone now that RFdcInst_ is
+                        // value-initialized and never indeterminate, F8)
+                        if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
                             // Check for ADC tile or DAC DUC not bypassed
                             if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
                                 // Get the mixer setting
@@ -441,22 +554,177 @@ void PyRFdc::ConfigStatusReg(uint32_t addr) {
     }
 }
 
-void PyRFdc::StartUp(int Tile_Id) {
-    int status = XRFDC_SUCCESS;
+//! Serve the tile-only restart record registers at 0x814 to 0x824 (DIAG-03, DIAG-04)
+void PyRFdc::ResetRecordReg(uint32_t addr) {
+    if (!rdTxn_) {
+        errMsg_ = "ResetRecord(): read-only\n";
+        return;
+    }
 
+    uint32_t t = tileType_;
+    uint32_t n = tileId_;
+
+    if (addr == 0x814) {
+        // PG269 v2.6 p.43: Reset Count, automatic restarts only, 8-bit saturating
+        data_ = XRFdc_ReadReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(t, n), 0x0038) & 0xFFU;
+
+    } else if (addr == 0x818) {
+        data_ = resetRecord_[t][n];
+
+    } else if (addr == 0x81C) {
+        data_ = stateAtFailure_[t][n];
+
+    } else if (addr == 0x820) {
+        data_ = commonAtFailure_[t][n];
+
+    } else if (addr == 0x824) {
+        data_ = clkDetAtFailure_[t][n];
+
+    } else {
+        data_ = 0;
+    }
+}
+
+//! DIAG-04, D-12: record a restart command's outcome for the current tileType_/tileId_.
+//! On failure, snapshot CurrentState, Common Status, and the clock detector BEFORE
+//! IgnoreMetalError can swallow the error (F14, D-10, D-22).
+void PyRFdc::RecordRestart(uint32_t type, uint32_t tile, uint32_t op, bool ok) {
+    uint16_t seq = uint16_t(resetSeq_[type][tile] + 1);
+    resetSeq_[type][tile] = seq;
+    resetRecord_[type][tile] = (uint32_t(seq) << 16) | ((op & 0xFU) << 8) | (ok ? 1U : 2U);
+
+    if (!ok) {
+        uint32_t base = XRFDC_CTRL_STS_BASE(type, tile);
+        stateAtFailure_[type][tile] = XRFdc_ReadReg(RFdcInstPtr_, base, 0x000C) & 0xFFU;
+        commonAtFailure_[type][tile] = XRFdc_ReadReg(RFdcInstPtr_, base, 0x0228) & 0xFU;
+        if (RFdcInstPtr_->RFdc_Config.IPType >= XRFDC_GEN3) {
+            clkDetAtFailure_[type][tile] = XRFdc_ReadReg(RFdcInstPtr_, base, 0x0084) & 0x1U;
+        } else {
+            clkDetAtFailure_[type][tile] = 0xFFU;
+        }
+    }
+}
+
+//! DIAG-01 (D-13, D-21, F6, Pattern 3): one key=value diagnostic line for a failing
+//! tile. Plain XRFdc_ReadReg reads plus XRFdc_GetClockSource; never blocks or asserts.
+std::string PyRFdc::DiagLine(const char* op, uint32_t type, uint32_t tile, const char* call) {
+    uint32_t base = XRFDC_CTRL_STS_BASE(type, tile);
+    uint32_t currentState = XRFdc_ReadReg(RFdcInstPtr_, base, 0x000C) & 0xFFU;
+    uint32_t common = XRFdc_ReadReg(RFdcInstPtr_, base, 0x0228);
+    uint32_t clockPresent = common & 0x1U;
+    uint32_t supplyUp     = (common >> 1) & 0x1U;
+    uint32_t powerUp      = (common >> 2) & 0x1U;
+    uint32_t pllLocked    = (common >> 3) & 0x1U;
+
+    std::string clkDet;
+    if (RFdcInstPtr_->RFdc_Config.IPType >= XRFDC_GEN3) {
+        clkDet = std::to_string(XRFdc_ReadReg(RFdcInstPtr_, base, 0x0084) & 0x1U);
+    } else {
+        clkDet = "NA";
+    }
+
+    uint32_t clkSrc = 0;
+    std::string clkSrcStr;
+    if (XRFdc_GetClockSource(RFdcInstPtr_, type, tile, &clkSrc) != XRFDC_SUCCESS) {
+        clkSrcStr = "Unknown";
+    } else if (clkSrc == XRFDC_EXTERNAL_CLK) {
+        clkSrcStr = "External";
+    } else if (clkSrc == XRFDC_INTERNAL_PLL_CLK) {
+        clkSrcStr = "InternalPLL";
+    } else {
+        clkSrcStr = "Unknown";
+    }
+
+    char line[256];
+    std::snprintf(line, sizeof(line),
+        "%s %s tile %u: %s failed; CurrentState=%u ClockPresent=%u SupplyUp=%u PowerUp=%u PllLocked=%u ClkDet=%s ClkSrc=%s",
+        op, (type == XRFDC_ADC_TILE) ? "ADC" : "DAC", tile, call,
+        currentState, clockPresent, supplyUp, powerUp, pllLocked,
+        clkDet.c_str(), clkSrcStr.c_str());
+    return std::string(line);
+}
+
+//! DIAG-01: one DiagLine per failing tile (tile order) plus the metal lines
+//! captured since seq0, newline separated, no trailing empty line, capped at
+//! 440 characters with the key=value lines first (F6).
+std::string PyRFdc::RestartError(const char* op, const char* call, uint32_t type,
+                                  const std::vector<uint32_t>& tiles, uint64_t seq0) {
+    std::string out;
+    for (size_t i = 0; i < tiles.size(); i++) {
+        if (i > 0) {
+            out += "\n";
+        }
+        out += DiagLine(op, type, tiles[i], call);
+    }
+
+    std::vector<std::string> metal = metalRingSince(seq0);
+    for (const auto& line : metal) {
+        out += "\n";
+        out += line;
+    }
+
+    if (out.size() > 440) {
+        out.resize(440);
+    }
+    return out;
+}
+
+//! Tile_Id -1 helper (StartUp, CustomStartUp): the driver loops internally over
+//! every enabled tile and returns one status for the whole call, so the
+//! failing tiles are inferred from live registers: an enabled tile whose
+//! Restart bit (0x04) is still set, or whose CurrentState differs from the
+//! requested end state, is failing. If none qualify (unexpected), every
+//! enabled tile is reported failed rather than silently naming none.
+static std::vector<uint32_t> FailingTilesAllAdcDac(XRFdc* inst, uint32_t type, uint32_t endState) {
+    std::vector<uint32_t> enabled;
+    std::vector<uint32_t> failed;
+    for (uint32_t t = 0; t < 4; t++) {
+        if (XRFdc_CheckTileEnabled(inst, type, t) != XRFDC_FAILURE) {
+            enabled.push_back(t);
+            uint32_t base = XRFDC_CTRL_STS_BASE(type, t);
+            uint32_t restart = XRFdc_ReadReg(inst, base, 0x0004) & 0x1U;
+            uint32_t cur = XRFdc_ReadReg(inst, base, 0x000C) & 0xFFU;
+            if (restart != 0 || cur != endState) {
+                failed.push_back(t);
+            }
+        }
+    }
+    if (failed.empty()) {
+        return enabled;
+    }
+    return failed;
+}
+
+void PyRFdc::StartUp(int Tile_Id) {
     // Check if read
     if (rdTxn_) {
         data_ = 1; // Always return 1 so this is a set() and not posted() cmd
-
-    // Else write
-    } else {
-        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
-        status = XRFdc_StartUp(RFdcInstPtr_, tileType_, Tile_Id);
+        return;
     }
 
-    // Check if not successful
+    // Else write
+    uint64_t seq0 = metalRingSeqNow();
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
+    int status = XRFdc_StartUp(RFdcInstPtr_, tileType_, Tile_Id);
+
+    if (Tile_Id >= 0) {
+        RecordRestart(tileType_, uint32_t(Tile_Id), 2, status == XRFDC_SUCCESS);
+        if (status != XRFDC_SUCCESS) {
+            std::vector<uint32_t> tiles = {uint32_t(Tile_Id)};
+            errMsg_ = RestartError("StartUp", "XRFdc_StartUp", tileType_, tiles, seq0);
+        }
+        return;
+    }
+
+    // Tile_Id -1: the driver loops internally; record every enabled tile
+    for (uint32_t t = 0; t < 4; t++) {
+        if (XRFdc_CheckTileEnabled(RFdcInstPtr_, tileType_, t) != XRFDC_FAILURE) {
+            RecordRestart(tileType_, t, 2, status == XRFDC_SUCCESS);
+        }
+    }
     if (status != XRFDC_SUCCESS) {
-        errMsg_ = "StartUp(" + std::to_string(Tile_Id) + "): failed\n";
+        std::vector<uint32_t> tiles = FailingTilesAllAdcDac(RFdcInstPtr_, tileType_, 15);
+        errMsg_ = RestartError("StartUp", "XRFdc_StartUp", tileType_, tiles, seq0);
     }
 }
 
@@ -486,108 +754,143 @@ void PyRFdc::Reset(int Tile_Id) {
     // Check if read
     if (rdTxn_) {
         data_ = 1; // Always return 1 so this is a set() and not posted() cmd
+        return;
+    }
 
-    // Else write
-    } else {
+    uint64_t seq0 = metalRingSeqNow();
 
-        // Check for global TYPE reset
-        if (Tile_Id<0) {
-            // Init the i variable
-            i = tileType_;
+    // Check for global TYPE reset
+    if (Tile_Id<0) {
+        // Init the i variable
+        i = tileType_;
 
-            // Init the MTS configurations
-            XRFdc_MultiConverter_Init(&mtsConfig_[i], 0, 0, XRFDC_TILE_ID0);
-            mtsConfig_[i].Tiles = 0;
+        // Init the MTS configurations
+        XRFdc_MultiConverter_Init(&mtsConfig_[i], 0, 0, XRFDC_TILE_ID0);
+        mtsConfig_[i].Tiles = 0;
 
-            // Loop through tile indexes
-            for(j=0; j<4; j++) {
+        // Loop through tile indexes
+        for(j=0; j<4; j++) {
 
-                // Init the MTS factor status
-                mtsfactor_[i][j] = 0;
+            // Init the MTS factor status
+            mtsfactor_[i][j] = 0;
 
-                // Check if tile is enabled
-                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+            // Check if tile is enabled
+            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
 
-                    // Reset all the Tiles that have their PLL's enabled
-                    if (pllDefault_[i][j].Enabled > 0) {
-                        XRFdc_Reset(RFdcInstPtr_, i, j);
+                // Reset all the Tiles that have their PLL's enabled
+                if (pllDefault_[i][j].Enabled > 0) {
+                    int firstPassStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
+                    if (firstPassStatus != XRFDC_SUCCESS) {
+                        // D-13, Pattern 3: first-pass failures are a warning,
+                        // not the per-tile record (the second pass below owns
+                        // the record for this tile, keeping today's control flow)
+                        log_->warning("%s", DiagLine("Reset(first pass)", i, uint32_t(j), "XRFdc_Reset").c_str());
                     }
+                }
 
-                    // Restore default configuration
-                    XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
-                    clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
-                    pllConfig_[i][j] = pllDefault_[i][j];
+                // Restore default configuration
+                XRFdc_DynamicPLLConfig(RFdcInstPtr_, i, j, uint8_t(clkSrcDefault_[i][j]), pllDefault_[i][j].RefClkFreq, pllDefault_[i][j].SampleRate);
+                clkSrcConfig_[i][j] = clkSrcDefault_[i][j];
+                pllConfig_[i][j] = pllDefault_[i][j];
 
-                    // Loop through block indexes
-                    for(k=0; k<4; k++) {
+                // Loop through block indexes
+                for(k=0; k<4; k++) {
 
-                        // Check if block enabled
-                        if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                    // Check if block enabled
+                    if (XRFdc_CheckBlockEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
 
-                            if (XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
-                                XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
-                            }
-                            qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
+                        if (XRFdc_SetQMCSettings(RFdcInstPtr_, i, j, k, &qmcDefault_[i][j][k]) != XRFDC_FAILURE) {
+                            XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_QMC);
+                        }
+                        qmcConfig_[i][j][k] = qmcDefault_[i][j][k];
 
-                            // Get the default Mixer configuration
-                            if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
-                                // Check for ADC tile or DAC DUC not bypassed
-                                if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
-                                    if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
-                                        XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
-                                    }
+                        // Get the default Mixer configuration
+                        if (XRFdc_CheckDigitalPathEnabled(RFdcInstPtr_, i, j, k) != XRFDC_FAILURE) {
+                            // Check for ADC tile or DAC DUC not bypassed
+                            if ((i==0) || (XRFdc_RDReg(RFdcInstPtr_, XRFDC_BLOCK_BASE(i, j, k), XRFDC_DAC_DATAPATH_OFFSET, XRFDC_DATAPATH_MODE_MASK) != XRFDC_DAC_INT_MODE_FULL_BW_BYPASS)) {
+                                if (XRFdc_SetMixerSettings(RFdcInstPtr_, i, j, k, &mixerDefault_[i][j][k]) != XRFDC_FAILURE) {
+                                    XRFdc_UpdateEvent(RFdcInstPtr_, i, j, k, XRFDC_EVENT_MIXER);
                                 }
                             }
-                            mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
-
                         }
+                        mixerConfig_[i][j][k] = mixerDefault_[i][j][k];
+
                     }
                 }
             }
+        }
 
-            // Loop through tile indexes
-            for(j=0; j<4; j++) {
+        // Loop through tile indexes
+        std::vector<uint32_t> failedTiles;
+        for(j=0; j<4; j++) {
 
-                // Check if tile is enabled
-                if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
+            // Check if tile is enabled
+            if (XRFdc_CheckTileEnabled(RFdcInstPtr_, i, j) != XRFDC_FAILURE) {
 
-                    // Execute reset again after restoring the settings
-                    status = XRFdc_Reset(RFdcInstPtr_, i, j);
+                // Execute reset again after restoring the settings
+                int tileStatus = XRFdc_Reset(RFdcInstPtr_, i, j);
+                RecordRestart(uint32_t(i), uint32_t(j), 1, tileStatus == XRFDC_SUCCESS);
+                if (tileStatus != XRFDC_SUCCESS) {
+                    failedTiles.push_back(uint32_t(j));
                 }
-
             }
 
-        // Else not a global reset
-        } else {
-            // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
-            status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
         }
+
+        // Report failure when any enabled tile's final XRFdc_Reset failed,
+        // naming every failing tile (previously only the last tile's status counted)
+        if (!failedTiles.empty()) {
+            errMsg_ = RestartError("Reset", "XRFdc_Reset", uint32_t(i), failedTiles, seq0);
+        }
+        return;
+
+    // Else not a global reset
+    } else {
+        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
+        status = XRFdc_Reset(RFdcInstPtr_, tileType_, Tile_Id);
+        RecordRestart(tileType_, uint32_t(Tile_Id), 1, status == XRFDC_SUCCESS);
     }
 
     // Check if not successful
     if (status != XRFDC_SUCCESS) {
-        errMsg_ = "Reset(" + std::to_string(Tile_Id) + "): failed\n";
+        std::vector<uint32_t> tiles = {uint32_t(Tile_Id)};
+        errMsg_ = RestartError("Reset", "XRFdc_Reset", tileType_, tiles, seq0);
     }
 }
 
 void PyRFdc::CustomStartUp(int Tile_Id) {
-    int status = XRFDC_SUCCESS;
     uint32_t StartState = (data_>>0)&0xF;
     uint32_t EndState   = (data_>>8)&0xF;
 
     // Check if read
     if (rdTxn_) {
-        status = XRFDC_FAILURE;
-
-    // Else write
-    } else {
-        // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CustomStartUp
-        status = XRFdc_CustomStartUp(RFdcInstPtr_, tileType_, Tile_Id, StartState, EndState);
+        errMsg_ = "CustomStartUp(" + std::to_string(Tile_Id) + "): failed\n";
+        return;
     }
 
-    // Check if not successful
+    // Else write
+    uint64_t seq0 = metalRingSeqNow();
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CustomStartUp
+    int status = XRFdc_CustomStartUp(RFdcInstPtr_, tileType_, Tile_Id, StartState, EndState);
+
+    if (Tile_Id >= 0) {
+        RecordRestart(tileType_, uint32_t(Tile_Id), 3, status == XRFDC_SUCCESS);
+        if (status != XRFDC_SUCCESS) {
+            std::vector<uint32_t> tiles = {uint32_t(Tile_Id)};
+            errMsg_ = RestartError("CustomStartUp", "XRFdc_CustomStartUp", tileType_, tiles, seq0);
+        }
+        return;
+    }
+
+    // Tile_Id -1: the driver loops internally; record every enabled tile
+    for (uint32_t t = 0; t < 4; t++) {
+        if (XRFdc_CheckTileEnabled(RFdcInstPtr_, tileType_, t) != XRFDC_FAILURE) {
+            RecordRestart(tileType_, t, 3, status == XRFDC_SUCCESS);
+        }
+    }
     if (status != XRFDC_SUCCESS) {
-        errMsg_ = "CustomStartUp(" + std::to_string(Tile_Id) + "): failed\n";
+        std::vector<uint32_t> tiles = FailingTilesAllAdcDac(RFdcInstPtr_, tileType_, EndState);
+        errMsg_ = RestartError("CustomStartUp", "XRFdc_CustomStartUp", tileType_, tiles, seq0);
     }
 }
 
@@ -3452,13 +3755,14 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
     uint32_t wrdIdx = 0;
     bool tileOnly = false;
     bool refused = false;
-
-     // Initialize as an empty string
-     errMsg_.clear();
+    std::string err;  // DEF-05 (D-10): consumed only after mtx_ is released
 
     rim::TransactionLockPtr tlock = tran->lock();
     {
         std::lock_guard<std::mutex> lock(mtx_);
+
+        // DEF-05 (D-10): clear and read errMsg_ only while mtx_ is held
+        errMsg_.clear();
 
         while (size > 0)
         {
@@ -3772,6 +4076,21 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                     } else if (tileAddr==0x810) {
                         TileCurrentState();
 
+                    } else if (tileAddr==0x814) {
+                        ResetRecordReg(tileAddr);
+
+                    } else if (tileAddr==0x818) {
+                        ResetRecordReg(tileAddr);
+
+                    } else if (tileAddr==0x81C) {
+                        ResetRecordReg(tileAddr);
+
+                    } else if (tileAddr==0x820) {
+                        ResetRecordReg(tileAddr);
+
+                    } else if (tileAddr==0x824) {
+                        ResetRecordReg(tileAddr);
+
                     } else {
                         errMsg_ = "Undefined memory";
                     }
@@ -3959,31 +4278,34 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
                 memcpy(ptr+wrdIdx, &data_, sizeof(uint32_t));
             }
 
-            if (ignoreMetalError_ && !refused) {
-                errMsg_.clear();
-            }
-
             // Increment/decrement the counters
             size   -= sizeof(uint32_t);
             addr   += sizeof(uint32_t);
             wrdIdx += sizeof(uint32_t);
 
         } // while (size > 0)
+
+        // DEF-05 (D-10): copy while still holding mtx_, then swallow once per
+        // transaction on the local copy (never on a refusal, DIAG-04)
+        err = errMsg_;
+        if (ignoreMetalError_ && !refused) {
+            err.clear();
+        }
     } // rim::TransactionLockPtr tlock = tran->lock();
 
     // Complete transaction without error
-    if (errMsg_.empty()) {
+    if (err.empty()) {
         tran->done();
 
     // Complete transaction with error message
     } else {
         // Refusals are logged at debug level so a polling GUI cannot flood the journal
         if (refused) {
-            log_->debug("%s", errMsg_.c_str());
+            log_->debug("%s", err.c_str());
         } else {
-            log_->error("%s", errMsg_.c_str());
+            log_->error("%s", err.c_str());
         }
-        tran->errorStr(errMsg_);
+        tran->errorStr(err);
     }
 
 }

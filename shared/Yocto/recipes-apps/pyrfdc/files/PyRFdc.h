@@ -91,6 +91,13 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     XRFdc_Mixer_Settings mixerDefault_[2][4][4];
     XRFdc_Mixer_Settings mixerConfig_[2][4][4];
 
+    //! Per-tile restart records (DIAG-03, DIAG-04): [type][tile], type 0=ADC 1=DAC
+    uint32_t resetRecord_[2][4];
+    uint32_t stateAtFailure_[2][4];
+    uint32_t commonAtFailure_[2][4];
+    uint32_t clkDetAtFailure_[2][4];
+    uint16_t resetSeq_[2][4];
+
     //! Application functions
     void StartUp(int Tile_Id);
     void Shutdown(int Tile_Id);
@@ -206,6 +213,13 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     void ConfigStatusReg(uint32_t addr);
     bool DriverFree(uint32_t addr) const;
     void SetConfigStatus(uint32_t status, const std::string& msg);
+
+    //! DIAG-01/03/04: per-tile restart records, Reset Count, and the diagnostic string builder
+    void RecordRestart(uint32_t type, uint32_t tile, uint32_t op, bool ok);
+    std::string DiagLine(const char* op, uint32_t type, uint32_t tile, const char* call);
+    std::string RestartError(const char* op, const char* call, uint32_t type,
+                              const std::vector<uint32_t>& tiles, uint64_t seq0);
+    void ResetRecordReg(uint32_t addr);
 
   public:
     //! Class factory which returns a pointer
