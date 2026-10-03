@@ -109,8 +109,38 @@ def ssh(board, command, timeout=30):
         capture_output=True, text=True, timeout=timeout)
 
 
+class SshTransportError(Exception):
+    """ssh itself failed (host key mismatch, auth, network), as opposed to
+    the board legitimately not answering yet while it reboots. Pitfall
+    found running the baseline: a changed host key makes ssh exit 255 with
+    'Host key verification failed' on every call, and bootId() returning
+    None for that looks identical to 'board still booting', so a reboot
+    that never actually reached the board (the ssh exit 255 means the
+    reboot command itself was never delivered either) silently reads as a
+    300s boot-id-wait timeout instead of the real, non-retryable cause."""
+    pass
+
+
+def _checkSshTransport(r):
+    if r.returncode == 255 and 'Host key verification failed' in (r.stderr or ''):
+        raise SshTransportError(
+            'ssh host key verification failed for the board (stderr tail): %s' %
+            (r.stderr or '')[-300:])
+
+
+def sshReboot(board, timeout=15):
+    """Issue the reboot command and confirm ssh itself delivered it (D-17):
+    a non-zero ssh exit here means the board was never actually told to
+    reboot, which must not be allowed to read as a boot-id-wait timeout."""
+    r = ssh(board, '/bin/sync; /sbin/reboot', timeout=timeout)
+    _checkSshTransport(r)
+    if r.returncode != 0:
+        raise RuntimeError('reboot command failed: rc=%d stderr=%s' % (r.returncode, (r.stderr or '')[-300:]))
+
+
 def bootId(board, timeout=15):
     r = ssh(board, 'cat /proc/sys/kernel/random/boot_id', timeout=timeout)
+    _checkSshTransport(r)
     return r.stdout.strip() if r.returncode == 0 else None
 
 
@@ -711,7 +741,7 @@ def runSoak(ctx):
     if ctx.bootIdFn is None:
         ctx.bootIdFn = lambda board: bootId(board)
     if ctx.sshRebootFn is None:
-        ctx.sshRebootFn = lambda board: ssh(board, '/bin/sync; /sbin/reboot', timeout=15)
+        ctx.sshRebootFn = lambda board: sshReboot(board)
     if ctx.waitReadyFn is None:
         ctx.waitReadyFn = lambda board, timeout: waitReady(board, timeout)
 
