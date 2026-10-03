@@ -73,7 +73,7 @@ class Rfdc(pr.Device):
             description  = 'This API function restarts ALL ADC tiles',
             offset       = 0x10000,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: self._globalRestartCmd(cmd, isAdc=True),
             hidden       = True,
         ))
 
@@ -82,7 +82,7 @@ class Rfdc(pr.Device):
             description  = 'This API function restarts ALL DAC tiles',
             offset       = 0x10004,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: self._globalRestartCmd(cmd, isAdc=False),
             hidden       = True,
         ))
 
@@ -115,7 +115,7 @@ class Rfdc(pr.Device):
             description  = 'This API function resets ALL ADC tiles',
             offset       = 0x10010,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1), # Make sure to set rogue.root timeout > 2.0
+            function     = lambda cmd: self._globalRestartCmd(cmd, isAdc=True), # Make sure to set rogue.root timeout > 2.0
         ))
 
         self.add(pr.RemoteCommand(
@@ -123,7 +123,18 @@ class Rfdc(pr.Device):
             description  = 'This API function resets ALL DAC tiles',
             offset       = 0x10014,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1), # Make sure to set rogue.root timeout > 2.0
+            function     = lambda cmd: self._globalRestartCmd(cmd, isAdc=False), # Make sure to set rogue.root timeout > 2.0
+        ))
+
+        #######################################################################################
+        # DIAG-04: refresh every enabled tile's sticky restart record (used by
+        # the global commands above and available standalone for the soak)
+        #######################################################################################
+        self.add(pr.LocalCommand(
+            name         = 'RefreshResetRecords',
+            description  = 'Refresh LastResetResult/StateAtFailure/FailureCount on every enabled tile',
+            function     = self._refreshAllResetRecords,
+            hidden       = True,
         ))
 
         #######################################################################################
@@ -738,6 +749,33 @@ class Rfdc(pr.Device):
                     enableDeps = [self.CheckDacTileEnabled[i]],
                 ))
 
+    def _enabledAdcTiles(self):
+        return [i for i in range(4) if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0)]
+
+    def _enabledDacTiles(self):
+        return [i for i in range(4) if self.enDacTile[i] and (self.CheckDacTileEnabled[i].get() != 0)]
+
+    def _refreshAllResetRecords(self):
+        for i in self._enabledAdcTiles():
+            self.AdcTile[i]._refreshResetRecord()
+        for i in self._enabledDacTiles():
+            self.DacTile[i]._refreshResetRecord()
+
+    #######################################################################################
+    # D-12, D-17, D-22: StartUpAllAdc/StartUpAllDac/ResetAllAdc/ResetAllDac go
+    # through this wrapper so every enabled tile's sticky restart record is
+    # refreshed after the command, success or failure (the per-tile Reset
+    # command already does this through RfdcTile._restartCmd).
+    #######################################################################################
+    def _globalRestartCmd(self, cmd, isAdc):
+        try:
+            cmd.set(1)
+        finally:
+            tiles = self._enabledAdcTiles() if isAdc else self._enabledDacTiles()
+            tileDevs = self.AdcTile if isAdc else self.DacTile
+            for i in tiles:
+                tileDevs[i]._refreshResetRecord()
+
     def UpdateIsEnabled(self):
         # Reset ADC Tiles
         for i in range(4):
@@ -761,6 +799,7 @@ class Rfdc(pr.Device):
         self.readBlocks(recurse=True)
         self.checkBlocks(recurse=True)
 
+    @pr.expose
     def Init(self):
         print( f'{self.path}: Initialize RFDC')
 
@@ -774,19 +813,70 @@ class Rfdc(pr.Device):
             message = self.ConfigMessage.get(read=True)
             raise ValueError(f'{self.path}.Init: RFDC driver is not initialized (ConfigStatus={label}): {message}')
 
-        # Global RFDC Reset
-        self.ResetAllAdc()
-        self.ResetAllDac()
+        # D-17, D-22: force IgnoreMetalError off for the duration of Init so no
+        # step's failure can be silently swallowed, and restore it afterward
+        # regardless of outcome.
+        savedIgnoreMetalError = self.IgnoreMetalError.get(read=True)
+        self.IgnoreMetalError.set(False)
 
-        # Reset ADC Tiles
-        for i in range(4):
-            if self.enAdcTile[i] and (self.CheckAdcTileEnabled[i].get() != 0):
-                self.AdcTile[i].Reset()
+        adcTiles = self._enabledAdcTiles()
+        dacTiles = self._enabledDacTiles()
+        beforeFailureCounts = {}
+        for i in adcTiles:
+            beforeFailureCounts[('ADC', i)] = self.AdcTile[i].FailureCount.value()
+        for i in dacTiles:
+            beforeFailureCounts[('DAC', i)] = self.DacTile[i].FailureCount.value()
 
-        # Reset DAC Tiles
-        for i in range(4):
-            if self.enDacTile[i] and (self.CheckDacTileEnabled[i].get() != 0):
-                self.DacTile[i].Reset()
+        failedSteps = []
+        try:
+            # Keep the existing order and calls exactly; the double reset is a
+            # later change (Phase 2/3), not this plan's concern.
+            try:
+                self.ResetAllAdc()
+            except Exception as e:
+                failedSteps.append(('ResetAllAdc', str(e).splitlines()[0] if str(e) else ''))
 
-        # Update all the remote variables after the reset
-        self.UpdateIsEnabled()
+            try:
+                self.ResetAllDac()
+            except Exception as e:
+                failedSteps.append(('ResetAllDac', str(e).splitlines()[0] if str(e) else ''))
+
+            for i in adcTiles:
+                try:
+                    self.AdcTile[i].Reset()
+                except Exception as e:
+                    failedSteps.append((f'AdcTile[{i}].Reset', str(e).splitlines()[0] if str(e) else ''))
+
+            for i in dacTiles:
+                try:
+                    self.DacTile[i].Reset()
+                except Exception as e:
+                    failedSteps.append((f'DacTile[{i}].Reset', str(e).splitlines()[0] if str(e) else ''))
+
+            try:
+                self.UpdateIsEnabled()
+            except Exception as e:
+                failedSteps.append(('UpdateIsEnabled', str(e).splitlines()[0] if str(e) else ''))
+
+        finally:
+            self.IgnoreMetalError.set(savedIgnoreMetalError)
+
+        # Aggregate: a tile is failed if its FailureCount rose during this
+        # Init, regardless of whether the step above raised or was swallowed
+        # by a previous IgnoreMetalError state (DIAG-04). Order ADC 0 to 3
+        # then DAC 0 to 3.
+        failedTiles = []
+        for i in sorted(adcTiles):
+            if self.AdcTile[i].FailureCount.value() > beforeFailureCounts[('ADC', i)]:
+                failedTiles.append(f'ADC tile {i}')
+        for i in sorted(dacTiles):
+            if self.DacTile[i].FailureCount.value() > beforeFailureCounts[('DAC', i)]:
+                failedTiles.append(f'DAC tile {i}')
+
+        if failedSteps or failedTiles:
+            parts = []
+            if failedTiles:
+                parts.append('tiles: ' + ', '.join(failedTiles))
+            if failedSteps:
+                parts.append('steps: ' + '; '.join(f'{step}: {msg}' for step, msg in failedSteps))
+            raise RuntimeError(f'{self.path}.Init failed on: ' + ' | '.join(parts))
