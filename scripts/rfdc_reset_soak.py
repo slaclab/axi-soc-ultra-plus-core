@@ -102,22 +102,34 @@ def classifyError(text):
 
 def ssh(board, command, timeout=30):
     """List-argument subprocess ssh: no shell, fixed options, BatchMode so a
-    missing host key or a password prompt fails fast instead of hanging."""
+    missing host key or a password prompt fails fast instead of hanging.
+    Pitfall found running the baseline: this board's embedded Yocto image
+    runs sshdgenkeys.service at every boot and regenerates its host keys
+    from scratch, so StrictHostKeyChecking=accept-new (which only accepts
+    a key for a host never seen before) rejects every single reconnect
+    after a real reboot with 'Host key verification failed', permanently
+    breaking the reboot path for the rest of the run. StrictHostKeyChecking
+    is disabled with a throwaway known_hosts file instead: this board is a
+    single, exclusively owned lab host reached only over the private
+    10.0.0.0/24 lab segment (never a disclosed credential or sensitive
+    data path), so skipping host identity pinning here does not weaken the
+    T-01-21 mitigation (list-argument construction, fixed commands,
+    BatchMode, no shell invocation), which is what guards against command
+    injection."""
     return subprocess.run(
         ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
-         '-o', 'StrictHostKeyChecking=accept-new', 'root@' + board, command],
+         '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null',
+         '-o', 'LogLevel=ERROR', 'root@' + board, command],
         capture_output=True, text=True, timeout=timeout)
 
 
 class SshTransportError(Exception):
-    """ssh itself failed (host key mismatch, auth, network), as opposed to
-    the board legitimately not answering yet while it reboots. Pitfall
-    found running the baseline: a changed host key makes ssh exit 255 with
-    'Host key verification failed' on every call, and bootId() returning
-    None for that looks identical to 'board still booting', so a reboot
-    that never actually reached the board (the ssh exit 255 means the
-    reboot command itself was never delivered either) silently reads as a
-    300s boot-id-wait timeout instead of the real, non-retryable cause."""
+    """ssh itself failed (auth, network, or a host-key issue slipping past
+    the no-checking options above), as opposed to the board legitimately
+    not answering yet while it reboots. Kept as a backstop: with host key
+    checking disabled this path should not fire for the regenerated-key
+    case any more, but a genuinely different ssh-level failure must still
+    never be misread as 'board still booting'."""
     pass
 
 
@@ -152,8 +164,10 @@ def snapshot(board, path=None, timeout=30):
         src = f.read()
     r = subprocess.run(
         ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
-         '-o', 'StrictHostKeyChecking=accept-new', 'root@' + board, 'python3 -'],
+         '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null',
+         '-o', 'LogLevel=ERROR', 'root@' + board, 'python3 -'],
         input=src, capture_output=True, text=True, timeout=timeout)
+    _checkSshTransport(r)
     if r.returncode != 0:
         raise RuntimeError('snapshot failed: rc=%d stderr=%s' % (r.returncode, r.stderr[-400:]))
     data = json.loads(r.stdout)
