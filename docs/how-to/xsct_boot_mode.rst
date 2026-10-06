@@ -53,7 +53,7 @@ Prerequisites
 
 .. warning::
 
-   ``rst -system`` arms a **reset catch that survives ``disconnect``**.  After
+   ``rst -system`` arms a **reset catch** that survives ``disconnect``.  After
    any of these sequences the debugger halts the CPU at the reset vector on the
    *next* reset, including a ``reset`` typed at the U-Boot prompt.  The board
    then looks dead: no console output whatsoever, and ``targets`` shows::

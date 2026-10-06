@@ -167,7 +167,7 @@ Format the card directly with ``FormatSdCard.sh``
 
 :repo:`scripts/FormatSdCard.sh` does the whole job in one pass:
 partitions the card, formats both partitions, and copies the boot images
-onto the boot partition.  Unlike the image recipe above it sizes the
+onto the boot partition.  Unlike the image recipe above, it sizes the
 application partition to the whole card, so there is no ``dd`` and no
 grow step.
 
@@ -189,7 +189,7 @@ it invokes ``sudo`` itself for the steps that need root.
    model and then requires you to type the device name to proceed, so
    check that what it prints is the card you meant and not another disk.
 
-Before doing anything the script requires positive evidence that the
+Before doing anything, the script requires positive evidence that the
 target is removable media.  It refuses to continue unless the device is
 a whole disk **and** either a removable disk on the USB bus or an
 ``/dev/mmcblk*`` SD/MMC device.  A fixed internal or external disk is
