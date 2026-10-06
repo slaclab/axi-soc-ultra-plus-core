@@ -25,6 +25,7 @@ DEPENDS += " \
    rogue \
    librfdc \
    libmetal \
+   openssl \
 "
 
 RDEPENDS:${PN} += " \
@@ -32,6 +33,7 @@ RDEPENDS:${PN} += " \
    python3 \
    librfdc \
    libmetal \
+   openssl \
 "
 
 FILES:${PN} += "/usr/lib/*"

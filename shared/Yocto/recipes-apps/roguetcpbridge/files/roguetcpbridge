@@ -31,6 +31,58 @@ if False:
 
 #################################################################
 
+# PYRFDC_CONFIG ROM: absolute address 0x4_0000_1000 (crossbar offset 0x1000),
+# 4 KB window, magic word 0 "RFDC". roguetcpbridge reads word 0 alone first
+# and only reads the remaining bytes when it is the valid magic, because on
+# an old bitstream this offset aliases AxiVersion and may DECERR.
+RFDC_ROM_ADDR  = 0x400001000
+RFDC_ROM_SIZE  = 4096
+RFDC_ROM_MAGIC = 0x52464443
+
+
+def readRfdcRom(memMap):
+    """Read the PYRFDC_CONFIG ROM through the given memory map.
+
+    Reads word 0 alone; reads the remaining RFDC_ROM_SIZE-4 bytes only when
+    word 0 is the valid magic. Returns b'' on any exception so the caller
+    always has bytes to hand to PyRFdc.
+    """
+    master = rogue.interfaces.memory.Master()
+    master._setSlave(memMap)
+
+    try:
+        buf0 = bytearray(4)
+        txId = master._reqTransaction(RFDC_ROM_ADDR, buf0, 4, 0, rogue.interfaces.memory.Read)
+        master._waitTransaction(txId)
+        err = master._getError()
+        if err:
+            master._clearError()
+            raise RuntimeError(err)
+
+        word0 = int.from_bytes(bytes(buf0), 'little')
+
+        if word0 != RFDC_ROM_MAGIC:
+            print(f'PyRFdc config ROM: read 4 bytes at 0x{RFDC_ROM_ADDR:x}, word 0 = 0x{word0:08X}', flush=True)
+            return bytes(buf0)
+
+        rest = bytearray(RFDC_ROM_SIZE - 4)
+        txId = master._reqTransaction(RFDC_ROM_ADDR + 4, rest, RFDC_ROM_SIZE - 4, 0, rogue.interfaces.memory.Read)
+        master._waitTransaction(txId)
+        err = master._getError()
+        if err:
+            master._clearError()
+            raise RuntimeError(err)
+
+        cfg = bytes(buf0) + bytes(rest)
+        print(f'PyRFdc config ROM: read {len(cfg)} bytes at 0x{RFDC_ROM_ADDR:x}, word 0 = 0x{word0:08X}', flush=True)
+        return cfg
+
+    except Exception as e:
+        print(f'PyRFdc config ROM read failed: {e}', flush=True)
+        return b''
+
+#################################################################
+
 class ZynqTcpServer(object):
     def __init__(self,numLane,numDest):
 
@@ -57,17 +109,23 @@ class ZynqTcpServer(object):
 
         try:
             import PyRFdc
-            print("PyRFdc module imported successfully.")
+            print("PyRFdc module imported successfully.", flush=True)
+
+            cfg = readRfdcRom(self.memMap)
+
+            # Construct first: a bring-up failure on a valid ROM raises, and
+            # port 9002 must not be bound for a half-built PyRFdc. Port 9000,
+            # the memory map and the DMA stream servers above stay up.
+            self.rfdcApi = PyRFdc.PyRFdc(cfg)
 
             # Memory server on port [9002:9003]
             self.apiMap = rogue.interfaces.memory.TcpServer('*', 9002)
-            self.rfdcApi = PyRFdc.PyRFdc()
             self.apiMap >> self.rfdcApi
 
         except (ImportError, ModuleNotFoundError):
-            print("PyRFdc module is not installed.")
+            print("PyRFdc module is not installed.", flush=True)
         except Exception as e:
-            print(f"Error initializing PyRFdc: {e}")
+            print(f"Error initializing PyRFdc, port 9002 not served: {e}", flush=True)
 
     def __enter__(self):
         """Enable using the class as a context manager."""
