@@ -118,8 +118,8 @@ flash.
 Scripted recipe (``program_qspi_flash.sh``)
 -------------------------------------------
 
-The ``program_qspi_flash.sh`` script, provided in the
-:repo:`scripts/program_qspi_flash.sh` of the platform repository, automates
+The ``program_qspi_flash.sh`` script, provided as
+:repo:`scripts/program_qspi_flash.sh` in the platform repository, automates
 the recipe above.  Instead of a Yocto build directory it takes the packaged
 ``.linux.tar.gz``, extracts it to a scratch directory, and programs each
 image at its partition offset.
@@ -135,34 +135,34 @@ the Yocto build (schema:
 
 Options:
 
-- ``-f PATH`` -- path to the ``.linux.tar.gz`` (required).
-- ``-t FLASH_TYPE`` -- value passed to ``-flash_type``
+- ``-f PATH``: path to the ``.linux.tar.gz`` (required).
+- ``-t FLASH_TYPE``: value passed to ``-flash_type``
   (default ``qspi-x8-dual_parallel``).  Must be a ``qspi-*`` type; the
   script rejects ``nand-*`` types and points at ``program_nand_flash.sh``,
   since the ``image.ub`` offset it programs is fixed at the QSPI one.
-- ``-d DENSITY`` -- total flash density in MB passed to
+- ``-d DENSITY``: total flash density in MB passed to
   ``-flash_density`` (default ``512``).  Passed only for the
   ``dual_parallel`` / ``dual_stacked`` configurations that require it, or
   whenever ``-d`` is given explicitly.
-- ``-e PATH`` -- FSBL ``.elf`` passed to ``-fsbl``.  Defaults to
+- ``-e PATH``: FSBL ``.elf`` passed to ``-fsbl``.  Defaults to
   ``linux/zynqmp_fsbl.elf`` from the tarball, which ``BuildYoctoProject.sh``
   packages, so this is normally not needed.  Only when the tarball predates
   that packaging does the script fall back to the generic Vitis FSBL, which
   does not work on a custom carrier (see the FSBL warning under
   **Prerequisites**).
-- ``-n`` -- skip the ``-blank_check -verify`` QA/QC pass, which is **on by
+- ``-n``: skip the ``-blank_check -verify`` QA/QC pass, which is **on by
   default**.  ``-verify`` reads the payload back and compares it against the
   image, the only positive proof the dual-parallel addressing put the data
   where it belongs.  The cost depends strongly on the Vitis release, so see
   the throughput warning below before assuming it is cheap.
-- ``-c`` -- accepted for compatibility and now redundant, since the checks it
+- ``-c``: accepted for compatibility and now redundant, since the checks it
   used to enable are the default.  Use ``-n`` to turn them off.
-- ``-F`` -- program even if an ``hw_server`` is already running.  By default
+- ``-F``: program even if an ``hw_server`` is already running.  By default
   the script stops, because ``program_flash`` would attach to that session
   and share its JTAG cable.  Note that ``killVivado`` does not reap
   ``hw_server``.
-- ``-J`` -- skip the JTAG boot mode step and flash the board as-is.
-- ``-H`` -- show the help text.
+- ``-J``: skip the JTAG boot mode step and flash the board as-is.
+- ``-H``: show the help text.
 
 Throughput
 ~~~~~~~~~~
@@ -181,7 +181,7 @@ Throughput
    ================  ==========================  ====================
 
    Both measured over a Digilent JTAG-SMT3 at its default 15 MHz with
-   ``qspi-x8-dual_parallel``.  On **2026.1**, a 1,949,892 byte ``BOOT.BIN``
+   ``qspi-x8-dual_parallel``.  On **2026.1**, a 1,949,892-byte ``BOOT.BIN``
    takes 76 s end to end: erase 1 s, ``blank_check`` 19 s, write 13 s,
    ``verify`` 19 s.  The checks cost about 38 s, which is why they are on by
    default.  On **2025.2** the same write is nearer 14 min with the checks

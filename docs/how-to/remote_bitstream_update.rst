@@ -42,7 +42,7 @@ Steps
 Verification
 ------------
 
-After the board comes back up (typically 30–60 s), confirm it is
+After the board comes back up (typically 30 to 60 s), confirm it is
 reachable:
 
 .. code-block:: bash
@@ -65,6 +65,6 @@ Notes
 - This procedure updates the bitstream on the SD card, which the running
   Linux loads with ``fpgautil`` at startup. For a board with **no SD
   card** (diskless QSPI boot), the PL can instead be fetched over the
-  network at boot time — see **TFTP Network Boot** in this how-to section
+  network at boot time; see **TFTP Network Boot** in this how-to section
   (build a ``tftp-only`` image and stage the bitstream with
   ``provision_tftp_host.sh -B``).

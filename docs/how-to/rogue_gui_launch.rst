@@ -40,8 +40,9 @@ Steps
 What the GUI provides
 ---------------------
 
-``devGui.py`` constructs a :repo:`firmware/python/simple_rfsoc_4x2_example/_Root.py`
-instance that:
+``devGui.py`` constructs the application ``Root`` defined in
+`firmware/python/simple_rfsoc_4x2_example/_Root.py <https://github.com/slaclab/Simple-rfsoc-4x2-Example/blob/main/firmware/python/simple_rfsoc_4x2_example/_Root.py>`__
+of the Simple-rfsoc-4x2-Example repository, which:
 
 - Opens a TCP memory-map connection to the board (default port 9000).
 - Opens TCP stream connections for ADC/DAC ring-buffer data.
@@ -54,9 +55,11 @@ Troubleshooting
 
 - **Connection refused:** verify the board is booted and the IP is
   correct.  Run ``ping 10.0.0.10`` before launching.
-- **Rogue version error at startup:** the ``_Root.py`` enforces a
-  minimum Rogue version.  Update your conda environment to meet the
-  requirement shown in the error message.
+- **Rogue version error at startup:** ``rfsoc_utility`` requires Rogue
+  6.15.0 or later; importing it with an older Rogue raises
+  ``rogue.GeneralError`` with
+  ``Installed rogue is less than minimum version``.  Update your conda
+  environment to Rogue 6.15.0 or later.
 - **Existing ZMQ server:** if a ``Root`` is already running on the
   same host, use ``scripts/launch_gui.py --server 10.0.0.10`` to
   attach to it instead of constructing a new one.

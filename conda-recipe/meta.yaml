@@ -12,14 +12,14 @@ build:
 requirements:
    build:
      - python>=3.7
-     - rogue
+     - rogue>=6.15.0
      - git
      - gitpython
      - numpy
 
    run:
      - python>=3.7
-     - rogue
+     - rogue>=6.15.0
      - numpy
 
 about:

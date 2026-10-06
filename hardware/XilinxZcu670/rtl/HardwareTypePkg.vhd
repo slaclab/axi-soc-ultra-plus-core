@@ -23,4 +23,7 @@ package HardwareTypePkg is
 
    constant HW_TYPE_C : slv(31 downto 0) := HW_TYPE_XILINX_ZCU670_C;
 
+   -- This board carries the RF data converter and the PYRFDC_CONFIG ROM
+   constant IS_RFSOC_C : boolean := true;
+
 end package HardwareTypePkg;

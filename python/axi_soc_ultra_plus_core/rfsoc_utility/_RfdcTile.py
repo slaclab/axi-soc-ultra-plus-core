@@ -15,6 +15,39 @@
 import pyrogue as pr
 import axi_soc_ultra_plus_core.rfsoc_utility as rfsoc_utility
 
+enumCustomStartUp = {
+    0x0 : "XRFDC_STATE_OFF",
+    0x1 : "XRFDC_STATE_SHUTDOWN",
+    0x3 : "XRFDC_STATE_PWRUP",
+    0x6 : "XRFDC_STATE_CLK_DET",
+    0xB : "XRFDC_STATE_CAL",
+    0xF : "XRFDC_STATE_FULL",
+}
+
+enumState = {
+    0:  'Device_Power-up_and_Configuration[0]',
+    1:  'Device_Power-up_and_Configuration[1]',
+    2:  'Device_Power-up_and_Configuration[2]',
+    3:  'Power_Supply_Adjustment[0]',
+    4:  'Power_Supply_Adjustment[1]',
+    5:  'Power_Supply_Adjustment[2]',
+    6:  'Clock_Configuration[0]',
+    7:  'Clock_Configuration[1]',
+    8:  'Clock_Configuration[2]',
+    9:  'Clock_Configuration[3]',
+    10: 'Clock_Configuration[4]',
+    11: 'Converter_Calibration[0]',
+    12: 'Converter_Calibration[1]',
+    13: 'Converter_Calibration[2]',
+    14: 'Wait_for_deassertion_of_AXI4-Stream_reset',
+    15: 'Done',
+}
+
+enumRefClkSource = {
+    0 : "XRFDC_EXTERNAL_CLK",     #define XRFDC_EXTERNAL_CLK 0x0U
+    1 : "XRFDC_INTERNAL_PLL_CLK", #define XRFDC_INTERNAL_PLL_CLK 0x1U
+}
+
 class RfdcTile(pr.Device):
     def __init__(
             self,
@@ -34,7 +67,20 @@ class RfdcTile(pr.Device):
             description  = 'Write 1 to start power-on state machine.  Auto-clear.  SM stops at stages programmed in RestartState',
             offset       = 0x800,
             bitSize      = 1,
+            overlapEn    = True, # Shares the offset with the RestartStatus read-back below
             function     = lambda cmd: cmd.set(1),
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'RestartStatus',
+            description  = 'Restart Power-On State Machine register (0x04) bit 0 read back from hardware: 1 while the power-on state machine runs toward its end state, 0 when idle. Read-only view of the offset the RestartSM command writes; never written by bulk operations',
+            offset       = 0x800,
+            bitSize      = 1,
+            bitOffset    = 0,
+            mode         = 'RO',
+            overlapEn    = True,
+            bulkOpEn     = False,
+            pollInterval = 1,
         ))
 
         #######################################################################################
@@ -47,7 +93,7 @@ class RfdcTile(pr.Device):
             bitSize      =  4,
             bitOffset    =  8,
             mode         = 'RW',
-            enum         = rfsoc_utility.enumState,
+            enum         = enumState,
         ))
 
         self.add(pr.RemoteVariable(
@@ -57,7 +103,7 @@ class RfdcTile(pr.Device):
             bitSize      =  4,
             bitOffset    =  0,
             mode         = 'RW',
-            enum         = rfsoc_utility.enumState,
+            enum         = enumState,
         ))
 
         #######################################################################################
@@ -70,20 +116,114 @@ class RfdcTile(pr.Device):
             bitSize      =  4,
             bitOffset    =  0,
             mode         = 'RO',
-            enum         = rfsoc_utility.enumState,
+            enum         = enumState,
             pollInterval = 1,
+        ))
+
+        #######################################################################################
+        # Tile register 0x38, PG269 v2.6 p.43. Counts automatic restarts after a
+        # supply, clock, or PLL loss; saturates at 255.
+        # Software restarts (Reset/StartUp/CustomStartUp) do not increment it.
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ResetCount',
+            description  = 'Automatic restart count after a supply, clock, or PLL loss (PG269 p.43). Saturates at 255. Software restarts do not increment it.',
+            offset       =  0x814,
+            bitSize      =  8,
+            bitOffset    =  0,
+            mode         = 'RO',
+            disp         = '{:d}',
+        ))
+
+        #######################################################################################
+        # Per-tile restart record, read-only, written by PyRFdc before
+        # IgnoreMetalError can swallow a failure. Sequence bits 31:16, command
+        # bits 11:8, flags bits 7:4, result bits 3:0.
+        #######################################################################################
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecord',
+            description  = 'Per-tile restart record: sequence[31:16], command[11:8] (1 Reset, 2 StartUp, 3 CustomStartUp, 5 SetClkDistribution), flags[7:4] (0x10 parked override, 0x20 staging not refreshed), result[3:0] (1 ok, 2 failed, 3 refused: state machine busy)',
+            offset       =  0x818,
+            bitSize      =  32,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecordStateAtFailure',
+            description  = 'CurrentState captured at the moment of the last recorded restart failure',
+            offset       =  0x81C,
+            bitSize      =  8,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecordCommonStatusAtFailure',
+            description  = 'Common Status (0x228) captured at the moment of the last recorded restart failure',
+            offset       =  0x820,
+            bitSize      =  8,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'ResetRecordClockDetectorAtFailure',
+            description  = 'Clock detector (0x84) captured at the moment of the last recorded restart failure',
+            offset       =  0x824,
+            bitSize      =  8,
+            mode         = 'RO',
+            hidden       = True,
+        ))
+
+        #######################################################################################
+        # Sticky results fed only from the read-only record registers above,
+        # never from exception text.
+        #######################################################################################
+        self.add(pr.LocalVariable(
+            name         = 'LastResetResult',
+            description  = 'Result of the last Reset/StartUp/CustomStartUp on this tile',
+            mode         = 'RO',
+            value        = 'None',
+        ))
+
+        self.add(pr.LocalVariable(
+            name         = 'StateAtFailure',
+            description  = 'CurrentState at the time of the last recorded restart failure (-1 if none)',
+            mode         = 'RO',
+            value        = -1,
+        ))
+
+        self.add(pr.LocalVariable(
+            name         = 'FailureCount',
+            description  = 'Number of distinct recorded restart failures on this tile',
+            mode         = 'RO',
+            value        = 0,
+        ))
+
+        self.add(pr.LocalCommand(
+            name         = 'RefreshResetRecord',
+            description  = 'Re-read ResetRecord and update LastResetResult/StateAtFailure/FailureCount if it changed',
+            function     = self._refreshResetRecord,
+            hidden       = True,
         ))
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_StartUp
         #######################################################################################
         self.add(pr.RemoteCommand(
-            name         = 'StartUp',
-            description  = 'This API function restarts a given tile',
+            name         = 'StartUpRaw',
+            description  = 'Bare XRFdc_StartUp of this tile from state 1, settings kept; does not wait for state 15',
             offset       = 0x000,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: self._restartCmd(cmd),
             hidden       = True,
+        ))
+
+        self.add(pr.LocalCommand(
+            name         = 'StartUp',
+            description  = 'Default recovery action: restarts this tile from state 1 keeping its settings, then waits for every enabled tile to reach state 15 with the PLL locked. Re-applies nothing',
+            function     = lambda: self.parent._tileStartUpSequence(self),
         ))
 
         #######################################################################################
@@ -102,35 +242,47 @@ class RfdcTile(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_Reset
         #######################################################################################
         self.add(pr.RemoteCommand(
-            name         = 'Reset',
-            description  = 'This API function resets a given tile',
+            name         = 'ResetRaw',
+            description  = 'Bare restart of this tile from state 0 (XRFdc_Reset): returns the tile to state 15 with the restart-reloaded registers at their Vivado values. Re-applies nothing and does not restore mixer NCO settings',
             offset       = 0x008,
             bitSize      = 1,
-            function     = lambda cmd: cmd.set(1),
+            function     = lambda cmd: self._restartCmd(cmd),
+            hidden       = True,
+        ))
+
+        self.add(pr.LocalCommand(
+            name         = 'Reset',
+            description  = 'Returns the tile to state 15, waits for every enabled tile, then re-applies the settings written in this session. Settings not written in this session read their Vivado value. A bare restart does not restore mixer NCO settings.',
+            function     = lambda: self.parent._tileResetSequence(self),
         ))
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_CustomStartUp
         #######################################################################################
-        self.add(pr.RemoteVariable(
+        self.add(pr.LocalVariable(
             name         = 'CustomStartUp_StartState',
-            description  = 'This API function runs the IPSM from StartState to EndState a given tile',
-            offset       = 0x00C,
-            bitSize      = 4,
-            bitOffset    = 0,
-            mode         = 'WO',
-            enum         = rfsoc_utility.enumCustomStartUp,
+            description  = 'StartState used by the next CustomStartUp command on this tile. Setting it does not touch hardware',
+            mode         = 'RW',
+            value        = 0x1,
+            enum         = enumCustomStartUp,
             hidden       = True,
         ))
 
-        self.add(pr.RemoteVariable(
+        self.add(pr.LocalVariable(
             name         = 'CustomStartUp_EndState',
-            description  = 'This API function runs the IPSM from StartState to EndState a given tile',
+            description  = 'EndState used by the next CustomStartUp command on this tile. Setting it does not touch hardware',
+            mode         = 'RW',
+            value        = 0xF,
+            enum         = enumCustomStartUp,
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteCommand(
+            name         = 'CustomStartUp',
+            description  = 'Run the power-on state machine from CustomStartUp_StartState to CustomStartUp_EndState on this tile in one command (StartState bits 3:0, EndState bits 7:4)',
             offset       = 0x00C,
-            bitSize      = 4,
-            bitOffset    = 4,
-            mode         = 'WO',
-            enum         = rfsoc_utility.enumCustomStartUp,
+            bitSize      = 8,
+            function     = lambda cmd: self._customStartUpCmd(cmd),
             hidden       = True,
         ))
 
@@ -160,7 +312,7 @@ class RfdcTile(pr.Device):
                     bitOffset    = 1,
                     mode         = 'RO',
                     pollInterval = 1,
-                    enum         = rfsoc_utility.enumState,
+                    enum         = enumState,
                 ))
 
                 self.add(pr.RemoteVariable(
@@ -202,7 +354,7 @@ class RfdcTile(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetFabClkOutDiv
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabClkOutDiv
         #######################################################################################
-        self.add(pr.RemoteVariable(
+        self.add(rfsoc_utility.ConfigVariable(
             name         = 'FabClkOutDiv',
             description  = 'Use this function to set the divider for PL clock out.',
             offset       = 0x014,
@@ -222,15 +374,14 @@ class RfdcTile(pr.Device):
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetupFIFO
         #######################################################################################
-        self.add(pr.RemoteVariable(
+        self.add(rfsoc_utility.ConfigVariable(
             name         = 'SetupFIFO',
-            description  = 'This API function enables and disables the RF-ADC/RF-DAC FIFO.',
+            description  = 'This API function enables and disables the RF-ADC/RF-DAC FIFO. The enable is bit 1 of the word: True (3) enables the FIFO, False (0) disables it',
             offset       = 0x018,
             bitSize      = 2,
             mode         = 'WO',
             enum         = {
-                0x0 : "UNDEFINED",
-                0x2 : "False",
+                0x0 : "False",
                 0x3 : "True",
             },
             hidden       = True,
@@ -240,15 +391,14 @@ class RfdcTile(pr.Device):
             #######################################################################################
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetupFIFOObs-Gen-3/DFE
             #######################################################################################
-            self.add(pr.RemoteVariable(
+            self.add(rfsoc_utility.ConfigVariable(
                 name         = 'SetupFIFOObs',
-                description  = 'This API function enables and disables the RF-ADC observation channel FIFO.',
+                description  = 'This API function enables and disables the RF-ADC observation channel FIFO. The enable is bit 1 of the word: True (3) enables the FIFO, False (0) disables it',
                 offset       = 0x01C,
                 bitSize      = 2,
                 mode         = 'WO',
                 enum         = {
-                    0x0 : "UNDEFINED",
-                    0x2 : "False",
+                    0x0 : "False",
                     0x3 : "True",
                 },
                 hidden       = True,
@@ -257,15 +407,14 @@ class RfdcTile(pr.Device):
             #######################################################################################
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetupFIFOBoth-Gen-3/DFE
             #######################################################################################
-            self.add(pr.RemoteVariable(
+            self.add(rfsoc_utility.ConfigVariable(
                 name         = 'SetupFIFOBoth',
-                description  = 'This API function enables and disables the RF-ADC actual and observation channel FIFO.',
+                description  = 'This API function enables and disables the RF-ADC actual and observation channel FIFO. The enable is bit 1 of the word: True (3) enables the FIFO, False (0) disables it',
                 offset       = 0x020,
                 bitSize      = 2,
                 mode         = 'WO',
                 enum         = {
-                    0x0 : "UNDEFINED",
-                    0x2 : "False",
+                    0x0 : "False",
                     0x3 : "True",
                 },
                 hidden       = True,
@@ -310,7 +459,7 @@ class RfdcTile(pr.Device):
                     offset       = 0x02C,
                     bitSize      = 1,
                     mode         = 'RO',
-                    enum         = rfsoc_utility.enumRefClkSource,
+                    enum         = enumRefClkSource,
                 ))
 
                 #######################################################################################
@@ -497,17 +646,19 @@ class RfdcTile(pr.Device):
         class PllConfig(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
+                self._commitSnapshot = None
+                self._commitSeq      = 0
 
-                self.add(pr.RemoteVariable(
+                self.add(rfsoc_utility.ConfigVariable(
                     name         = 'ClockSource',
                     description  = 'This API function gets the clock source for the RF-ADCs/RF-DACs.',
                     offset       = 0x110,
                     bitSize      = 1,
                     mode         = 'RW',
-                    enum         = rfsoc_utility.enumRefClkSource,
+                    enum         = enumRefClkSource,
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(rfsoc_utility.ConfigVariable(
                     name         = 'RefClkFreq',
                     description  = 'Reference clock frequency (MHz).',
                     offset       = 0x100,
@@ -518,7 +669,7 @@ class RfdcTile(pr.Device):
                     disp         = '{:1.1f}',
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(rfsoc_utility.ConfigVariable(
                     name         = 'SampleRate',
                     description  = 'Sampling rate (MSPS).',
                     offset       = 0x108,
@@ -534,10 +685,10 @@ class RfdcTile(pr.Device):
                 #######################################################################################
                 self.add(pr.RemoteCommand(
                     name         = 'PllConfigUpdate',
-                    description  = 'This API function update the PLL configration',
+                    description  = 'Commit the staged ClockSource, RefClkFreq and SampleRate: a prechecked XRFdc_DynamicPLLConfig, which restarts this tile, followed by a StartUp of the same tile (state 1 to 15, settings kept), then the wait for every enabled tile and the write-back of the written settings of this tile and of any tile the restart knocked. Stage the fields after a tile RefreshStaging; a later tile Reset re-applies the committed PLL (and its StartUp) when the hardware differs from it',
                     offset       = 0x114,
                     bitSize      = 1,
-                    function     = lambda cmd: cmd.set(1),
+                    function     = lambda cmd: self.parent.parent._pllCommitSequence(self.parent, self, cmd),
                 ))
 
         # Adding the PllConfig device
@@ -717,6 +868,64 @@ class RfdcTile(pr.Device):
         ))
 
         #######################################################################################
+        # Vivado mixer configuration of each block, served by PyRFdc from the PYRFDC_CONFIG ROM
+        # (XRFdc_Config) fixed at PyRFdc construction. Read-only; used to restore a mixer that
+        # was never written, since a tile restart returns the mixer NCO to these values.
+        #######################################################################################
+        self.addRemoteVariables(
+            name         = 'ConfigMixerType',
+            description  = 'Vivado mixer type of block n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
+            offset       = 0x200,
+            bitSize      = 32,
+            mode         = 'RO',
+            number       = 4,
+            stride       = 0x10,
+            enum         = {
+                0x0 : "XRFDC_MIXER_TYPE_OFF",
+                0x1 : "XRFDC_MIXER_TYPE_COARSE",
+                0x2 : "XRFDC_MIXER_TYPE_FINE",
+                0x3 : "XRFDC_MIXER_TYPE_DISABLED",
+            },
+            hidden       = True,
+        )
+
+        self.addRemoteVariables(
+            name         = 'ConfigMixerInputDataType',
+            description  = 'Vivado mixer input data type of block n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
+            offset       = 0x204,
+            bitSize      = 32,
+            mode         = 'RO',
+            number       = 4,
+            stride       = 0x10,
+            hidden       = True,
+        )
+
+        self.addRemoteVariables(
+            name         = 'ConfigNCOFreq',
+            description  = 'Vivado mixer NCO frequency of block n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
+            offset       = 0x208,
+            bitSize      = 64,
+            mode         = 'RO',
+            number       = 4,
+            stride       = 0x10,
+            base         = pr.Double,
+            units        = 'MHz',
+            hidden       = True,
+        )
+
+        #######################################################################################
+        # Reads the tile back through the RFDC driver getters; no hardware register is written
+        #######################################################################################
+        self.add(pr.RemoteCommand(
+            name         = 'RefreshStaging',
+            description  = "Re-read this tile's clock source, PLL, QMC and mixer settings from the hardware into the PyRFdc staging words that the PllConfig, QMC and Mixer variables read; writes no hardware register and is refused unless the tile is at state 15 with Restart clear",
+            offset       = 0x828,
+            bitSize      = 1,
+            function     = lambda cmd: cmd.set(1),
+            hidden       = True,
+        ))
+
+        #######################################################################################
         #######################################################################################
         #######################################################################################
 
@@ -728,3 +937,99 @@ class RfdcTile(pr.Device):
                 offset     = 0x1000+0x400*i,
                 enableDeps = [self.IsADCBlockEnabled[i]] if isAdc else [self.IsDACBlockEnabled[i]],
             ))
+
+        # Last ResetRecord sequence number seen by _refreshResetRecord (a
+        # re-read with no new restart in between must not re-count the same
+        # failure). Every restart command reseeds it from the live record just
+        # before the restart word is written (_reseedResetSeq)
+        self._lastResetSeq = None
+
+    #######################################################################################
+    # Read-only RfdcTile.ResetRecord decode. The DIAG key names ClockPresent,
+    # SupplyUp, PowerUp, PllLocked, ClkDet, ClkSrc map 1:1 to this device's
+    # ClockPresent, SupplyStable, PoweredUp, PllLocked, ClockDetector,
+    # ClockSource (PllStatus sub-device). No parsing of exception text; this
+    # reads only the record registers PyRFdc wrote.
+    #######################################################################################
+    def _refreshResetRecord(self):
+        record = self.ResetRecord.get(read=True)
+        seq = (record >> 16) & 0xFFFF
+        if seq == 0:
+            # No restart is recorded for this tile in the running PyRFdc
+            # (never restarted, or the process restarted since): drop the
+            # remembered number, leave LastResetResult/StateAtFailure/
+            # FailureCount at their current values and do not treat this as
+            # a record.
+            self._lastResetSeq = None
+            return
+        if seq == self._lastResetSeq:
+            return
+        self._lastResetSeq = seq
+
+        command = (record >> 8) & 0xF
+        flags = (record >> 4) & 0xF
+        result = record & 0xF
+        opName = {1: 'Reset', 2: 'StartUp', 3: 'CustomStartUp', 5: 'SetClkDistribution'}.get(command, 'Unknown')
+        ok = (result == 1)
+
+        if ok:
+            text = 'Ok'
+        elif result == 3:
+            text = 'Failed (state machine busy)'
+        else:
+            text = 'Failed'
+        if flags & 0x1:
+            text += ' [parked]'
+        if flags & 0x2:
+            text += ' [staging not refreshed]'
+
+        self.LastResetResult.set(f'{opName} {text}')
+
+        if not ok:
+            self.FailureCount.set(self.FailureCount.value() + 1)
+            self.StateAtFailure.set(self.ResetRecordStateAtFailure.get(read=True))
+
+    #######################################################################################
+    # A PyRFdc restart starts every tile sequence at 0 again, so a number
+    # remembered from the earlier process can equal the next record of the new
+    # process and hide it. The live sequence is read just before a restart word
+    # is written and becomes the baseline (0 becomes None), so the refresh after
+    # the command processes exactly the record this command produced. Only the
+    # baseline is set: no record is processed here, so FailureCount cannot
+    # change before the command.
+    #######################################################################################
+    def _reseedResetSeq(self):
+        seq = (self.ResetRecord.get(read=True) >> 16) & 0xFFFF
+        self._lastResetSeq = seq if seq != 0 else None
+
+    #######################################################################################
+    # Reset and StartUp go through this wrapper so a failure (raised or
+    # swallowed by IgnoreMetalError) always refreshes the sticky variables from
+    # the read-only record before re-raising. The restart takes the parent Rfdc
+    # sequence lock so it cannot interleave with a full restart sequence, and
+    # reseeds the record baseline under that lock before the word is written. A
+    # refresh failure is logged and never replaces the command error.
+    #######################################################################################
+    def _restartCmd(self, cmd):
+        with self.parent._seqLock:
+            self._reseedResetSeq()
+            self.parent._runWithCleanup(
+                lambda: cmd.set(1), self._refreshResetRecord, f'{self.path} ResetRecord refresh')
+
+    #######################################################################################
+    # CustomStartUp composes both states into one word and writes it once, so
+    # the C++ side runs exactly one restart with exactly these two states. It takes the
+    # parent Rfdc sequence lock so it cannot land inside another sequence's state 15 wait
+    # or write-back; the lock is an RLock, so a call from a thread that already holds it
+    # does not block. The record baseline is reseeded under the lock before the word is
+    # written, as for Reset and StartUp; a refresh failure is logged and never replaces the
+    # command error. A state outside 0 to 15 is rejected before the lock is taken, so a bad
+    # word runs no reseed read and no write.
+    #######################################################################################
+    def _customStartUpCmd(self, cmd):
+        word = self.parent._customStartUpWord(
+            cmd, self.CustomStartUp_StartState.value(), self.CustomStartUp_EndState.value())
+        with self.parent._seqLock:
+            self._reseedResetSeq()
+            self.parent._runWithCleanup(
+                lambda: cmd.set(word), self._refreshResetRecord, f'{self.path} ResetRecord refresh')

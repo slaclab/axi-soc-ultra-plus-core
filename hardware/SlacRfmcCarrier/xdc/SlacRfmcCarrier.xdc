@@ -240,17 +240,17 @@ set_property -dict { PACKAGE_PIN AL8 IOSTANDARD LVCMOS18 } [get_ports {rfmcIoP[4
 set_property -dict { PACKAGE_PIN AM9 IOSTANDARD LVCMOS18 } [get_ports {rfmcIoN[3]}]
 set_property -dict { PACKAGE_PIN AL9 IOSTANDARD LVCMOS18 } [get_ports {rfmcIoP[3]}]
 
-set_property -dict { PACKAGE_PIN AN7 IOSTANDARD LVDS } [get_ports {lmkClkInN}]
-set_property -dict { PACKAGE_PIN AN8 IOSTANDARD LVDS } [get_ports {lmkClkInP}]
+set_property -dict { PACKAGE_PIN AN7 IOSTANDARD LVDS } [get_ports {lmkClkInN}]; # LMK_CLKIN1_N
+set_property -dict { PACKAGE_PIN AN8 IOSTANDARD LVDS } [get_ports {lmkClkInP}]; # LMK_CLKIN1_P
 
-set_property -dict { PACKAGE_PIN AM7 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkSysRefN}]
-set_property -dict { PACKAGE_PIN AM8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkSysRefP}]
+set_property -dict { PACKAGE_PIN AM7 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plSysRefN}]; # LMK_SYSREF_N = SDCLK_OUT9_N
+set_property -dict { PACKAGE_PIN AM8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plSysRefP}]; # LMK_SYSREF_P = SDCLK_OUT9_P
 
-set_property -dict { PACKAGE_PIN AR9 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutN[1]}]
-set_property -dict { PACKAGE_PIN AP9 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutP[1]}]
+set_property -dict { PACKAGE_PIN AR8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plRefClkN}]; # LMK_CLKOUT_N0 = DCLK_OUT10_N
+set_property -dict { PACKAGE_PIN AP8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {plRefClkP}]; # LMK_CLKOUT_P0 = DCLK_OUT10_P
 
-set_property -dict { PACKAGE_PIN AR8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutN[0]}]
-set_property -dict { PACKAGE_PIN AP8 IOSTANDARD LVDS DIFF_TERM_ADV TERM_100 } [get_ports {lmkClkOutP[0]}]
+set_property PACKAGE_PIN T31 [get_ports {lmkRefClkP}]; # LMK_CLKOUT_P1 = SDCLK_OUT11_P
+set_property PACKAGE_PIN T32 [get_ports {lmkRefClkN}]; # LMK_CLKOUT_N1 = SDCLK_OUT11_N
 
 set_property -dict { PACKAGE_PIN AP10 IOSTANDARD LVCMOS18 } [get_ports {adcIo[8]}]
 set_property -dict { PACKAGE_PIN AN10 IOSTANDARD LVCMOS18 } [get_ports {adcIo[9]}]
@@ -337,9 +337,9 @@ set_property -dict { PACKAGE_PIN AU8 IOSTANDARD LVCMOS33 } [get_ports {ledRed}]
 set_property -dict { PACKAGE_PIN AV5 IOSTANDARD LVCMOS33 } [get_ports {ipmcScl}]
 set_property -dict { PACKAGE_PIN AV6 IOSTANDARD LVCMOS33 } [get_ports {ipmcSda}]
 
-set_property -dict { PACKAGE_PIN AU1 IOSTANDARD LVCMOS33 } [get_ports {muxRstL}]
-set_property -dict { PACKAGE_PIN AU2 IOSTANDARD LVCMOS33 } [get_ports {muxScl}]
-set_property -dict { PACKAGE_PIN AV2 IOSTANDARD LVCMOS33 } [get_ports {muxSda}]
+set_property -dict { PACKAGE_PIN AU1 IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 12 } [get_ports {muxRstL}]
+set_property -dict { PACKAGE_PIN AU2 IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 12 } [get_ports {muxScl}]
+set_property -dict { PACKAGE_PIN AV2 IOSTANDARD LVCMOS33 SLEW SLOW DRIVE 12 } [get_ports {muxSda}]
 
 set_property -dict { PACKAGE_PIN AV3 IOSTANDARD LVCMOS33 } [get_ports {lmkSync}]
 set_property -dict { PACKAGE_PIN AW3 IOSTANDARD LVCMOS33 } [get_ports {lmkCsL}]
@@ -383,6 +383,32 @@ set_property PACKAGE_PIN N39  [get_ports {timingRxN}]
 
 set_property PACKAGE_PIN W33  [get_ports {timingRefClkInP}]
 set_property PACKAGE_PIN W34  [get_ports {timingRefClkInN}]
+
+#######################################################################
+# By default we map the rtmPtp to an unused GT lane on the hardware
+# Application .xdc file can override this setting to map it to the
+# particular RTM GT lane that we want to use this PTP for.
+#
+# Example of application .xdc file:
+#
+#  # Map rtmPtp to the acutal rtmHs[Lane=0]
+#  set_property PACKAGE_PIN D31  [get_ports {rtmPtpTxP}]
+#  set_property PACKAGE_PIN D32  [get_ports {rtmPtpTxN}]
+#  set_property PACKAGE_PIN E38  [get_ports {rtmPtpRxP}]
+#  set_property PACKAGE_PIN E39  [get_ports {rtmPtpRxN}]
+#
+#  # Map rtmHs to an unused GT lane that's not connected to anything
+#  set_property PACKAGE_PIN Y35  [get_ports {rtmHsTxP[0]}]
+#  set_property PACKAGE_PIN Y36  [get_ports {rtmHsTxN[0]}]
+#  set_property PACKAGE_PIN AA38 [get_ports {rtmHsRxP[0]}]
+#  set_property PACKAGE_PIN AA39 [get_ports {rtmHsRxN[0]}]
+#######################################################################
+
+# Map rtmPtp to an unused GT lane that's not connected to anything
+set_property PACKAGE_PIN Y35  [get_ports {rtmPtpTxP}]
+set_property PACKAGE_PIN Y36  [get_ports {rtmPtpTxN}]
+set_property PACKAGE_PIN AA38 [get_ports {rtmPtpRxP}]
+set_property PACKAGE_PIN AA39 [get_ports {rtmPtpRxN}]
 
 ######################################################################
 # Commented out because it could be defined in RfmcCarrierCoreZone3Eth

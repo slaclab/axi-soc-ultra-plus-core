@@ -23,4 +23,7 @@ package HardwareTypePkg is
 
    constant HW_TYPE_C : slv(31 downto 0) := HW_TYPE_XILINX_ZCU102_C;
 
+   -- This board does not carry the RF data converter: no PYRFDC_CONFIG ROM
+   constant IS_RFSOC_C : boolean := false;
+
 end package HardwareTypePkg;

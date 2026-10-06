@@ -26,6 +26,9 @@ package HardwareTypePkg is
 
    constant HW_TYPE_C : slv(31 downto 0) := HW_TYPE_SLAC_RFMC_CARRIER_C;
 
+   -- This board carries the RF data converter and the PYRFDC_CONFIG ROM
+   constant IS_RFSOC_C : boolean := true;
+
    ---------------------------------------------
    -- Register Mapping: 1st Layer base addresses
    ---------------------------------------------
@@ -68,7 +71,7 @@ package HardwareTypePkg is
       1 => "10",                        -- OUT[1] = IN[2], FPGA  = backplane
       0 => "00");  -- OUT[0] = IN[0], RTM0  = RTM0 (loopback)
 
-   constant I2C_SCL_FREQ_C : real := 100.0E+3;
+   constant I2C_SCL_FREQ_C : real := 400.0E+3;
 
    constant XBAR_I2C_CONFIG_C : AxiLiteCrossbarMasterConfigArray(7 downto 0) := genAxiLiteConfig(8, MUX_I2C_ADDR_C, 20, 16);
 

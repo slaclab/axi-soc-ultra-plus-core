@@ -12,8 +12,206 @@
 # contained in the LICENSE.txt file.
 #-----------------------------------------------------------------------------
 
+import itertools
 import pyrogue as pr
 import axi_soc_ultra_plus_core.rfsoc_utility as rfsoc_utility
+
+enumEventSource = {
+    0x0 : "XRFDC_EVNT_SRC_IMMEDIATE",
+    0x1 : "XRFDC_EVNT_SRC_SLICE",
+    0x2 : "XRFDC_EVNT_SRC_TILE",
+    0x3 : "XRFDC_EVNT_SRC_SYSREF",
+    0x4 : "XRFDC_EVNT_SRC_MARKER",
+    0x5 : "XRFDC_EVNT_SRC_PL",
+    0x6 : "ERROR_6",
+    0x7 : "ERROR_7",
+}
+
+enumInterpDecim         = {
+    0x0  : "XRFDC_INTERP_DECIM_OFF",
+    0x1  : "XRFDC_INTERP_DECIM_1X",
+    0x2  : "XRFDC_INTERP_DECIM_2X",
+    0x3  : "XRFDC_INTERP_DECIM_3X",
+    0x4  : "XRFDC_INTERP_DECIM_4X",
+    0x5  : "XRFDC_INTERP_DECIM_5X",
+    0x6  : "XRFDC_INTERP_DECIM_6X",
+    0x8  : "XRFDC_INTERP_DECIM_8X",
+    0xA  : "XRFDC_INTERP_DECIM_10X",
+    0xC  : "XRFDC_INTERP_DECIM_12X",
+    0x10 : "XRFDC_INTERP_DECIM_16X",
+    0x14 : "XRFDC_INTERP_DECIM_20X",
+    0x18 : "XRFDC_INTERP_DECIM_24X",
+    0x28 : "XRFDC_INTERP_DECIM_40X",
+}
+
+enumUpdateThreshold = {
+    0x0 : "UNDEFINED_0x0",
+    0x1 : "XRFDC_UPDATE_THRESHOLD_0",
+    0x2 : "XRFDC_UPDATE_THRESHOLD_1",
+    0x3 : "UNDEFINED_0x3",
+    0x4 : "XRFDC_UPDATE_THRESHOLD_BOTH",
+    0x5 : "ERROR_5",
+    0x6 : "ERROR_6",
+    0x7 : "ERROR_7",
+}
+
+enumMixedMode = {
+    0x0 : "XRFDC_MIXER_MODE_OFF", #define XRFDC_MIXER_MODE_OFF 0x0U
+    0x1 : "XRFDC_MIXER_MODE_C2C", #define XRFDC_MIXER_MODE_C2C 0x1U
+    0x2 : "XRFDC_MIXER_MODE_C2R", #define XRFDC_MIXER_MODE_C2R 0x2U
+    0x3 : "XRFDC_MIXER_MODE_R2C", #define XRFDC_MIXER_MODE_R2C 0x3U
+    0x4 : "XRFDC_MIXER_MODE_R2R", #define XRFDC_MIXER_MODE_R2R 0x4U
+    0x5 : "ERROR_5",
+    0x6 : "ERROR_6",
+    0x7 : "ERROR_7",
+}
+
+#######################################################################################
+# ConfigVariable marks a setting the operator wrote in this process, so a later
+# tile restart (which reloads the Vivado value into the hardware) can write it
+# back. set() and post() record the value and a record sequence number: an
+# operator set(), the GUI setDisp() and LoadConfig (setYaml) all reach set().
+# A value is recorded only after its write returned without an error, only on an
+# enabled device, and never while the Rfdc IgnoreMetalError debug setting is on (a
+# driver error is then swallowed and cannot be told from success). A write=True set is
+# recorded only when it waited for its transaction, which is the default: with
+# wait=False, or the deprecated check=False, set() returns before a refusal can
+# surface. A write=False set (the LoadConfig path, written in bulk afterwards) is
+# recorded once pyrogue has accepted the value, even if the bulk write is later refused.
+# An unconfirmed write on an enabled device (unwaited, or any write under
+# IgnoreMetalError) records nothing and also drops the earlier record: the hardware may
+# now hold the new value, so a later restart must treat the setting as never written
+# and not replay an older value. A write under a disabled device (the hardware ignored
+# it) and a write that raises leave the earlier record in place. get(), ReadAll,
+# WriteAll and polling never record.
+# The restart sequence in Rfdc replays the recorded value through
+# pr.RemoteVariable.set, which bypasses the record, so the replay itself never marks
+# anything as written.
+#######################################################################################
+_recordSeq = itertools.count(1)
+
+# True when the device is enabled. A disabled device ignores a write without raising, so
+# such a write neither records nor drops. Reads the shadow only, never the hardware.
+def _enabled(dev):
+    return dev.enable.value() is True
+
+# True when the owning Rfdc runs with IgnoreMetalError set, so a driver error is swallowed
+# and a write cannot be confirmed. Reads the shadow only, never the hardware.
+def _ignoringErrors(dev):
+    node = dev
+    while node is not None and not isinstance(node, pr.Root):
+        if isinstance(node, rfsoc_utility.Rfdc):
+            return node.IgnoreMetalError.value() is True
+        node = node.parent
+    return False
+
+class ConfigVariable(pr.RemoteVariable):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._recValue    = None
+        self._recHasValue = False
+        self._recSeq      = 0
+
+    def _dropRecord(self):
+        self._recSeq      = 0
+        self._recHasValue = False
+        self._recValue    = None
+
+    def _recordWrite(self, value, index):
+        self._recSeq = next(_recordSeq)
+        if index == -1:
+            self._recValue    = value
+            self._recHasValue = True
+        else:
+            # An indexed write does not describe the whole variable: fall back to the shadow
+            self._recHasValue = False
+
+    # Same signatures and pr.expose as RemoteVariable, so a VirtualClient (the GUI)
+    # still sees set() and post() on these variables
+    @pr.expose
+    def set(self, value, *, index=-1, write=True, verify=True, wait=None, check=None):
+        ret = super().set(value, index=index, write=write, verify=verify, wait=wait, check=check)
+        # Resolved the way rogue does: wait decides, else check, else the default of True.
+        # An unwaited refusal surfaces only at a later waitBlocks, so it is never recorded
+        # and the earlier record is dropped, as it may no longer match the hardware
+        waited = wait if wait is not None else (check if check is not None else True)
+        if not _enabled(self.parent):
+            pass
+        elif _ignoringErrors(self.parent) or (write and not waited):
+            self._dropRecord()
+        else:
+            self._recordWrite(value, index)
+        return ret
+
+    @pr.expose
+    def post(self, value, *, index=-1):
+        ret = super().post(value, index=index)
+        if not _enabled(self.parent):
+            pass
+        elif _ignoringErrors(self.parent):
+            self._dropRecord()
+        else:
+            self._recordWrite(value, index)
+        return ret
+
+    def isRecorded(self):
+        return self._recSeq != 0
+
+    def recordSeq(self):
+        return self._recSeq
+
+    # The value recorded at set() time; the RW shadow only when none was recorded
+    def replayValue(self):
+        return self._recValue if self._recHasValue else self.value()
+
+#######################################################################################
+# recordCommit is the function of the Mixer, QMC and PllConfig commit commands. It
+# records an operator commit so a restart can re-apply exactly what was committed:
+# every ConfigVariable of the group is snapshotted (the value the operator wrote, or the
+# staging word the commit is about to program for a field never written), the commit
+# word is written, and the snapshot is stored only when that write returned without an
+# error, the group is enabled and the Rfdc IgnoreMetalError debug setting is off (a
+# driver error is then swallowed). A commit under IgnoreMetalError on an enabled group
+# cannot be confirmed, so it drops the earlier snapshot and a restart treats the group
+# as never committed. A commit under a disabled group and a commit that raises keep the
+# earlier snapshot. The restart sequence in Rfdc writes the snapshot back and writes the
+# commit word with RemoteCommand.set, which does not come back through here.
+#######################################################################################
+def recordCommit(group, cmd):
+    snapshot = {}
+    for name, var in group.variables.items():
+        if isinstance(var, ConfigVariable):
+            snapshot[name] = var.replayValue() if var.isRecorded() else var.get(read=True)
+    cmd.set(1)
+    if not _enabled(group):
+        return
+    if _ignoringErrors(group):
+        group._commitSnapshot = None
+        group._commitSeq      = 0
+    else:
+        group._commitSnapshot = snapshot
+        group._commitSeq      = next(_recordSeq)
+
+#######################################################################################
+# MixerNcoVariable is the ConfigVariable of the Mixer Freq and PhaseOffset fields. An
+# operator set() (or a GUI edit) commits the staged mixer through Mixer.UpdateEvent right
+# after its own write, while the Mixer AutoUpdate setting is on, so the new NCO value
+# takes effect without a separate commit. The commit runs only after a waited write that
+# returned without an error on an enabled Mixer, and it runs synchronously, so a refused
+# commit raises to the caller. A write=False set (the LoadConfig path), a set with
+# wait=False (or the deprecated check=False) and post() never commit. The restart
+# write-back in Rfdc writes these fields through pr.RemoteVariable.set, which bypasses
+# this set(), so it never triggers a commit of its own.
+#######################################################################################
+class MixerNcoVariable(ConfigVariable):
+    @pr.expose
+    def set(self, value, *, index=-1, write=True, verify=True, wait=None, check=None):
+        ret = super().set(value, index=index, write=write, verify=verify, wait=wait, check=check)
+        waited = wait if wait is not None else (check if check is not None else True)
+        mixer = self.parent
+        if write and waited and _enabled(mixer) and mixer.AutoUpdate.value() is True:
+            mixer.UpdateEvent()
+        return ret
 
 class RfdcBlock(pr.Device):
     def __init__(
@@ -94,7 +292,7 @@ class RfdcBlock(pr.Device):
                     bitSize      = 4,
                     bitOffset    = 16,
                     mode         = 'RO',
-                    enum         = rfsoc_utility.enumMixedMode if isAdc else None,
+                    enum         = enumMixedMode if isAdc else None,
                 ))
 
                 if not isAdc:
@@ -105,7 +303,7 @@ class RfdcBlock(pr.Device):
                         bitSize      = 4,
                         bitOffset    = 20,
                         mode         = 'RO',
-                        enum         = rfsoc_utility.enumMixedMode,
+                        enum         = enumMixedMode,
                     ))
 
                 self.add(pr.RemoteVariable(
@@ -144,14 +342,23 @@ class RfdcBlock(pr.Device):
         class Mixer(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
+                self._commitSnapshot = None
+                self._commitSeq      = 0
                 #######################################################################################
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Mixer_Settings
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetMixerSettings
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetMixerSettings
                 #######################################################################################
-                self.add(pr.RemoteVariable(
+                self.add(pr.LocalVariable(
+                    name         = 'AutoUpdate',
+                    description  = 'When True, a Freq or PhaseOffset set() commits the staged mixer settings (UpdateEvent) right after its write. Set False to stage several fields and commit them with one UpdateEvent',
+                    mode         = 'RW',
+                    value        = True,
+                ))
+
+                self.add(MixerNcoVariable(
                     name         = 'Freq',
-                    description  = 'NCO frequency. Range: -Fs to Fs (MHz)',
+                    description  = 'NCO frequency. Range: -Fs to Fs (MHz). A set() commits the mixer (UpdateEvent) while AutoUpdate is True',
                     offset       = 0x020,
                     bitSize      = 64,
                     mode         = 'RW',
@@ -159,9 +366,9 @@ class RfdcBlock(pr.Device):
                     units        = 'MHz',
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(MixerNcoVariable(
                     name         = 'PhaseOffset',
-                    description  = 'NCO phase offset. Range: -180 to 180 (Exclusive)',
+                    description  = 'NCO phase offset. Range: -180 to 180 (Exclusive). A set() commits the mixer (UpdateEvent) while AutoUpdate is True',
                     offset       = 0x028,
                     bitSize      = 64,
                     mode         = 'RW',
@@ -169,16 +376,16 @@ class RfdcBlock(pr.Device):
                     units        = 'degree',
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'EventSource',
                     description  = 'Event source for mixer settings. XRFDC_EVNT_SRC_* represents valid values.',
                     offset       = 0x030,
                     bitSize      = 3,
                     mode         = 'RW',
-                    enum         = rfsoc_utility.enumEventSource,
+                    enum         = enumEventSource,
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'CoarseMixFreq',
                     description  = 'Coarse mixer frequency. XRFDC_COARSE_MIX_* represents valid values',
                     offset       = 0x034,
@@ -193,7 +400,7 @@ class RfdcBlock(pr.Device):
                     },
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'MixerMode',
                     description  = 'Mixer mode for fine or coarse mixer. XRFDC_MIXER_MODE_* represents valid values',
                     offset       = 0x038,
@@ -212,7 +419,7 @@ class RfdcBlock(pr.Device):
                     },
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'FineMixerScale',
                     description  = 'NCO output scale. XRFDC_MIXER_SCALE_* represents valid values',
                     offset       = 0x038,
@@ -227,7 +434,7 @@ class RfdcBlock(pr.Device):
                     },
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'MixerType',
                     description  = 'Mixer Type indicates coarse or fine mixer. XRFDC_MIXER_TYPE_* represents valid values',
                     offset       = 0x038,
@@ -244,10 +451,10 @@ class RfdcBlock(pr.Device):
 
                 self.add(pr.RemoteCommand(
                     name         = 'UpdateEvent',
-                    description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
+                    description  = 'Commit the staged mixer settings: always programs them (XRFdc_SetMixerSettings) and issues the update event only for a Tile or Slice event source. Immediate applies at once; SYSREF, PL or MARKER apply at the next external event the application issues',
                     offset       = 0x03C,
                     bitSize      = 1,
-                    function     = lambda cmd: cmd.set(1),
+                    function     = lambda cmd: recordCommit(self, cmd),
                 ))
 
                 #######################################################################################
@@ -275,11 +482,15 @@ class RfdcBlock(pr.Device):
                 # parent chain: Mixer -> RfdcBlock -> RfdcTile.
                 self.parent.parent.RestartSM()
 
+        # The Mixer device follows the block sample rate only. XRFdc_GetBlockStatus maps the
+        # ADC mixer mode register to OFF, C2C or R2C, so an R2R bypass mixer reads
+        # BlockStatus.MixerMode 0 (a DAC block reads 0 as well), and gating on it would
+        # disable the Mixer device, and drop its writes, on every running block
         self.add(pr.LinkVariable(
             name         = 'IsMixerEnabled',
             mode         = 'RO',
-            linkedGet    = lambda read: (self.BlockStatus.MixerMode.get(read=read) != 0) and (self.BlockStatus.SampleRate.get(read=read) > 0.0),
-            dependencies = [self.BlockStatus.MixerMode, self.BlockStatus.SampleRate],
+            linkedGet    = lambda read: self.BlockStatus.SampleRate.get(read=read) > 0.0,
+            dependencies = [self.BlockStatus.SampleRate],
         ))
 
         # Adding the Mixer device
@@ -288,12 +499,14 @@ class RfdcBlock(pr.Device):
         class QMC(pr.Device):
             def __init__(self,**kwargs):
                 super().__init__(**kwargs)
+                self._commitSnapshot = None
+                self._commitSeq      = 0
                 #######################################################################################
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_QMC_Settings
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetQMCSettings
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetQMCSettings
                 #######################################################################################
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'EnablePhase',
                     description  = 'Indicates if phase is enabled (1) or disabled (0)',
                     offset       = 0x040,
@@ -303,7 +516,7 @@ class RfdcBlock(pr.Device):
                     base         = pr.Bool,
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'EnableGain',
                     description  = 'Indicates if gain is enabled(1) or disabled (0)',
                     offset       = 0x040,
@@ -313,16 +526,16 @@ class RfdcBlock(pr.Device):
                     base         = pr.Bool,
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'EventSource',
                     description  = 'Event source for QMC settings. XRFDC_EVNT_SRC_* represents valid values',
                     offset       = 0x044,
                     bitSize      = 3,
                     mode         = 'RW',
-                    enum         = rfsoc_utility.enumEventSource,
+                    enum         = enumEventSource,
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'GainCorrectionFactor',
                     description  = 'Gain correction factor. Range: 0 to 2.0 (Exclusive).',
                     offset       = 0x048,
@@ -331,7 +544,7 @@ class RfdcBlock(pr.Device):
                     base         = pr.Double,
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'PhaseCorrectionFactor',
                     description  = 'Phase correction factor. Range: +/- 26.5 degrees (Exclusive)',
                     offset       = 0x050,
@@ -341,7 +554,7 @@ class RfdcBlock(pr.Device):
                     units        = 'degree',
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'OffsetCorrectionFactor',
                     description  = 'Offset correction factor is adding a fixed LSB value to the sampled signal',
                     offset       = 0x058,
@@ -352,10 +565,10 @@ class RfdcBlock(pr.Device):
 
                 self.add(pr.RemoteCommand(
                     name         = 'UpdateEvent',
-                    description  = 'Use this function to trigger the update event for an event if the event source is Slice or Tile',
+                    description  = 'Commit the staged QMC settings: always programs them (XRFdc_SetQMCSettings) and issues the update event only for a Tile or Slice event source. Immediate applies at once; SYSREF, PL or MARKER apply at the next external event the application issues',
                     offset       = 0x05C,
                     bitSize      = 1,
-                    function     = lambda cmd: cmd.set(1),
+                    function     = lambda cmd: recordCommit(self, cmd),
                 ))
 
         # Adding the QMC device
@@ -369,7 +582,7 @@ class RfdcBlock(pr.Device):
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetCoarseDelaySettings
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCoarseDelaySettings
                 #######################################################################################
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'CoarseDelay',
                     description  = 'Coarse delay in the number of samples. Range: 0 to 7 for Gen 1/Gen 2 devices and 0 to 40 for Gen 3/DFE devices',
                     offset       = 0x060,
@@ -379,14 +592,14 @@ class RfdcBlock(pr.Device):
                     mode         = 'RW',
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'EventSource',
                     description  = 'Event source for coarse delay settings. XRFDC_EVNT_SRC_* represents valid values',
                     offset       = 0x060,
                     bitSize      = 3,
                     bitOffset    = 8,
                     mode         = 'RW',
-                    enum         = rfsoc_utility.enumEventSource,
+                    enum         = enumEventSource,
                 ))
 
                 self.add(pr.RemoteCommand(
@@ -405,13 +618,13 @@ class RfdcBlock(pr.Device):
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetInterpolationFactor
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInterpolationFactor
             #######################################################################################
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'InterpolationFactor',
                 description  = 'This API function sets the interpolation factor for the requested RF-DAC and also updates the FIFO read width based on the interpolation factor',
                 offset       = 0x068,
                 bitSize      = 6,
                 mode         = 'RW',
-                enum         = rfsoc_utility.enumInterpDecim,
+                enum         = enumInterpDecim,
             ))
 
         else: # isAdc = true (ADC)
@@ -419,13 +632,13 @@ class RfdcBlock(pr.Device):
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDecimationFactor
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecimationFactor
             #######################################################################################
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'DecimationFactor',
                 description  = 'This API function sets the decimation factor for the requested RF-ADC and also updates the FIFO write width based on the decimation factor',
                 offset       = 0x070,
                 bitSize      = 6,
                 mode         = 'RW',
-                enum         = rfsoc_utility.enumInterpDecim,
+                enum         = enumInterpDecim,
             ))
 
             if gen3:
@@ -433,20 +646,21 @@ class RfdcBlock(pr.Device):
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDecimationFactorObs-Gen-3/DFE
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecimationFactorObs-Gen-3/DFE
                 #######################################################################################
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'DecimationFactorObs',
                     description  = 'This API function sets the decimation factor for the observation channel of the requested RF-ADC and also updates the FIFO write width based on the decimation factor',
                     offset       = 0x074,
                     bitSize      = 6,
                     mode         = 'RW',
-                    enum         = rfsoc_utility.enumInterpDecim,
+                    enum         = enumInterpDecim,
                 ))
 
         #######################################################################################
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetFabWrVldWords
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabWrVldWords
         #######################################################################################
-        self.add(pr.RemoteVariable(
+        # Read only on an ADC block, so only the DAC variable is tracked
+        self.add((pr.RemoteVariable if isAdc else ConfigVariable)(
             name         = 'FabWrVldWords',
             description  = 'This API function sets the write fabric data rate for the requested RF-DAC by writing to the corresponding register',
             offset       = 0x078,
@@ -475,7 +689,8 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetFabRdVldWords
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabRdVldWords
         #######################################################################################
-        self.add(pr.RemoteVariable(
+        # Read only on a DAC block, so only the ADC variable is tracked
+        self.add((ConfigVariable if isAdc else pr.RemoteVariable)(
             name         = 'FabRdVldWords',
             description  = 'This API function sets the read PL data rate for the requested RF-ADC by writing to the corresponding register',
             offset       = 0x080,
@@ -489,7 +704,7 @@ class RfdcBlock(pr.Device):
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetFabRdVldWordsObs-Gen-3/DFE
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetFabWrVldWordsObs-Gen-3/DFE
             #######################################################################################
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'FabRdVldWordsObs',
                 description  = 'Write PL data rate for the observation channel of the requested RF-ADCis returned back to the caller.',
                 offset       = 0x084,
@@ -511,23 +726,23 @@ class RfdcBlock(pr.Device):
                     offset       = 0x088,
                     bitSize      = 3,
                     mode         = 'WO',
-                    enum         = rfsoc_utility.enumUpdateThreshold,
+                    enum         = enumUpdateThreshold,
                 ))
 
                 #######################################################################################
                 # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetThresholdClrMode
                 #######################################################################################
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'ThresholdClrMode_ThresholdToUpdate',
                     description  = 'This API function sets the threshold clear mode',
                     offset       = 0x08C,
                     bitSize      = 3,
                     bitOffset    = 0,
                     mode         = 'WO',
-                    enum         = rfsoc_utility.enumUpdateThreshold,
+                    enum         = enumUpdateThreshold,
                 ))
 
-                self.add(pr.RemoteVariable(
+                self.add(ConfigVariable(
                     name         = 'ThresholdClrMode_ClrMode',
                     description  = 'This API function sets the threshold clear mode',
                     offset       = 0x08C,
@@ -552,7 +767,7 @@ class RfdcBlock(pr.Device):
                 }
 
                 for name, offset in thresholdReg.items():
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name    = name,
                         offset  = offset,
                         bitSize = 2,
@@ -575,7 +790,7 @@ class RfdcBlock(pr.Device):
                 }
 
                 for name, offset in thresholdReg.items():
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name    = name,
                         offset  = offset,
                         bitSize = 32,
@@ -591,7 +806,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDecoderMode
         #######################################################################################
         if not isAdc:
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'DecoderMode',
                 description  = 'This API function writes the decoder mode to the relevant registers. The driver structure is updated with the new values.',
                 offset       = 0x0B0,
@@ -633,7 +848,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDACVOP-Gen-3/DFE
         #######################################################################################
         if not isAdc:
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'DACVOP',
                 description  = 'VOP μA current is used to update the corresponding block level registers.',
                 offset       = 0x170,
@@ -650,7 +865,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetNyquistZone
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetNyquistZone
         ###########################################################################
-        self.add(pr.RemoteVariable(
+        self.add(ConfigVariable(
             name         = 'NyquistZone',
             description  = 'This API function sets the Nyquist zone for the RF-ADC/RF-DACs',
             offset       = 0x0BC,
@@ -668,7 +883,7 @@ class RfdcBlock(pr.Device):
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetInvSincFIR
             # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetInvSincFIR
             ###########################################################################
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'InvSincFIR',
                 description  = 'This API function is used to enable or disable the inverse sinc filter.',
                 offset       = 0x0C0,
@@ -689,7 +904,7 @@ class RfdcBlock(pr.Device):
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetCalibrationMode
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCalibrationMode
                     ###############################################################################
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'CalibrationMode',
                         description  = 'Method to execute the RFSoC PS rfdc-CalibrationMode executable remotely',
                         offset       = 0x0C4,
@@ -725,45 +940,41 @@ class RfdcBlock(pr.Device):
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetCalCoefficients
                     ###############################################################################
                     if gen3:
-                        self.addRemoteVariables(
+                        self.addNodes(ConfigVariable,
                             name         = 'CAL_BLOCK_OCB1_Coeff', # XRFDC_CAL_BLOCK_OCB1	Offset Calibration Block (Background) (Gen 3/DFE)
                             description  = 'This API function enables the coefficient override and programs the provided coefficients for the selected block.',
                             offset       = 0x0D0,
                             bitSize      = 32,
                             mode         = 'RW',
                             number       = 8,
-                            stride       = 4,
-                        )
+                            stride       = 4)
 
-                    self.addRemoteVariables(
+                    self.addNodes(ConfigVariable,
                         name         = 'CAL_BLOCK_OCB2_Coeff', # XRFDC_CAL_BLOCK_OCB2	Offset Calibration Block (Foreground)
                         description  = 'This API function enables the coefficient override and programs the provided coefficients for the selected block.',
                         offset       = 0x0F0,
                         bitSize      = 32,
                         mode         = 'RW',
                         number       = 8,
-                        stride       = 4,
-                    )
+                        stride       = 4)
 
-                    self.addRemoteVariables(
+                    self.addNodes(ConfigVariable,
                         name         = 'CAL_BLOCK_GCB_Coeff', # XRFDC_CAL_BLOCK_GCB	Gain Calibration Block (Background)
                         description  = 'This API function enables the coefficient override and programs the provided coefficients for the selected block.',
                         offset       = 0x110,
                         bitSize      = 32,
                         mode         = 'RW',
                         number       = 8,
-                        stride       = 4,
-                    )
+                        stride       = 4)
 
-                    self.addRemoteVariables(
+                    self.addNodes(ConfigVariable,
                         name         = 'CAL_BLOCK_TSCB_Coeff', # XRFDC_CAL_BLOCK_TSCB	Time Skew Calibration Block (Background)
                         description  = 'This API function enables the coefficient override and programs the provided coefficients for the selected block.',
                         offset       = 0x130,
                         bitSize      = 32,
                         mode         = 'RW',
                         number       = 8,
-                        stride       = 4,
-                    )
+                        stride       = 4)
 
                     #######################################################################################
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/struct-XRFdc_Cal_Freeze_Settings
@@ -779,7 +990,7 @@ class RfdcBlock(pr.Device):
                         pollInterval = 1,
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'DisableFreezePin',
                         description  = 'Disables the calibration freeze pin',
                         offset       = 0x154,
@@ -787,7 +998,7 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'FreezeCalibration',
                         description  = 'Freezes the calibration using the freeze port',
                         offset       = 0x158,
@@ -803,7 +1014,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDither
         #######################################################################################
         if isAdc:
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'Dither',
                 description  = 'This API function enables/disables the dither.',
                 offset       = 0x15C,
@@ -817,7 +1028,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDACDataScaler
         #######################################################################################
         if not isAdc:
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'DataScaler',
                 description  = 'This API function enables/disables the data scaler. If the data scaler is enabled, the MSB of the datapath is reserved to prevent overflows at a cost of a slightly reduced SNR.',
                 offset       = 0x160,
@@ -851,7 +1062,7 @@ class RfdcBlock(pr.Device):
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetDSA-Gen-3/DFE
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDSA-Gen-3/DFE
                     #######################################################################################
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'DisableRTS',
                         description  = 'This disables the real time signals from setting the attenuation',
                         offset       = 0x168,
@@ -859,7 +1070,7 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'Attenuation',
                         description  = 'The attenuation 0 - 27 dB',
                         offset       = 0x16C,
@@ -877,7 +1088,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDACCompMode-Gen-3/DFE
         #######################################################################################
         if not isAdc and gen3:
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'DACCompMode',
                 description  = 'Enable the legacy DAC output mode. Valid values are 0 (Gen 3/DFE behavior) 1 (Gen 2 behavior).',
                 offset       = 0x174,
@@ -892,7 +1103,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataPathMode-Gen-3/DFE
         #######################################################################################
         if not isAdc and gen3:
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'DataPathMode',
                 description  = 'The data path mode. Valid values are 1-4.',
                 offset       = 0x178,
@@ -912,7 +1123,7 @@ class RfdcBlock(pr.Device):
         # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetDataPathMode-Gen-3/DFE
         #######################################################################################
         if not isAdc and gen3:
-            self.add(pr.RemoteVariable(
+            self.add(ConfigVariable(
                 name         = 'IMRPassMode',
                 description  = 'The IMR Filter mode. Valid values are 0 (for low pass) 1 (for high pass)',
                 offset       = 0x17C,
@@ -934,7 +1145,7 @@ class RfdcBlock(pr.Device):
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetSignalDetector-Gen-3/DFE
                     #######################################################################################
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'Mode',
                         description  = 'Whether to use Average or Randomized mode.',
                         offset       = 0x180,
@@ -946,7 +1157,7 @@ class RfdcBlock(pr.Device):
                         },
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'TimeConstant',
                         description  = 'Time constant of the leaky integrator.',
                         offset       = 0x184,
@@ -964,7 +1175,7 @@ class RfdcBlock(pr.Device):
                         },
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'Flush',
                         description  = 'Flush the leaky integrator.',
                         offset       = 0x188,
@@ -973,7 +1184,7 @@ class RfdcBlock(pr.Device):
                         base         = pr.Bool,
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'EnableIntegrator',
                         description  = 'Enable the leaky integrator.',
                         offset       = 0x18C,
@@ -982,7 +1193,7 @@ class RfdcBlock(pr.Device):
                         base         = pr.Bool,
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'Threshold',
                         description  = 'The threshold for signal detection.',
                         offset       = 0x190,
@@ -990,7 +1201,7 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'ThresholdOnTriggerCnt',
                         description  = 'The number of times value must exceed Threshold before turning on.',
                         offset       = 0x194,
@@ -998,7 +1209,7 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'ThresholdOffTriggerCnt',
                         description  = 'The number of times value must exceed Threshold before turning off.',
                         offset       = 0x198,
@@ -1006,7 +1217,7 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'HysteresisEnable',
                         description  = 'Enable hysteresis on signal on.',
                         offset       = 0x19C,
@@ -1053,7 +1264,7 @@ class RfdcBlock(pr.Device):
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_SetPwrMode-Gen-3/DFE
                     # https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_GetPwrMode-Gen-3/DFE
                     #######################################################################################
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'DisableIPControl',
                         description  = 'This disables the real time signals from setting the power mode: 0 to leave RTS control enabled, 1 to disable RTS control.',
                         offset       = 0x1A8,
@@ -1061,7 +1272,7 @@ class RfdcBlock(pr.Device):
                         mode         = 'RW',
                     ))
 
-                    self.add(pr.RemoteVariable(
+                    self.add(ConfigVariable(
                         name         = 'PwrMode',
                         description  = '0 to power down, 1 to power up.',
                         offset       = 0x1AC,

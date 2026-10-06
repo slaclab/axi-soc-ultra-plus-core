@@ -25,14 +25,14 @@ that on-SD image automatically. Nothing about the first boot stage
 changes: only where the kernel FIT comes from.
 
 The kernel FIT is fetched **PXE-first**. U-Boot first tries to download
-a PXE ("pxelinux") config from the TFTP server —
+a PXE ("pxelinux") config from the TFTP server, parses its ``KERNEL``
+line, and boots the FIT that line names. It requests
 ``pxelinux.cfg/01-<MAC>`` (the board's MAC, dash-separated and
 lowercased, with the ``01-`` ARP-hardware-type prefix) if a
-board-specific file exists, otherwise ``pxelinux.cfg/default`` — parses
-its ``KERNEL`` line, and boots the FIT that line names. Only if no PXE
+board-specific file exists, otherwise ``pxelinux.cfg/default``. Only if no PXE
 config is served does U-Boot fall back to fetching ``image.ub``
 directly by name. The PXE config lets you change a board's boot
-behavior server-side — pointing it at a different FIT, for example —
+behavior server-side (pointing it at a different FIT, for example)
 **without reflashing U-Boot or editing the board's U-Boot
 environment**. Either path still relies on ``serverip`` (the TFTP
 server address) being set, explicitly or via DHCP.
@@ -54,17 +54,17 @@ The MAC is dash-separated and lowercased. (U-Boot's ``tftpboot`` treats
 a ``:`` in a filename as a ``hostIP:file`` separator, so the env uses
 ``setexpr gsub`` to rewrite ``${ethaddr}``'s colons to dashes before the
 fetch.) A miss costs one immediate TFTP "not found" reply rather than a
-timeout, so the extra probes are effectively free — **provided the server
+timeout, so the extra probes are effectively free, **provided the server
 is reachable**. If nothing answers at all, each probe instead waits its
 full request timeout; see **Troubleshooting**.
 
 ``fpga load`` accepts **either** a Vivado ``.bit`` or a bootgen-produced
-raw ``.bin`` — see :ref:`bitstream formats <tftp-bitstream-formats>`
+raw ``.bin``; see :ref:`bitstream formats <tftp-bitstream-formats>`
 below. This step is **mandatory** in ``tftp-only`` mode:
 if the bitstream fetch or ``fpga load`` fails, netboot aborts before the
 kernel boots, so a net kernel never runs over an unprogrammed or stale
 PL. A ``fallback`` or ``sd-only`` build does **not** fetch a bitstream in
-U-Boot — its PL is programmed later, after Linux boots, by
+U-Boot; its PL is programmed later, after Linux boots, by
 ``startup-app-init`` running ``fpgautil`` on the SD card's ``system.bit``
 (unchanged from a normal SD boot). ``BOOT.BIN`` itself embeds an
 FSBL-programmed bitstream in every mode; the ``tftp-only`` ``fpga load``
@@ -78,7 +78,7 @@ bus hang). To prevent that, ``startup-app-init`` gates the ``insmod``
 step on the FPGA manager: it reads ``/sys/class/fpga_manager/fpga0/state``
 and loads the drivers only when the state is ``operating``. If the PL is
 not programmed, it logs an error, **skips the driver load, and lets Linux
-continue booting** rather than halting — so the board still comes up with
+continue booting** rather than halting, so the board still comes up with
 networking and a shell (a minimal recovery environment) instead of
 stopping. The only path that deliberately halts before Linux is a failed
 bitstream fetch in ``tftp-only`` mode (the netboot ``&&`` chain aborts the
@@ -87,7 +87,7 @@ boot); a ``fallback`` or ``sd-only`` board always reaches Linux.
 .. warning::
 
    Because ``BOOT.BIN`` embeds a bitstream that the FSBL programs at
-   power-on, the FPGA manager reports ``operating`` on every boot — even
+   power-on, the FPGA manager reports ``operating`` on every boot, even
    when no ``system.bit`` is present on the SD card and none is fetched
    over the network. This guarantees a programmed PL for the driver-load
    guard above, but it also means a ``fallback`` or ``sd-only`` board that
@@ -126,7 +126,7 @@ Prerequisites
 
    The host IP, network interface, board IP, and serial device shown
    below (e.g. ``10.0.0.1``, ``eth2``, ``/dev/ttyUSB1``) are this lab's
-   values — substitute your own. The netboot path does not depend on any
+   values; substitute your own. The netboot path does not depend on any
    particular subnet; the board takes its IP from whatever DHCP server is
    present on your network, and only ``serverip`` needs to be set
    explicitly to point at your TFTP host.
@@ -149,11 +149,11 @@ Steps
    ``image.ub`` for that board into the TFTP root (``/tftpboot``), stages
    a PXE config at ``/tftpboot/pxelinux.cfg/default``, and launches a
    standalone ``dnsmasq`` instance serving ``/tftpboot``. Re-running it
-   against an already-provisioned host is a no-op — it does not re-prompt
+   against an already-provisioned host is a no-op: it does not re-prompt
    for ``sudo`` and does not start a second daemon. Do not hand-derive
    the TFTP server configuration yourself.
 
-   The staged ``/tftpboot/pxelinux.cfg/default`` is minimal — it simply
+   The staged ``/tftpboot/pxelinux.cfg/default`` is minimal: it simply
    names the FIT to boot:
 
    .. code-block:: text
@@ -166,7 +166,7 @@ Steps
    address as ``pxelinux.cfg/01-aa-bb-cc-dd-ee-ff`` (the ``01-`` prefix
    plus the MAC dash-separated and lowercased). U-Boot prefers the
    MAC-specific file over ``default`` when both are present, so you can
-   repoint a single board — at a different FIT, say — without touching
+   repoint a single board (at a different FIT, say) without touching
    the shared ``default`` config or reflashing that board's U-Boot.
 
    For a **tftp-only** (diskless) board, also stage the PL bitstream so
@@ -191,7 +191,7 @@ Steps
    **dash-separated and lowercased** (e.g.
    ``system.bit.fc-c2-3d-5a-9a-08``) to match what the board's
    ``loadpl_net`` requests (it rewrites ``${ethaddr}``'s colons to dashes
-   with ``setexpr``). ``fallback``-mode servers do not need any of this —
+   with ``setexpr``). ``fallback``-mode servers do not need any of this:
    omit ``-B``/``-F``/``-M`` and only ``image.ub`` and the PXE config are
    staged. ``sd-only`` boards need no TFTP server at all, so this whole
    step is unnecessary for them.
@@ -206,7 +206,7 @@ Steps
 
    The server is **TFTP-only** (``dnsmasq`` runs with DNS and DHCP
    disabled), so it is safe to run alongside an existing site DHCP
-   server on the same segment — the board still gets its lease from
+   server on the same segment; the board still gets its lease from
    that DHCP server, and this host only answers TFTP requests.
 
    If the script cannot auto-detect a built ``image.ub`` for the board
@@ -236,7 +236,7 @@ Steps
 .. _tftp-boot-modes:
 
 2. Choose the board's boot mode at build time. The boot mode is
-   baked into U-Boot — and therefore into ``BOOT.BIN`` — when the Yocto
+   baked into U-Boot (and therefore into ``BOOT.BIN``) when the Yocto
    image is built, via the ``-m`` flag to ``BuildYoctoProject.sh`` (see
    :doc:`../tutorial/first_soc_bringup` for the full build invocation):
 
@@ -252,7 +252,7 @@ Steps
           no reachable TFTP server. ``run netboot`` is still defined and
           available by hand at the ``ZynqMP>`` prompt for recovery.
       * - ``fallback``
-        - Tries netboot first; on any failure boots the known-good
+        - Tries netboot first; on any failure, boots the known-good
           ``image.ub`` from the SD card.
       * - ``tftp-only``
         - Tries netboot only; on failure prints ``TFTP-only build: not
@@ -262,7 +262,7 @@ Steps
    ``sd-only`` is the default, so it is applied even when ``-m`` is
    omitted, and a default build therefore does **not** netboot. The three
    modes produce byte-distinct ``BOOT.BIN`` images. To read a board's mode
-   straight out of the artifact — no board required — grep the ``bootcmd``
+   straight out of the artifact (no board required), grep the ``bootcmd``
    that was baked into it:
 
    .. code-block:: bash
@@ -316,8 +316,8 @@ Steps
       is sufficient to replace only ``BOOT.BIN`` on the SD card's FAT
       boot partition. On boards imaged by this platform's tooling
       (1 GiB FAT32 boot partition), do that with a plain Linux ``cp``
-      to the mounted ``/boot`` partition. **Never use U-Boot's
-      ``fatwrite`` command and never use a raw ``mmc write``** to do
+      to the mounted ``/boot`` partition. **Never** use U-Boot's
+      ``fatwrite`` command and **never** use a raw ``mmc write`` to do
       this: U-Boot 2026.01's ``fatwrite`` is broken on that FAT32 boot
       partition (it corrupts the FSInfo free-count and fails every
       write with a bogus "no space left" error), and a raw ``mmc
@@ -329,21 +329,21 @@ Steps
 
    These commands mirror the built-in ``netboot`` environment command
    (installed via ``CFG_EXTRA_ENV_SETTINGS``, see **How It Works**),
-   which runs ``dhcp`` — skipped if a static ``ipaddr`` is already
-   set — then tries ``pxe get`` / ``pxe boot`` and, only if no PXE
+   which runs ``dhcp`` (skipped if a static ``ipaddr`` is already
+   set), then tries ``pxe get`` / ``pxe boot`` and, only if no PXE
    config is served, falls back to ``tftpboot 0x10000000 image.ub`` then
    ``bootm 0x10000000``; ``run netboot`` performs the whole
    fetch-and-boot. Doing it by hand lets you set ``serverip``
    explicitly (``netboot`` itself does not) and watch each stage.
 
-   On a ``fallback`` or ``tftp-only`` board, boot time reaches ``netboot``
-   through U-Boot's ``bootcmd`` — ``run netboot; <mode-action>`` — which
+   On a ``fallback`` or ``tftp-only`` board, U-Boot reaches ``netboot`` at
+   boot time through its ``bootcmd`` (``run netboot; <mode-action>``), which
    runs ``netboot`` and then the mode-specific action from Step 2 (SD boot
    for ``fallback``, halt for ``tftp-only``). The mode action runs whenever
    ``netboot`` **returns to U-Boot at all**: a successful boot hands control
    to the kernel and never comes back, so simply reaching the mode action is
    the failure signal. The fallback therefore does **not** depend on
-   ``netboot`` reporting a nonzero exit code — some boot methods (notably
+   ``netboot`` reporting a nonzero exit code; some boot methods (notably
    ``pxe boot``) return 0 even when no kernel booted.
 
    An ``sd-only`` board's ``bootcmd`` is not of that form at all: it omits
@@ -362,13 +362,13 @@ Steps
    ``pxe get`` downloads the ``pxelinux.cfg`` file (MAC-specific first,
    then ``default``) from ``serverip``, and ``pxe boot`` loads and boots
    the FIT its ``KERNEL`` line names. This build also provides distro
-   boot, so ``run bootcmd_pxe`` is a one-line equivalent — but it runs
+   boot, so ``run bootcmd_pxe`` is a one-line equivalent, but it runs
    its own ``dhcp`` and takes ``serverip`` from the DHCP response, so
    prefer setting ``serverip`` explicitly and running ``pxe get`` /
    ``pxe boot`` when your DHCP server does not hand out a TFTP
    ``next-server``.
 
-   **Mixed addressing — board IP from DHCP, TFTP server set by hand.**
+   **Mixed addressing: board IP from DHCP, TFTP server set by hand.**
    When your DHCP server assigns the board's IP but does not advertise a
    usable TFTP ``next-server`` (or advertises the wrong one), set
    ``serverip`` yourself and let DHCP handle only the board address, then
@@ -380,8 +380,8 @@ Steps
       saveenv                    # optional: persist across reboots
       run netboot
 
-   The shipped ``netboot`` **preserves a non-empty ``serverip`` across
-   its own internal ``dhcp`` call**, and clears ``tftpserverip`` (which
+   The shipped ``netboot`` **preserves** a non-empty ``serverip`` across
+   its own internal ``dhcp`` call, and clears ``tftpserverip`` (which
    ``tftpboot`` and ``pxe`` would otherwise prefer over ``serverip``), so
    your TFTP-server choice stays authoritative. This is required because
    U-Boot's lwIP ``dhcp`` always overwrites ``serverip`` with the DHCP
@@ -409,8 +409,8 @@ Steps
       ``*** Warning - bad CRC, using default environment`` message on a
       freshly flashed board is both expected and the safer state.
 
-   To fetch the FIT directly instead — the fallback path ``netboot``
-   takes when no PXE config is served — skip the ``pxe`` commands and
+   To fetch the FIT directly instead (the fallback path ``netboot``
+   takes when no PXE config is served), skip the ``pxe`` commands and
    fetch ``image.ub`` by name:
 
    .. code-block:: text
@@ -424,13 +424,13 @@ Steps
    lease prints ``DHCP client bound to address``). Set ``serverip``
    explicitly to your TFTP host rather than relying on a DHCP
    ``next-server`` option. Use the load address ``0x10000000`` exactly
-   as shown — this is the address this platform's boot flow is built
+   as shown: this is the address this platform's boot flow is built
    around, not a generic default.
 
    On a ``tftp-only`` build, ``netboot`` first runs its ``loadpl_net``
    step to program the PL from the TFTP-served bitstream before fetching
    the kernel. To reproduce that by hand, fetch and ``fpga load`` the
-   bitstream (``0x10000000`` is reused — ``fpga load`` consumes the
+   bitstream (``0x10000000`` is reused; ``fpga load`` consumes the
    buffer before the kernel is fetched to the same address):
 
    .. code-block:: text
@@ -443,10 +443,10 @@ Steps
       bootm 0x10000000
 
    Substitute ``system.bin`` for ``system.bit`` if that is what you
-   staged — ``fpga load`` handles both identically.
+   staged; ``fpga load`` handles both identically.
 
    If your network has no DHCP server, set a static IP instead (keep
-   it volatile — do not ``saveenv`` — so a plain ``reset`` restores the
+   it volatile and do not ``saveenv``, so a plain ``reset`` restores the
    DHCP path):
 
    .. code-block:: text
@@ -474,12 +474,12 @@ A successful TFTP fetch reports the size of the FIT image (roughly
    Bytes transferred = 116835243
 
 On a ``tftp-only`` build, the bitstream fetch and ``fpga load`` run
-first — a successful load prints a ``Filename`` line naming whichever of
+first. A successful load prints a ``Filename`` line naming whichever of
 the four probed names hit, its own ``Bytes transferred`` line, and no
 error from ``fpga load``. A ``.bit`` transfers 222 bytes more than the
 equivalent ``.bin`` (the Vivado header); both program the same PL
 configuration. ``fpga load`` prints nothing at all on success, so the only
-sign it ran is the next command appearing — after roughly 16 s for a
+sign it ran is the next command appearing, after roughly 16 s for a
 ``.bit``, or a fraction of a second for a ``.bin``. A long silent pause
 directly after the bitstream's ``Bytes transferred`` line is therefore
 expected, not a hang. Once Linux is up, ``startup-app-init`` confirms the
@@ -503,7 +503,7 @@ The banner hostname comes from the project name of the built image
 (``SimpleRfSoc4x2Example`` here, set via ``hostname:pn-base-files``),
 not from the ``hardware`` directory name ``RealDigitalRfSoC4x2`` used
 in Step 1. It is the same for **all three** boot modes, so it does not tell
-you which mode's ``BOOT.BIN`` is running -- distinguish the modes with the
+you which mode's ``BOOT.BIN`` is running. Distinguish the modes with the
 ``strings -a BOOT.BIN | grep -a '^bootcmd='`` check from Step 2, or by the
 runtime behavior (a ``fallback`` build SD-boots after its TFTP attempts
 fail; a ``tftp-only`` build halts; an ``sd-only`` build prints ``SD-only
@@ -546,13 +546,13 @@ Troubleshooting
        timeout (~6 s) when nothing replies: ~85 s with the daemon stopped,
        ~110 s under a silent ``DROP`` firewall rule
      - Expected when TFTP is unreachable, and **not** a hang. ICMP
-       ``destination unreachable`` does *not* shorten it -- a stopped
+       ``destination unreachable`` does *not* shorten it: a stopped
        daemon does emit it, and each attempt still times out anyway, so
        the presence or absence of ICMP lines does not distinguish the two
        cases. Restore TFTP reachability: once the server answers, a
        missing file draws an immediate ``TFTP error: 256`` refusal and the
        whole 14-name walk costs almost nothing. If the board has **no**
-       TFTP server by design, rebuild it with ``-m sd-only`` (Step 2) --
+       TFTP server by design, rebuild it with ``-m sd-only`` (Step 2);
        that removes ``run netboot`` from ``bootcmd`` entirely and is the
        structural fix rather than a workaround
    * - ``TFTP-only build: not falling back to SD`` followed by a halt
@@ -583,11 +583,11 @@ Troubleshooting
    * - Board loads a stale bitstream even after re-running
        ``provision_tftp_host.sh``
      - A per-MAC name outranks the generic one, and a run without ``-M``
-       cannot clean per-MAC leftovers — it only warns about them
+       cannot clean per-MAC leftovers; it only warns about them
      - Re-run with ``-M <board-MAC>``, which refreshes that per-MAC copy and
        removes the other format's per-MAC name
    * - ``tftp-only`` board fetches and loads a bitstream, but the PL ends up
-       running the SD card's one instead
+       running the SD card's bitstream instead
      - ``startup-app-init`` re-programs the PL with ``fpgautil`` whenever
        ``/boot/system.bit`` exists, roughly 15 s into boot, discarding what
        U-Boot loaded. ``tftp-only`` presumes a diskless board with no such
@@ -598,7 +598,7 @@ Troubleshooting
        application starts
      - ``startup-app-init`` found ``fpga_manager/fpga0/state`` not
        ``operating`` and skipped the DMA driver load
-     - On a ``tftp-only`` board confirm the bitstream staged and
+     - On a ``tftp-only`` board confirm the bitstream was staged and
        ``fpga load`` succeeded; on an SD board confirm ``/boot/system.bit``
        is present and valid
    * - No ``DHCP client bound`` line appears at all
@@ -616,7 +616,7 @@ Troubleshooting
      - lwIP ``dhcp`` overwrote ``serverip`` with the DHCP server's own
        address, or set ``tftpserverip`` from the DHCP next-server (which
        ``tftpboot`` and ``pxe`` prefer over ``serverip``)
-     - Set ``serverip`` **before** ``run netboot`` — the shipped
+     - Set ``serverip`` **before** ``run netboot``; the shipped
        ``netboot`` preserves a non-empty ``serverip`` across its internal
        ``dhcp`` and clears ``tftpserverip``. To return to DHCP-supplied
        addressing, clear it with ``setenv serverip``
@@ -634,7 +634,7 @@ How long the SD fallback takes depends entirely on whether the TFTP
 server *answers*. A single ``tftpboot`` gives up after roughly 6 seconds,
 but ``netboot`` is PXE-first: ``pxe get`` tries 13 ``pxelinux.cfg`` names
 ahead of the direct FIT fetch, so a ``fallback`` board on a network with
-**no reachable TFTP server** pays that timeout 14 times over — about
+**no reachable TFTP server** pays that timeout 14 times over: about
 85 seconds with the daemon stopped, and about 110 seconds if packets are
 silently dropped. When the server *is* reachable and merely missing a
 file, every attempt is refused immediately and the fallback is effectively
@@ -675,15 +675,15 @@ Notes
 
   .. note::
 
-     A "best-effort" variant — where U-Boot programs a network bitstream
-     if one is served but continues (rather than halting) if none is —
+     A "best-effort" variant, where U-Boot programs a network bitstream
+     if one is served but continues (rather than halting) if none is,
      would let a net bitstream override an inserted SD. That is out of
      scope here; the current design keeps each mode a coherent stack
      (full-network in ``tftp-only``, SD-owned PL in ``fallback``, and no
      network on the boot path at all in ``sd-only``).
      If such a mode is added later, it must preserve netboot's ``&&`` failure
-     chain — a fetch or ``fpga load`` failure must still be able to abort the
-     boot — rather than relaxing the chain to ``;``. Weakening it to ``;``
+     chain (a fetch or ``fpga load`` failure must still be able to abort the
+     boot) rather than relaxing the chain to ``;``. Weakening it to ``;``
      would run the kernel-fetch stages even after a failed ``dhcp`` (paying
      both timeouts on a dead network) and, because the env string is shared,
      would also disable the ``tftp-only`` guarantee that a net kernel never
@@ -704,9 +704,9 @@ Notes
   ``BIF_BITSTREAM_ATTR`` defaults to ``bitstream``, so the FSBL programs the
   PL from ``download-zynqmp-user.bit`` at power-on and the FPGA manager reads
   ``operating`` before Linux starts. To build a ``BOOT.BIN`` that contains
-  **no** bitstream — for example, to exercise the ``startup-app-init``
+  **no** bitstream (for example, to exercise the ``startup-app-init``
   driver-load guard on a board with no ``system.bit`` and no network
-  bitstream — set ``BIF_BITSTREAM_ATTR = ""`` in ``build/conf/local.conf``
+  bitstream), set ``BIF_BITSTREAM_ATTR = ""`` in ``build/conf/local.conf``
   (or the machine ``.conf``) and rebuild ``xilinx-bootbin``. With no embedded
   bitstream the FPGA manager stays out of ``operating`` until something (the
   SD ``fpgautil`` load, or the ``tftp-only`` ``fpga load``) programs the PL,
@@ -721,14 +721,14 @@ Bitstream formats: ``.bit`` and ``.bin``
 bootgen-produced raw ``.bin``, and both program the same PL design. They
 are not, however, the same bytes. Beyond the ``.bit``'s 222-byte Vivado
 header (34,437,578 B versus 34,437,356 B for this design), ``bootgen``
-also byte-reverses every 32-bit word — the sync word is ``AA 99 55 66`` in
+also byte-reverses every 32-bit word: the sync word is ``AA 99 55 66`` in
 the ``.bit`` and ``66 55 99 AA`` in the ``.bin``, and the bus-width-detect
 pattern ``00 00 00 BB`` / ``11 22 00 44`` is reversed the same way.
 Stripping the header off a ``.bit`` therefore does **not** produce the
 ``.bin``: 2,363,968 of 34,437,356 bytes differ, a figure that looks small
 only because ``0x00000000`` and ``0xFFFFFFFF`` words are invariant under a
 word swap. An unconverted ``.bit`` loads because the PCAP auto-detects bus
-width and endianness from that pattern ahead of the sync word — not
+width and endianness from that pattern ahead of the sync word, not
 because the two payloads agree.
 
 The reason is in U-Boot's ZynqMP driver (``drivers/fpga/zynqmppl.c``).
@@ -771,7 +771,7 @@ verbatim to the PMU via ``PM_FPGA_LOAD``. The PMU's PCAP loader skips the
         - ~60 s
 
    The TFTP transfer is identical either way (~17.6 MiB/s for both), so the
-   entire difference falls inside ``fpga load`` — consistent with the PMU
+   entire difference falls inside ``fpga load``, consistent with the PMU
    performing the word swap in software. Because ``loadpl_net`` prefers
    ``.bit``, a board served one pays this on **every** boot. Prefer
    ``-F bin`` where boot time matters and ``bootgen`` is available.
@@ -792,8 +792,8 @@ verbatim to the PMU via ``PM_FPGA_LOAD``. The PMU's PCAP loader skips the
 
 ``loadpl_net`` probes ``.bit`` before ``.bin`` at each specificity level,
 so a leftover ``system.bit`` outranks a ``system.bin``.
-``provision_tftp_host.sh`` removes the unselected format's names — the
-generic one and one per ``-M`` MAC — so re-running it cannot leave a stale
+``provision_tftp_host.sh`` removes the unselected format's names (the
+generic one and one per ``-M`` MAC), so re-running it cannot leave a stale
 file of the other format behind. Without ``-M`` it cannot know the board's
 MAC and so cannot clean a per-MAC leftover; it warns about any it finds,
 since a per-MAC name outranks the generic one.

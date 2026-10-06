@@ -90,8 +90,8 @@ Manual recipe
 Scripted recipe (``program_nand_flash.sh``)
 -------------------------------------------
 
-The ``program_nand_flash.sh`` script, provided in the
-:repo:`scripts/program_nand_flash.sh` of the platform repository, automates
+The ``program_nand_flash.sh`` script, provided as
+:repo:`scripts/program_nand_flash.sh` in the platform repository, automates
 the recipe above.  Instead of a Yocto build directory it takes the packaged
 ``.linux.tar.gz``, extracts it to a scratch directory, and programs each
 image at its partition offset.
@@ -107,17 +107,17 @@ the Yocto build (schema:
 
 Options:
 
-- ``-f PATH`` -- path to the ``.linux.tar.gz`` (required).
-- ``-t FLASH_TYPE`` -- value passed to ``-flash_type``
+- ``-f PATH``: path to the ``.linux.tar.gz`` (required).
+- ``-t FLASH_TYPE``: value passed to ``-flash_type``
   (default ``nand-x8-single``).  Must be a ``nand-*`` type; the script
   rejects ``qspi-*`` types and points at ``program_qspi_flash.sh``, since
   the ``image.ub`` offset it programs is fixed at the NAND one.
-- ``-e PATH`` -- FSBL ``.elf`` passed to ``-fsbl``.  Defaults to
+- ``-e PATH``: FSBL ``.elf`` passed to ``-fsbl``.  Defaults to
   ``linux/zynqmp_fsbl.elf`` from the tarball, which ``BuildYoctoProject.sh``
   packages, so this is normally not needed.  Required only for tarballs that
   predate that packaging, because NAND has no bundled fallback (see the FSBL
   warning under **Prerequisites**).
-- ``-n`` -- skip the ``-blank_check -verify`` QA/QC pass, which is **on by
+- ``-n``: skip the ``-blank_check -verify`` QA/QC pass, which is **on by
   default**.  ``-verify`` reads the payload back and compares it against the
   image, the only positive proof the data landed where it belongs.  The cost
   has not been measured on NAND, and on QSPI it varied by roughly two orders
@@ -125,14 +125,14 @@ Options:
   :doc:`qspi_flash`), so measure before planning around it.  Whatever the NAND
   rates turn out to be, ``-a`` costs far more than the default image set either
   way, since ``image.ub`` is roughly 60x larger than ``BOOT.BIN``.
-- ``-c`` -- accepted for compatibility and now redundant, since the checks it
+- ``-c``: accepted for compatibility and now redundant, since the checks it
   used to enable are the default.  Use ``-n`` to turn them off.
-- ``-F`` -- program even if an ``hw_server`` is already running.  By default
+- ``-F``: program even if an ``hw_server`` is already running.  By default
   the script stops, because ``program_flash`` would attach to that session
   and share its JTAG cable.  Note that ``killVivado`` does not reap
   ``hw_server``.
-- ``-J`` -- skip the JTAG boot mode step and flash the board as-is.
-- ``-H`` -- show the help text.
+- ``-J``: skip the JTAG boot mode step and flash the board as-is.
+- ``-H``: show the help text.
 
 Boot mode handling
 ~~~~~~~~~~~~~~~~~~
