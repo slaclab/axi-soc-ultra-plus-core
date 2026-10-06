@@ -21,7 +21,7 @@ schema ``<TargetName>-<PRJ_VERSION>-<YYYYMMDDHHMMSS>-<user>-<git-short-SHA>``. T
    - **Target FPGA part:** ``xczu48dr-ffvg1517-2-e``
 
    Approximate end-to-end build time on a typical Linux build host with the firmware
-   tree on local-disk storage: **~60 min** total — firmware (~17 min) plus Yocto
+   tree on local-disk storage: **~60 min** total: firmware (~17 min) plus Yocto
    (~45 min). See *Build-output redirection* below for why local-disk storage matters.
 
 Clone
@@ -70,7 +70,7 @@ Vivado 2025.2 installation instead.
 
 **Rogue / PyRogue environment (software)**
 
-Activate the ``rogue_v6.12.0`` conda environment:
+Activate the ``rogue_v6.15.0`` conda environment:
 
 .. code-block:: bash
 
@@ -174,7 +174,7 @@ Yocto build
 The Yocto build produces the embedded Linux boot images (``BOOT.BIN``, ``image.ub``,
 ``boot.scr``, ``system.bit``) that run on the RFSoC Processing System (PS). Two paths are
 documented: **bare-metal** (recommended; works on any host with the Yocto host package
-set installed) and **Docker** (currently blocked by a Dockerfile defect — see below).
+set installed) and **Docker** (currently blocked by a Dockerfile defect; see below).
 
 Bare-metal path
 ~~~~~~~~~~~~~~~
@@ -208,7 +208,7 @@ After a successful build, the boot images are in:
 
 .. note::
 
-   The deploy path is ``firmware/build/YoctoProjects/<target>/linux/…`` — there is
+   The deploy path is ``firmware/build/YoctoProjects/<target>/linux/…``; there is
    **no** ``images/`` segment in this path.
 
 A packaged tarball is also produced at:
@@ -233,7 +233,7 @@ Docker path
    ``apt-get install`` commands, so ``xorg`` and ``console-setup`` packages prompt on stdin
    and the build hangs indefinitely.
 
-   **Proposed one-line fix** (apply locally — this docs PR does not modify source files
+   **Proposed one-line fix** (apply locally; this docs PR does not modify source files
    per the source-untouchable project constraint):
 
    .. code-block:: dockerfile
@@ -357,4 +357,4 @@ no parity:
 
    cu --line /dev/ttyUSB1 --speed 115200 --parity=none
 
-On Windows, use Tera-Term or PuTTY configured for 115200 8N1.
+On Windows, use Tera Term or PuTTY configured for 115200 8N1.

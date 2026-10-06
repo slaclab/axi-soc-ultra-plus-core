@@ -37,7 +37,7 @@ two-level crossbar tree:
         ▼
    Application AxiLiteCrossbar (N slaves, 24-bit decode)
         ├─ [0] → AppRingBuffer registers
-        └─ [1] → DacSigGen registers
+        ├─ [1] → DacSigGen registers
         └─ ... (per-application; documented in each application repo)
 
 The full address of any register is the sum of offsets along the path from the PS base address
@@ -64,10 +64,10 @@ array that parameterizes every ``AxiLiteCrossbar`` instance:
 
 Arguments to ``genAxiLiteConfig``:
 
-- ``NUM_MASTERS`` — number of slave slots
-- ``BASE_ADDR`` — base address of the crossbar (passed in as a generic)
-- ``ADDR_BITS`` — total decode width in bits
-- ``DECODE_BITS`` — bits used to select among slaves (upper bits of the decode window)
+- ``NUM_MASTERS``: number of slave slots
+- ``BASE_ADDR``: base address of the crossbar (passed in as a generic)
+- ``ADDR_BITS``: total decode width in bits
+- ``DECODE_BITS``: bits used to select among slaves (upper bits of the decode window)
 
 Each slave's base address is then ``AXIL_CONFIG_C(INDEX).baseAddr``.
 
@@ -114,7 +114,7 @@ ADC and DAC sample data between the RFDC wrapper and the application logic flows
 Each 256-bit word carries ``SAMPLE_PER_CYCLE_C = 16`` samples of 16 bits each:
 
 - 16 samples × 16 bits = 256 bits per channel per ``dspClk`` cycle
-- At 312.5 MHz, this yields an effective sample rate of 312.5 MHz × 16 = 5 GS/s throughput
+- At 312.5 MHz, this yields an effective throughput of 312.5 MHz × 16 = 5 GS/s
   (the actual ADC/DAC sample rate is set by the RFDC tile configuration)
 
 The ``Slv256Array`` type is generic across all channel counts. Each application's top-level
@@ -133,7 +133,7 @@ design-wide constants tying RTL generics to Python parameters:
       -- DMA lane count: lane 0 = ring buffer data, lane 1 = loopback debug
       constant DMA_SIZE_C : positive := 2;
 
-      -- Samples per dspClk cycle — must match smplPerCycle in Python Application device
+      -- Samples per dspClk cycle; must match smplPerCycle in Python Application device
       constant SAMPLE_PER_CYCLE_C : positive := 16;
 
       -- AXI-Lite clock frequency (used by surf timing primitives)
@@ -169,6 +169,6 @@ External references
 -------------------
 
 - `Zynq UltraScale+ Devices Register Reference (UG1087)
-  <https://www.xilinx.com/html_docs/registers/ug1087/ug1087-zynq-ultrascale-registers.html>`_
-  — authoritative PS register map for boot-mode, PMU, and diagnostic register addresses
+  <https://www.xilinx.com/html_docs/registers/ug1087/ug1087-zynq-ultrascale-registers.html>`_:
+  authoritative PS register map for boot-mode, PMU, and diagnostic register addresses
   referenced in platform debug recipes.

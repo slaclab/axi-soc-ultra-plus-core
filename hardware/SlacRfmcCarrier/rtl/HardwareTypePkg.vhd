@@ -26,6 +26,9 @@ package HardwareTypePkg is
 
    constant HW_TYPE_C : slv(31 downto 0) := HW_TYPE_SLAC_RFMC_CARRIER_C;
 
+   -- This board carries the RF data converter and the PYRFDC_CONFIG ROM
+   constant IS_RFSOC_C : boolean := true;
+
    ---------------------------------------------
    -- Register Mapping: 1st Layer base addresses
    ---------------------------------------------

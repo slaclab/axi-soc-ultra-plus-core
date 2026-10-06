@@ -55,6 +55,7 @@ docs/_build/
 .vscode/
 .cursor/
 .claude/
+.gsd/
 .planning/
 planning/
 CLAUDE.md

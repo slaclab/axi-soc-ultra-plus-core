@@ -12,7 +12,9 @@ Follow the Miniforge-based install guide here:
 The Miniforge method is the recommended approach for SLAC AFS network
 users and for standalone workstations alike.  After completing the
 upstream steps you will have a conda environment containing ``pyrogue``
-and all required dependencies.
+and all required dependencies.  axi-soc-ultra-plus-core requires Rogue
+6.15.0 or later; ``rfsoc_utility`` raises a Rogue version error at import
+on an older release.
 
 Once Rogue is installed, see **Launch the Rogue GUI** in this how-to
 section to start the control GUI for your board.
