@@ -83,17 +83,22 @@ end AxiSocUltraPlusReg;
 architecture mapping of AxiSocUltraPlusReg is
 
    constant VERSION_INDEX_C : natural := 0;
-   constant SYSMON_INDEX_C  : natural := 1;
-   constant AXIS_MON_IB_C   : natural := 2;
-   constant AXIS_MON_OB_C   : natural := 3;
-   constant APP_INDEX_C     : natural := 4;
+   constant PYRFDC_INDEX_C  : natural := 1;
+   constant SYSMON_INDEX_C  : natural := 2;
+   constant AXIS_MON_IB_C   : natural := 3;
+   constant AXIS_MON_OB_C   : natural := 4;
+   constant APP_INDEX_C     : natural := 5;
 
-   constant NUM_AXI_MASTERS_C : natural := 5;
+   constant NUM_AXI_MASTERS_C : natural := 6;
 
    constant AXI_CROSSBAR_MASTERS_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_AXI_MASTERS_C-1 downto 0) := (
       VERSION_INDEX_C => (
          baseAddr     => x"0000_0000",
-         addrBits     => 16,
+         addrBits     => 12,
+         connectivity => x"FFFF"),
+      PYRFDC_INDEX_C  => (
+         baseAddr     => PYRFDC_ADDR_C,
+         addrBits     => 12,
          connectivity => x"FFFF"),
       SYSMON_INDEX_C  => (
          baseAddr     => x"0001_0000",
@@ -159,6 +164,9 @@ begin
 
       -- Hardware Type
       userValues(6) <= HW_TYPE_C;
+
+      -- IS_RFSOC Flag
+      userValues(7)(0) <= toSl(IS_RFSOC_C);
 
    end process;
 
@@ -312,6 +320,40 @@ begin
          userReset      => cardResetOut,
          -- Optional: user values
          userValues     => userValues);
+
+   -----------------------------------------------------------------
+   -- PYRFDC_CONFIG ROM: read-only RFDC config image, 4 KB slot at
+   -- PYRFDC_ADDR_C, generated at Vivado build time by AddPyRfdcMem.
+   -- Only RFSoC boards (IS_RFSOC_C true) carry the ROM; other boards
+   -- terminate the slot with the surf DECERR empty-slave constants
+   -- so the crossbar always answers.
+   -----------------------------------------------------------------
+   GEN_PYRFDC : if (IS_RFSOC_C) generate
+      U_MEM : entity surf.AxiDualPortRam
+         generic map (
+            TPD_G              => TPD_G,
+            SYNTH_MODE_G       => "xpm",
+            MEMORY_TYPE_G      => "block",
+            MEMORY_INIT_FILE_G => "PYRFDC_CONFIG.mem",
+            READ_LATENCY_G     => 2,
+            AXI_WR_EN_G        => false,
+            COMMON_CLK_G       => true,
+            ADDR_WIDTH_G       => 10,
+            DATA_WIDTH_G       => 32)
+         port map (
+            axiClk         => axiClk,
+            axiRst         => axiRst,
+            axiReadMaster  => axilReadMasters(PYRFDC_INDEX_C),
+            axiReadSlave   => axilReadSlaves(PYRFDC_INDEX_C),
+            axiWriteMaster => axilWriteMasters(PYRFDC_INDEX_C),
+            axiWriteSlave  => axilWriteSlaves(PYRFDC_INDEX_C),
+            clk            => axiClk);
+   end generate;
+
+   GEN_NO_PYRFDC : if (not IS_RFSOC_C) generate
+      axilReadSlaves(PYRFDC_INDEX_C)  <= AXI_LITE_READ_SLAVE_EMPTY_DECERR_C;
+      axilWriteSlaves(PYRFDC_INDEX_C) <= AXI_LITE_WRITE_SLAVE_EMPTY_DECERR_C;
+   end generate;
 
    ---------------------------------
    -- Map the AXI-Lite to DMA Engine
