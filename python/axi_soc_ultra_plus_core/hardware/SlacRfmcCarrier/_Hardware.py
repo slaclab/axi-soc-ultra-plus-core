@@ -9,6 +9,7 @@
 #-----------------------------------------------------------------------------
 
 import pyrogue as pr
+import time
 
 import surf.devices.micron as micron
 import surf.devices.ti as ti
@@ -81,7 +82,13 @@ class Hardware(pr.Device):
             else:
                 self.I2cGpio.LMX_ENABLE[i].set(0)
 
+        # Let the LMX supply and internal LDOs settle before the first SPI access.
+        # The LMX2594 datasheet (SNAS696C) gives no minimum power-up to SPI delay,
+        # so this is a conservative margin, not a datasheet value
+        time.sleep(0.1)
+
         # Seems like 1st time after power up that need to load twice
+        lmxLocked = [False, False]
         for x in range(2):
 
             # Load the LMK configuration from the TICS Pro software HEX export
@@ -98,4 +105,23 @@ class Hardware(pr.Device):
                 if lmxCfg[i] is not None:
                     self.Lmx[i].enable.set(True)
                     self.Lmx[i].LoadCodeLoaderHexFile(lmxCfg[i])
+
+                    # Check the LMX PLL lock via the LMX_SDO inputs of the I2C GPIO. The SDO pin is
+                    # the LMX MUXout, which is SPI readback during programming, so it is switched to
+                    # lock detect and left there so that I2cGpio.LMX_SDO keeps reporting the PLL lock.
+                    # SPI readback of the LMX is invalid until the next LoadCodeLoaderHexFile()
+                    r0 = self.Lmx[i].DataBlock.value(index=0) & 0xFFF7 # FCAL_EN=0 to not recalibrate
+                    self.Lmx[i].DataBlock.set(value=r0 | 0x0004, index=0, write=True) # MUXOUT_LD_SEL=lock detect
+                    lmxLocked[i] = False
+                    for retry in range(10):
+                        if self.I2cGpio.LMX_SDO.get(index=i, read=True):
+                            lmxLocked[i] = True
+                            break
+                        time.sleep(0.1)
                     self.Lmx[i].enable.set(False)
+
+        # Only the last pass counts, since each pass power cycles the LMK and unlocks the LMX
+        unlocked = [i for i in range(2) if lmxCfg[i] is not None and not lmxLocked[i]]
+        if unlocked:
+            status = ', '.join(f'Lmx[{i}] (I2cGpio.LMX_SDO[{i}]=0)' for i in unlocked)
+            raise RuntimeError(f'{self.path}.InitClock: PLL not locked: {status}')
