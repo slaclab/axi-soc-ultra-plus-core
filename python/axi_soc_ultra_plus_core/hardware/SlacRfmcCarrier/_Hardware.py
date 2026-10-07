@@ -108,13 +108,13 @@ class Hardware(pr.Device):
 
                     # Check the LMX PLL lock via the LMX_SDO inputs of the I2C GPIO. The SDO pin is
                     # the LMX MUXout, which is SPI readback during programming, so it is switched to
-                    # lock detect and left there so that I2cGpio.LMX_SDO keeps reporting the PLL lock.
+                    # lock detect and left there so that I2cGpio.LMX_PLL_LOCK keeps reporting the PLL lock.
                     # SPI readback of the LMX is invalid until the next LoadCodeLoaderHexFile()
                     r0 = self.Lmx[i].DataBlock.value(index=0) & 0xFFF7 # FCAL_EN=0 to not recalibrate
                     self.Lmx[i].DataBlock.set(value=r0 | 0x0004, index=0, write=True) # MUXOUT_LD_SEL=lock detect
                     lmxLocked[i] = False
                     for retry in range(10):
-                        if self.I2cGpio.LMX_SDO.get(index=i, read=True):
+                        if self.I2cGpio.LMX_PLL_LOCK.get(index=i, read=True):
                             lmxLocked[i] = True
                             break
                         time.sleep(0.1)
@@ -123,5 +123,5 @@ class Hardware(pr.Device):
         # Only the last pass counts, since each pass power cycles the LMK and unlocks the LMX
         unlocked = [i for i in range(2) if lmxCfg[i] is not None and not lmxLocked[i]]
         if unlocked:
-            status = ', '.join(f'Lmx[{i}] (I2cGpio.LMX_SDO[{i}]=0)' for i in unlocked)
+            status = ', '.join(f'Lmx[{i}] (I2cGpio.LMX_PLL_LOCK[{i}]=0)' for i in unlocked)
             raise RuntimeError(f'{self.path}.InitClock: PLL not locked: {status}')
