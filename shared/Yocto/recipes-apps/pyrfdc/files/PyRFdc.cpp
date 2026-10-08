@@ -1356,6 +1356,10 @@ void PyRFdc::ResyncDriverCache(uint32_t type, uint32_t tile) {
         pll.RefClkDivider   = cfg.ADCTile_Config[tile].RefClkDiv;
 
         for (uint32_t block = 0; block < 4; block++) {
+            // XRFdc_ADCInitialize seeds Freq with NCOFreq in GHz although the field is in
+            // MHz; mirrored on purpose. XRFdc_GetMixerSettings reads it only to unfold an
+            // NCO beyond +/-Fs/2, so until the first SetMixerSettings such an NCO reads
+            // back folded into the first Nyquist zone
             XRFdc_Mixer_Settings& mixer = RFdcInst_.ADC_Tile[tile].ADCBlock_Digital_Datapath[block].Mixer_Settings;
             mixer.MixerType = uint8_t(cfg.ADCTile_Config[tile].ADCBlock_Digital_Config[block].MixerType);
             mixer.Freq      = cfg.ADCTile_Config[tile].ADCBlock_Digital_Config[block].NCOFreq;
