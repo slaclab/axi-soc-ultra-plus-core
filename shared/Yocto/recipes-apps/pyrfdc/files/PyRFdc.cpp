@@ -1021,6 +1021,8 @@ void PyRFdc::ClkDistCommit() {
 //! of NCOFreq. They are the values XRFdc_CfgInitialize was given, served so the
 //! host can restore a never-written mixer. NCOFreq is read from the config
 //! because XRFdc_DACInitialize seeds the DAC driver cache from MixerType instead.
+//! XRFdc_Config holds NCOFreq in GHz (the .xci value), while the host writes it
+//! back as XRFdc_Mixer_Settings.Freq, which is in MHz, so it is served in MHz.
 void PyRFdc::RomMixerConfigReg(uint32_t tileAddr) {
     if (!rdTxn_) {
         errMsg_ = "RomMixerConfig(): read-only\n";
@@ -1046,6 +1048,7 @@ void PyRFdc::RomMixerConfigReg(uint32_t tileAddr) {
         inputType = c.MixerInputDataType;
         ncoFreq   = c.NCOFreq;
     }
+    ncoFreq = 1000.0*ncoFreq; // Convert from GHz to MHz
 
     switch (field) {
         case 0:
