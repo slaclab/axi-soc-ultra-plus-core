@@ -1,0 +1,342 @@
+#!/bin/sh
+##############################################################################
+## This file is part of 'axi-soc-ultra-plus-core'.
+## It is subject to the license terms in the LICENSE.txt file found in the
+## top-level directory of this distribution and at:
+##    https://confluence.slac.stanford.edu/display/ppareg/LICENSE.html.
+## No part of 'axi-soc-ultra-plus-core', including this file,
+## may be copied, modified, propagated, or distributed except according to
+## the terms contained in the LICENSE.txt file.
+##############################################################################
+
+# Reload the PL from the SD card bitstream and restart the bridge in its own
+# unit.
+#
+# usage: rfsoc-pl-reload <bridge pid> <exe> [bridge args ...]
+#
+# Started outside the bridge (systemd-run) by the PyRFdc reload command. The
+# pid is the bridge that asked for the reload; exe and the bridge args are its
+# executable and the words of its command line after argv[0].
+#
+# The steps, in order, with the cap of each in seconds (they sum to the 72 s
+# TOTAL_CAP, which is also checked against /proc/uptime between steps):
+#    2 pre-sleep      the reply of the command that started this reaches the host
+#    - unit           the unit of the bridge, from its own cgroup (boot unit or
+#                     the unit this helper started last time, else abort)
+#    - boot check     no bitstream on /boot or no /boot mount: tftp-only, abort
+#   10 stop           systemctl stop of that unit, is-active polled
+#    5 holders        TERM to each process that holds /dev/mem or
+#                     /dev/axi_memory_map, polled until they are gone
+#    5 rmmod          axi_memory_map
+#   25 fpgautil       at most 5 attempts, 1 s apart; fpgautil is never killed
+#    2 fpga0          the fpga manager state reads operating
+#    5 insmod         axi_memory_map
+#   15 uptime         AxiVersion UpTimeCnt nonzero
+#    - mac            the PS MAC into the BSI psMacAddress words
+#    3 bridge         systemd-run of the bridge
+#
+# Every step before fpgautil that fails is an ABORT: the PL is untouched, the
+# unit is stopped or was never stopped, and the log names the step. From
+# fpgautil on the PL is in a state the FAILED line names, and nothing is
+# retried. The boot unit is never started from here: its own fpgautil would run
+# again with the driver loaded.
+
+LOG=/tmp/rfsoc-pl-reload.log
+UPTIME=/proc/uptime
+PROC=/proc
+MODULES=/proc/modules
+MOUNTS=/proc/mounts
+BIT=/boot/system.bit
+FPGA_STATE=/sys/class/fpga_manager/fpga0/state
+MODULE=/lib/modules/$(uname -r)/updates/axi_memory_map.ko
+NETADDR=/sys/class/net/eth0/address
+SSHD=/usr/sbin/sshd
+KILL=kill
+UNIT_BRIDGE=rfsoc-bridge
+TOTAL_CAP=72
+
+case "${1:-}" in
+   ''|*[!0-9]*)
+      echo "usage: rfsoc-pl-reload <bridge pid> <exe> [bridge args ...]" >&2
+      exit 2
+      ;;
+esac
+if [ "$#" -lt 2 ] || [ -z "$2" ]
+then
+   echo "usage: rfsoc-pl-reload <bridge pid> <exe> [bridge args ...]" >&2
+   exit 2
+fi
+bridge_pid=$1
+exe=$2
+shift 2
+
+read up rest < "$UPTIME"
+deadline=$(( ${up%.*} + TOTAL_CAP ))
+
+sleep 2
+: > "$LOG"
+
+# Every line starts with the first field of /proc/uptime, then a word and a
+# detail; the same line goes to stdout for the journal of the unit.
+log() {
+   read up rest < "$UPTIME"
+   echo "$up $*" >> "$LOG"
+   echo "$up $*"
+}
+
+step=init
+
+# Log the start of a step; abort and fail name it
+begin() {
+   step=$1
+   log STEP "$*"
+}
+
+abort() {
+   log ABORT "$* step=$step"
+   exit 1
+}
+
+fail() {
+   log FAILED "$* step=$step"
+   exit 1
+}
+
+# The total cap, checked between steps
+check_cap() {
+   read up rest < "$UPTIME"
+   if [ "${up%.*}" -ge "$deadline" ]
+   then
+      fail "helperCap after ${TOTAL_CAP} s"
+   fi
+}
+
+log START
+read up rest < "$UPTIME"
+start_s=${up%.*}
+trap 'if [ -z "$(pidof sshd)" ]; then "$SSHD"; log SSHD; fi' EXIT
+
+for tool in systemctl rmmod insmod fpgautil devmem systemd-run pidof grep cat tr sleep
+do
+   command -v "$tool" > /dev/null 2>&1 || abort "missingTool $tool"
+done
+
+# The unit the bridge runs in, from the cgroup of its own pid
+unit=
+if [ -r "$PROC/$bridge_pid/cgroup" ]
+then
+   while IFS= read -r line
+   do
+      case "$line" in
+         *.service) unit=${line##*/}; break ;;
+      esac
+   done < "$PROC/$bridge_pid/cgroup"
+fi
+case "$unit" in
+   startup-app-init.service|"$UNIT_BRIDGE".service) ;;
+   *) abort "unknownUnit ${unit:-none} pid $bridge_pid" ;;
+esac
+begin unit "$unit"
+
+# Without a bitstream on a mounted /boot the PL is loaded by U-Boot (tftp-only
+# boot) and this helper has nothing to load
+[ -f "$BIT" ] || abort "tftpOnly no bitstream $BIT"
+grep -q ' /boot ' "$MOUNTS" || abort "tftpOnly /boot is not mounted"
+check_cap
+
+begin stop "$unit"
+systemctl stop "$unit"
+i=0
+state=
+while [ "$i" -lt 10 ]
+do
+   state=$(systemctl is-active "$unit")
+   case "$state" in
+      inactive|failed) break ;;
+   esac
+   i=$(( i + 1 ))
+   sleep 1
+done
+case "$state" in
+   inactive|failed) ;;
+   *) abort "unitStillActive $unit" ;;
+esac
+check_cap
+
+# The processes that hold the PL address space, by the files they have open.
+# Only those are ended: other python3 and jupyter processes are left alone.
+fd_targets() {
+   if command -v readlink > /dev/null 2>&1
+   then
+      readlink "$1"/* 2> /dev/null
+   else
+      ls -l "$1" 2> /dev/null | while IFS= read -r line
+      do
+         case "$line" in
+            *" -> "*) echo "${line##* -> }" ;;
+         esac
+      done
+   fi
+}
+
+scan_holders() {
+   holders=
+   for dir in "$PROC"/[0-9]*
+   do
+      pid=${dir##*/}
+      [ "$pid" = "$$" ] && continue
+      targets=$(fd_targets "$dir/fd")
+      case "
+$targets
+" in
+         *"
+/dev/mem
+"*|*"
+/dev/axi_memory_map
+"*) holders="$holders $pid" ;;
+      esac
+   done
+}
+
+begin holders scan
+scan_holders
+for pid in $holders
+do
+   argv=$(tr '\0' ' ' < "$PROC/$pid/cmdline")
+   log STEP "holders pid $pid ${argv% }"
+   "$KILL" -TERM "$pid"
+done
+i=0
+while [ -n "$holders" ] && [ "$i" -lt 5 ]
+do
+   sleep 1
+   scan_holders
+   i=$(( i + 1 ))
+done
+[ -z "$holders" ] || abort "holdersRemaining$holders"
+check_cap
+
+begin rmmod
+if grep -q '^axi_memory_map ' "$MODULES"
+then
+   rmmod axi_memory_map || abort "rmmodFailed"
+   i=0
+   while grep -q '^axi_memory_map ' "$MODULES" && [ "$i" -lt 5 ]
+   do
+      sleep 1
+      i=$(( i + 1 ))
+   done
+   if grep -q '^axi_memory_map ' "$MODULES"
+   then
+      abort "rmmodFailed module still loaded"
+   fi
+fi
+check_cap
+
+# The PL load: from here nothing is retried. The success test is the boot
+# script's own (no 'failed' in the output); fpgautil is never killed.
+begin fpgautil
+read up rest < "$UPTIME"
+fpga_deadline=$(( ${up%.*} + 25 ))
+attempt=0
+loaded=0
+while [ "$attempt" -lt 5 ]
+do
+   attempt=$(( attempt + 1 ))
+   out=$(fpgautil -b "$BIT" 2>&1)
+   case "$out" in
+      *failed*) ;;
+      *) loaded=1; break ;;
+   esac
+   log STEP "fpgautil attempt $attempt failed"
+   read up rest < "$UPTIME"
+   [ "${up%.*}" -ge "$fpga_deadline" ] && break
+   [ "$attempt" -lt 5 ] && sleep 1
+done
+[ "$loaded" -eq 1 ] || fail "fpgautilExhausted after $attempt attempts"
+check_cap
+
+# The state reads operating before the load too, so this alone is not proof of
+# it; the UpTimeCnt step below is
+step=fpga0
+i=0
+state=
+while [ "$i" -lt 3 ]
+do
+   state=$(cat "$FPGA_STATE" 2> /dev/null)
+   [ "$state" = operating ] && break
+   i=$(( i + 1 ))
+   [ "$i" -lt 3 ] && sleep 1
+done
+log STEP "fpga0 ${state:-unknown}"
+[ "$state" = operating ] || fail "fpgaNotOperating state ${state:-unknown}"
+echo "$FPGA_STATE: $state"
+check_cap
+
+begin insmod
+insmod "$MODULE" || fail "insmodFailed $MODULE"
+check_cap
+
+# The AXI-Lite path returns real data once AxiVersion.UpTimeCnt, which restarts
+# at 0 on the load, is nonzero
+begin uptime
+i=0
+alive=0
+while [ "$i" -lt 15 ]
+do
+   value=$(devmem 0x400000008 32 2> /dev/null)
+   case "$value" in
+      0x?*)
+         case "${value#0x}" in
+            *[!0-9a-fA-F]*) ;;
+            *) [ "$(( value ))" -ne 0 ] && alive=1 ;;
+         esac
+         ;;
+   esac
+   [ "$alive" -eq 1 ] && break
+   i=$(( i + 1 ))
+   sleep 1
+done
+[ "$alive" -eq 1 ] || fail "upTimeZero after $i s"
+check_cap
+
+# Publish the MAC of the PS ethernet interface into the BSI psMacAddress
+# register, which the PL load cleared; the same words as the boot script. A
+# set -- inside a function replaces only that function's parameters, so the
+# bridge arguments survive it. A MAC that cannot be published is logged and
+# does not stop the reload.
+publish_mac() {
+   mac=$(cat "$NETADDR" 2> /dev/null)
+   oldIFS=$IFS
+   IFS=:
+   set -- $mac
+   IFS=$oldIFS
+   if [ "$#" -ne 6 ] || [ "${#mac}" -ne 17 ]
+   then
+      log STEP "mac notPublished no usable MAC '$mac'"
+      return 0
+   fi
+   case "$1$2$3$4$5$6" in
+      *[!0-9a-fA-F]*)
+         log STEP "mac notPublished malformed MAC '$mac'"
+         return 0
+         ;;
+   esac
+   if devmem 0x4070000F0 32 "0x$4$3$2$1" && devmem 0x4070000F4 32 "0x$6$5"
+   then
+      log STEP "mac published $mac"
+   else
+      log STEP "mac notPublished devmem write failed"
+   fi
+}
+begin mac
+publish_mac
+check_cap
+
+# The bridge again, as the transient unit rfsoc-bridge:
+#   systemd-run --collect --unit=rfsoc-bridge -p Restart=on-failure <exe> <args>
+begin bridge
+systemd-run --collect "--unit=$UNIT_BRIDGE" -p Restart=on-failure "$exe" "$@" || fail "bridgeStart $exe"
+log STARTED
+read up rest < "$UPTIME"
+log DONE $(( ${up%.*} - start_s ))
