@@ -2498,24 +2498,61 @@ class Rfdc(pr.Device):
     # applies to idle tiles, after a Shutdown, and never to live tiles. Like the global
     # restarts, every enabled tile's record baseline is reseeded before the word and the
     # records are refreshed afterwards, success or failure, under the sequence lock. The
-    # public StartUpDist runs the word through the common sequence, which waits for every
-    # enabled tile and writes nothing back.
+    # public StartUpDist first requires every enabled tile to read CurrentState 1 with
+    # Restart 0 and refuses by name before any command word otherwise, then runs the word
+    # through the common sequence, which waits for every enabled tile and writes nothing
+    # back. A board image whose PyRFdc has no such word answers 'Undefined memory'. That is
+    # reported as a board image that is too old and is never replaced by a per-tile start:
+    # the per-tile start of idle tiles cannot complete, so a fallback would only hang.
     #######################################################################################
+    def _groupRestartWord(self, cmd):
+        try:
+            self._writeCommandWord(cmd, 1)
+        except Exception as e:
+            if 'Undefined memory' in str(e):
+                raise RuntimeError(
+                    f'{cmd.path}: the board PyRFdc has no group start command (word {cmd.offset:#x} answered Undefined memory); '
+                    f'it predates the group start, so deploy the Yocto image built from this axi-soc-ultra-plus-core') from e
+            raise
+
     def _groupRestartCmd(self, cmd):
         with self._seqLock:
             tiles = self._allEnabledTiles()
             for key in tiles:
                 self._tileDev(*key)._reseedResetSeq()
             self._runWithCleanup(
-                lambda: self._writeCommandWord(cmd, 1),
+                lambda: self._groupRestartWord(cmd),
                 lambda: [self._tileDev(*key)._refreshResetRecord() for key in tiles],
                 'ResetRecord refresh of the enabled tiles')
+
+    # Every enabled tile that does not read CurrentState 1 with Restart 0, as
+    # '<ADC|DAC> tile i state s restart r'. A read that fails counts as not idle ('NA').
+    @staticmethod
+    def _readOrNA(variable):
+        try:
+            return int(variable.get(read=True))
+        except Exception:
+            return 'NA'
+
+    def _nonIdleTiles(self, tiles):
+        busy = []
+        for key in tiles:
+            tile = self._tileDev(*key)
+            state = self._readOrNA(tile.CurrentState)
+            restart = self._readOrNA(tile.RestartStatus)
+            if (state, restart) != (1, 0):
+                busy.append(f'{self._tileLabel(*key)} state {state} restart {restart}')
+        return busy
 
     def _startUpDistSequence(self):
         start = time.monotonic()
         ok = False
         error = None
         try:
+            # The group restarts every tile at once, so a live or restarting tile must not be in it
+            busy = self._nonIdleTiles(self._allEnabledTiles())
+            if busy:
+                raise RuntimeError(f'{self.path}.StartUpDist refused before the group start: ' + ', '.join(busy))
             self._runSequence(f'{self.path}.StartUpDist', 'StartUp', [lambda: self.StartUpDistRaw()], self._allEnabledTiles(), apply=False)
             ok = True
         except Exception as e:
