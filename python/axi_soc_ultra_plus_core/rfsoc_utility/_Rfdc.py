@@ -235,6 +235,8 @@ class Rfdc(pr.Device):
         self._seqLock   = threading.RLock()
         self._lastGate  = {}
         self._lastApply = {}
+        # Outcome of the last StartUpDist: ok, elapsedS, the first line of the error and the gate settle times
+        self._lastGroupStart = {}
         # Set by _clkDistCommitCmd when the SetClkDistribution commit word went to PyRFdc
         self._clkDistCommitSent = False
 
@@ -307,6 +309,21 @@ class Rfdc(pr.Device):
             name         = 'StartUpAllDac',
             description  = 'Default recovery action: restarts every enabled DAC tile from state 1 keeping its settings, then waits for every enabled tile to reach state 15 with the PLL locked. Re-applies nothing',
             function     = lambda: self._globalStartUpSequence(isAdc=False),
+        ))
+
+        self.add(pr.RemoteCommand(
+            name         = 'StartUpDistRaw',
+            description  = 'Group start in PyRFdc of every tile of the clock distribution from state 1: arms every tile, then triggers every tile, waits for the source and for every tile to reach state 15. Needs every tile idle at state 1 (refused otherwise) and does not run the state 15 gate',
+            offset       = 0x10080,
+            bitSize      = 1,
+            function     = lambda cmd: self._groupRestartCmd(cmd),
+            hidden       = True,
+        ))
+
+        self.add(pr.LocalCommand(
+            name         = 'StartUpDist',
+            description  = 'Starts every enabled tile of the clock distribution together from state 1 keeping its settings, then waits for every enabled tile to reach state 15 with the PLL locked. For idle tiles after a Shutdown only, never for live tiles. Re-applies nothing',
+            function     = lambda: self._startUpDistSequence(),
         ))
 
         #######################################################################################
@@ -2472,6 +2489,45 @@ class Rfdc(pr.Device):
                 lambda: self._writeCommandWord(cmd, 1),
                 lambda: [tileDevs[i]._refreshResetRecord() for i in tiles],
                 f'ResetRecord refresh of the {"ADC" if isAdc else "DAC"} tiles')
+
+    #######################################################################################
+    # Group start of the clock distribution. The ADC tiles of a distribution gate each
+    # other: while any of them idles at state 1 none of the others completes its start, so
+    # tiles that were shut down cannot be started one by one. StartUpDistRaw is the one
+    # PyRFdc word that arms every tile of the distribution and then triggers every one. It
+    # applies to idle tiles, after a Shutdown, and never to live tiles. Like the global
+    # restarts, every enabled tile's record baseline is reseeded before the word and the
+    # records are refreshed afterwards, success or failure, under the sequence lock. The
+    # public StartUpDist runs the word through the common sequence, which waits for every
+    # enabled tile and writes nothing back.
+    #######################################################################################
+    def _groupRestartCmd(self, cmd):
+        with self._seqLock:
+            tiles = self._allEnabledTiles()
+            for key in tiles:
+                self._tileDev(*key)._reseedResetSeq()
+            self._runWithCleanup(
+                lambda: self._writeCommandWord(cmd, 1),
+                lambda: [self._tileDev(*key)._refreshResetRecord() for key in tiles],
+                'ResetRecord refresh of the enabled tiles')
+
+    def _startUpDistSequence(self):
+        start = time.monotonic()
+        ok = False
+        error = None
+        try:
+            self._runSequence(f'{self.path}.StartUpDist', 'StartUp', [lambda: self.StartUpDistRaw()], self._allEnabledTiles(), apply=False)
+            ok = True
+        except Exception as e:
+            error = self._firstLine(e)
+            raise
+        finally:
+            self._lastGroupStart = {
+                'ok':       ok,
+                'elapsedS': round(time.monotonic() - start, 3),
+                'error':    error,
+                'settleS':  dict(self._lastGate.get('settleS', {})),
+            }
 
     #######################################################################################
     # CustomStartUpAllAdc/CustomStartUpAllDac compose that type's StartState and
