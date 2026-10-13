@@ -43,6 +43,29 @@ class Rfdc(pr.Device):
     GATE_TIMEOUT_S = 5.0
     GATE_POLL_S = 0.05
 
+    # Deadline of one QuiesceTiles call over eight tiles: one tile costs at most the 2 s
+    # enable wait, a Shutdown with one retry and the 1 s state wait
+    QUIESCE_BUDGET_S = 20.0
+
+    # Seconds a tile device may take to become enabled after its Check variable read; the
+    # command of a disabled device returns without a transaction
+    TILE_ENABLE_WAIT_S = 2.0
+
+    # Seconds a tile may take to show state 1 after a Shutdown: the driver restart-clear
+    # budget is 1000 times 1 ms, and XRFdc_Shutdown can return before the tile reads state 1
+    TILE_STATE_WAIT_S = 1.0
+
+    # Poll step of the two waits above, in seconds
+    TILE_POLL_S = 0.010
+
+    # Seconds before a failed Shutdown runs once more: a tile busy mid-restart is refused by
+    # the PyRFdc precheck, and its restart clears within the driver budget
+    QUIESCE_RETRY_S = 1.0
+
+    # Seconds one read of every tile state or of the clock distribution may take before the
+    # words left to read count as unreadable; a dead bridge costs one transaction timeout per word
+    STATE_READ_BUDGET_S = 60.0
+
     # The IP power-up QMC values, read right after a reboot on every enabled block of the
     # board (identical on all of them). A QMC that was never committed is returned to
     # these when it differs. The event source is never part of the default: it is what
@@ -237,6 +260,8 @@ class Rfdc(pr.Device):
         self._lastApply = {}
         # Outcome of the last StartUpDist: ok, elapsedS, the first line of the error and the gate settle times
         self._lastGroupStart = {}
+        # Record of the last QuiesceTiles call, keyed by its context
+        self._lastQuiesce = {}
         # Set by _clkDistCommitCmd when the SetClkDistribution commit word went to PyRFdc
         self._clkDistCommitSent = False
 
@@ -324,6 +349,13 @@ class Rfdc(pr.Device):
             name         = 'StartUpDist',
             description  = 'Starts every enabled tile of the clock distribution together from state 1 keeping its settings, then waits for every enabled tile to reach state 15 with the PLL locked. For idle tiles after a Shutdown only, never for live tiles. Re-applies nothing',
             function     = lambda: self._startUpDistSequence(),
+        ))
+
+        self.add(pr.LocalVariable(
+            name         = 'LastQuiesce',
+            description  = 'One line summary of the last QuiesceTiles call: its context, the outcome, the tiles commanded, skipped and retried and the time it took, or the reason it refused before any Shutdown. Empty until a quiesce has run',
+            mode         = 'RO',
+            value        = '',
         ))
 
         #######################################################################################
@@ -2567,6 +2599,307 @@ class Rfdc(pr.Device):
             }
 
     #######################################################################################
+    # Quiesce before the clock chip is touched. The LMK software reset and both InitClock
+    # passes disturb the clock of every running tile, and an ADC calibration that starts
+    # under that disturbance parks tiles at state 12. QuiesceTiles shuts every tile down,
+    # member first, and leaves it idle at state 1 with Restart 0, so Init can start the whole
+    # distribution as one group (_initGroupStart). The order comes from the clock
+    # distribution read while the tiles still run: tiles are ordered by their chain distance
+    # to the distribution source, the start order is the source tile, the other tiles of its
+    # converter type by ascending distance and tile index, then the other type the same way,
+    # and the shutdown order is its exact reverse (adc0, adc1, adc2, adc3, dac3, dac2, dac1,
+    # dac0 on SlacRfmcCarrier). The per-tile Delay is not used: it comes from clock mux
+    # registers and is the least certain field.
+    #
+    # Everything that can refuse is checked before the first Shutdown, because tiles shut down
+    # under a topology the group start cannot restart would never start again. After that
+    # every enabled tile that is not already idle gets one Shutdown (one more after
+    # QUIESCE_RETRY_S when it raised) and must read state 1 with Restart 0 within
+    # TILE_STATE_WAIT_S. A failure never stops the other tiles: every failure is collected
+    # and raised once, naming every tile and its state. The poller is never touched, only
+    # Exception is caught so an interrupt ends the call, and the whole call is bounded by
+    # budgetS, checked before every Shutdown.
+    #######################################################################################
+    @staticmethod
+    def _tileName(isAdc, i):
+        return f'{"adc" if isAdc else "dac"}{i}'
+
+    # Tile index PyRFdc DistIndex gives a tile in a clock distribution for the four ADC and
+    # four DAC tile layout: ADC tile 224 is index 7 and DAC tile 228 is index 3
+    @staticmethod
+    def _distIndex(name):
+        number = int(name[3:])
+        return 7 - number if name.startswith('adc') else 3 - number
+
+    @staticmethod
+    def _clkDistStatusName(status):
+        if status is None:
+            return 'unreadable'
+        return {0: 'Unsupported', 1: 'Ok', 2: 'GetFailed'}.get(status, str(status))
+
+    # int of a read, None for a failed read, a read with no value or a spent budget, so the
+    # caller decides what a missing value means
+    @staticmethod
+    def _readValue(variable, deadline):
+        if time.monotonic() > deadline:
+            return None
+        try:
+            value = variable.get(read=True)
+        except Exception:
+            return None
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    # Names of the enabled tiles, ADC 0 to 3 then DAC 0 to 3. The Check variable reads also
+    # enable the tile devices; a read that raises gives no tiles of that converter type
+    def _enabledTileNames(self):
+        names = []
+        for isAdc, enabled in ((True, self._enabledAdcTiles), (False, self._enabledDacTiles)):
+            try:
+                names += [self._tileName(isAdc, i) for i in enabled()]
+            except Exception:
+                pass
+        return names
+
+    def _namedTile(self, name):
+        return self._tileDev(name.startswith('adc'), int(name[3:]))
+
+    # [CurrentState, RestartStatus] of every enabled tile, ADC 0 to 3 then DAC 0 to 3, from one
+    # get(read=True) each; a value that cannot be read is None, never an exception
+    def TileStates(self):
+        deadline = time.monotonic() + self.STATE_READ_BUDGET_S
+        states = {}
+        for isAdc, enabled in ((True, self._enabledAdcTiles), (False, self._enabledDacTiles)):
+            try:
+                indices = enabled()
+            except Exception:
+                indices = []
+            for i in indices:
+                tile = self._tileDev(isAdc, i)
+                states[self._tileName(isAdc, i)] = [
+                    self._readValue(tile.CurrentState, deadline),
+                    self._readValue(tile.RestartStatus, deadline),
+                ]
+        return states
+
+    # The only reader of the clock distribution. Every word has its own get(read=True) on a
+    # single variable and no device-level block read is issued: PyRFdc clears its clock
+    # distribution cache at the start of every transaction, so each word runs the driver call
+    # afresh and a value read here is the driver's, never a cached one. A failed read is None,
+    # never an exception. A device that is not enabled reads nothing, because a disabled device
+    # would answer from a stale cache.
+    def _readClkDist(self):
+        clk = self.ClkDist
+        if self.enable.value() is not True or clk.enable.value() is not True:
+            return {'enabled': False}
+        deadline = time.monotonic() + self.STATE_READ_BUDGET_S
+
+        def word(variable):
+            return self._readValue(variable, deadline)
+
+        status = word(clk.Status)
+        count = word(clk.Count)
+        distributions = []
+        for d in range(min(count, 8) if count is not None else 0):
+            entry = clk.Distribution[d]
+            distributions.append({
+                'valid':      word(entry.Valid),
+                'sourceType': word(entry.SourceType),
+                'sourceTile': word(entry.SourceTileId),
+                'infoSource': word(entry.InfoSource),
+                'lower':      word(entry.InfoLowerBound),
+                'upper':      word(entry.InfoUpperBound),
+            })
+        tiles = {}
+        for kind, entries in (('adc', clk.AdcTileClk), ('dac', clk.DacTileClk)):
+            for t in range(4):
+                entry = entries[t]
+                tiles[f'{kind}{t}'] = {
+                    'distribution': word(entry.Distribution),
+                    'sourceType':   word(entry.SourceType),
+                    'sourceTile':   word(entry.SourceTile),
+                    'delay':        word(entry.Delay),
+                }
+        return {'enabled': True, 'status': status, 'count': count, 'distributions': distributions, 'tiles': tiles}
+
+    # Pure. Returns (order, problem) from a _readClkDist result, the names of the enabled tiles
+    # and which of them have an enabled device: order is the shutdown order, empty with the
+    # reason in problem when no safe order exists. The group start writes every tile of the
+    # span, so a span tile that is not enabled or a source outside the span leaves no safe
+    # group either.
+    @staticmethod
+    def _quiesceOrder(topology, keys, enabledOk):
+        def refuse(problem):
+            return [], problem
+
+        noneRead = 'a ClkDist read returned None'
+        noSingle = 'no single valid distribution holds every enabled tile'
+        adcChain = 'ADC 3 is not strictly nearer the source than ADC 2, ADC 1 and ADC 0'
+
+        if not topology.get('enabled'):
+            return refuse('ClkDist device not enabled')
+        if not keys:
+            return refuse('no enabled tiles')
+        off = [name for name in keys if not enabledOk.get(name)]
+        if off:
+            return refuse(f"tile devices not enabled: {', '.join(off)}")
+        status = topology.get('status')
+        if status != 1:
+            return refuse(f'ClkDist Status {Rfdc._clkDistStatusName(status)}')
+        count = topology.get('count')
+        if not count:
+            return refuse(f'ClkDist Count {count}')
+
+        tiles = topology.get('tiles') or {}
+        holding = [(tiles.get(name) or {}).get('distribution') for name in keys]
+        if any(value is None for value in holding):
+            return refuse(noneRead)
+        if len(set(holding)) != 1:
+            return refuse(noSingle)
+        distributions = topology.get('distributions') or []
+        if not 0 <= holding[0] < len(distributions):
+            return refuse(noSingle)
+        entry = distributions[holding[0]]
+        if any(entry.get(key) is None for key in ('valid', 'sourceType', 'infoSource', 'lower', 'upper')):
+            return refuse(noneRead)
+        if entry['valid'] != 1 or entry['sourceType'] not in (0, 1):
+            return refuse(noSingle)
+        if any(not entry['lower'] <= Rfdc._distIndex(name) <= entry['upper'] for name in keys):
+            return refuse(noSingle)
+
+        def distance(name):
+            return abs(Rfdc._distIndex(name) - entry['infoSource'])
+
+        chain = [distance(name) for name in ('adc3', 'adc2', 'adc1', 'adc0') if name in keys]
+        if any(near >= far for near, far in zip(chain, chain[1:])):
+            return refuse(adcChain)
+
+        if entry.get('sourceTile') is None:
+            return refuse(noneRead)
+        span = sorted((f'{kind}{i}' for kind in ('adc', 'dac') for i in range(4)
+                       if entry['lower'] <= Rfdc._distIndex(f'{kind}{i}') <= entry['upper']), key=Rfdc._distIndex)
+        missing = [name for name in span if name not in keys]
+        if missing:
+            return refuse(f"distribution span holds tiles that are not enabled: {', '.join(missing)}")
+        source = f"{'adc' if entry['sourceType'] == 0 else 'dac'}{entry['sourceTile']}"
+        if source not in span:
+            return refuse(f'distribution source {source} is not in the span')
+
+        sourceKind = 'adc' if entry['sourceType'] == 0 else 'dac'
+        start = sorted(keys, key=lambda name: (not name.startswith(sourceKind), distance(name), name))
+        return start[::-1], None
+
+    # True once the tile device is enabled, False when the deadline passes first
+    def _waitTileEnable(self, tile, deadline):
+        while True:
+            if tile.enable.value() is True:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(self.TILE_POLL_S)
+
+    # Polls [CurrentState, RestartStatus] until it equals wanted or the deadline passes; returns
+    # the last pair read, with None for a value that did not read
+    def _waitTileState(self, tile, wanted, deadline):
+        while True:
+            readDeadline = time.monotonic() + self.STATE_READ_BUDGET_S
+            states = [self._readValue(tile.CurrentState, readDeadline), self._readValue(tile.RestartStatus, readDeadline)]
+            if states == wanted or time.monotonic() >= deadline:
+                return states
+            time.sleep(self.TILE_POLL_S)
+
+    @staticmethod
+    def _quiesceSummary(record):
+        if record['refused'] is not None:
+            text = f"refused before any Shutdown: {record['refused']}"
+        else:
+            text = (f"{'ok' if record['ok'] else 'failed'}, commanded {len(record['commanded'])}, skipped {len(record['skipped'])}, "
+                    f"retried {len(record['retried'])}, errors {len(record['errors'])}")
+        return f"{record['context']}: {text}, {record['elapsedS']} s"
+
+    # The Shutdown of every tile of the order, with its checks; fills the record of QuiesceTiles
+    def _shutdownInOrder(self, record, deadline, budgetS):
+        errors = record['errors']
+        record['entry'] = self.TileStates()
+        for name in record['order']:
+            entry = record['entry'].get(name)
+            if entry == [1, 0]:
+                record['skipped'].append(name)
+                continue
+            if time.monotonic() >= deadline:
+                errors.append(f'{name}: not attempted, the budget of {budgetS} s is spent, state {entry}')
+                continue
+            tile = self._namedTile(name)
+            done = False
+            try:
+                tile.Shutdown()
+                done = True
+            except Exception as e:
+                first = f'{type(e).__name__}: {self._firstLine(e)}'[:300]
+                record['retried'].append(name)
+                self._log.warning('%s: Shutdown of %s failed and runs once more: %s', self.path, name, first)
+                time.sleep(self.QUIESCE_RETRY_S)
+                if time.monotonic() >= deadline:
+                    errors.append(f'{name}: Shutdown failed ({first}) and the budget of {budgetS} s is spent before the retry, state {entry}')
+                else:
+                    try:
+                        tile.Shutdown()
+                        done = True
+                    except Exception as second:
+                        errors.append(f'{name}: Shutdown failed twice ({first}; then {type(second).__name__}: {self._firstLine(second)[:300]}), state {entry}')
+            if done:
+                record['commanded'].append(name)
+                states = self._waitTileState(tile, [1, 0], time.monotonic() + self.TILE_STATE_WAIT_S)
+                if states != [1, 0]:
+                    errors.append(f'{name}: state {states} after Shutdown')
+        record['states'] = self.TileStates()
+
+    @pr.expose
+    def QuiesceTiles(self, context='start', budgetS=None):
+        started = time.monotonic()
+        budgetS = self.QUIESCE_BUDGET_S if budgetS is None else budgetS
+        record = {
+            'context':   context,
+            'order':     [],
+            'entry':     {},
+            'skipped':   [],
+            'commanded': [],
+            'retried':   [],
+            'states':    {},
+            'errors':    [],
+            'refused':   None,
+            'elapsedS':  0.0,
+            'ok':        False,
+        }
+        self._lastQuiesce[context] = record
+        try:
+            with self._sequence():
+                names = self._enabledTileNames()
+                topology = self._readClkDist()
+                # No wait for tile devices when the ClkDist device itself is off: that refusal comes first
+                enabledOk = {
+                    name: bool(topology.get('enabled')) and self._waitTileEnable(self._namedTile(name), time.monotonic() + self.TILE_ENABLE_WAIT_S)
+                    for name in names
+                }
+                order, record['refused'] = self._quiesceOrder(topology, names, enabledOk)
+                if record['refused'] is None:
+                    record['order'] = order
+                    self._shutdownInOrder(record, started + budgetS, budgetS)
+            record['ok'] = record['refused'] is None and not record['errors']
+        finally:
+            record['elapsedS'] = round(time.monotonic() - started, 3)
+            self.LastQuiesce.set(self._quiesceSummary(record))
+        if record['refused'] is not None:
+            raise RuntimeError(f"{self.path}.QuiesceTiles refused before any Shutdown: {record['refused']}")
+        if record['errors']:
+            raise RuntimeError('\n'.join([f'{self.path}.QuiesceTiles failed'] + record['errors']))
+        return record
+
+    #######################################################################################
     # CustomStartUpAllAdc/CustomStartUpAllDac compose that type's StartState and
     # EndState into one word and write it once, so the C++ side runs exactly one
     # restart per enabled tile with exactly these two states. The record baselines
@@ -2609,6 +2942,34 @@ class Rfdc(pr.Device):
         if errors:
             raise RuntimeError('\n'.join([f'{self.path}.UpdateIsEnabled failed'] + errors))
 
+    # Starts the clock distribution as one group when every enabled tile idles at state 1 with
+    # Restart 0, which is what QuiesceTiles leaves behind, and returns whether it ran. Live
+    # tiles get no group start word: the per-tile resets of Init restart them in place.
+    # Enabled tile devices are refreshed first, so the idle read is of tiles that can answer.
+    def _initGroupStart(self):
+        self._refreshTileEnables()
+        tiles = self._allEnabledTiles()
+        if not tiles or self._nonIdleTiles(tiles):
+            return False
+        self._startUpDistSequence()
+        return True
+
+    # The distribution starts as one group when the tiles are idle. The per-tile resets that
+    # follow restore the Vivado register values and the write-back of this session, which a
+    # start from state 1 does not. One restart per enabled tile: the DAC tiles first, because a
+    # DAC tile can source a clock distribution that feeds ADC tiles (DAC tile 0 feeds ADC tile
+    # 3 on SlacRfmcCarrier) and its restart knocks them, then the ADC tiles. Inside one
+    # converter type PyRFdc restarts the clock distribution sources before their members. The
+    # all-tile state 15 wait, the write-back of the settings written in this session and the
+    # read of every mirror follow. A tile that misses the wait is reported and never restarted
+    # again.
+    def _initSequence(self):
+        self._initGroupStart()
+        self._runSequence(
+            f'{self.path}.Init', 'Reset',
+            [lambda: self.ResetAllDacRaw(), lambda: self.ResetAllAdcRaw()],
+            self._allEnabledTiles(), apply=True, mirrorAll=True)
+
     @pr.expose
     def Init(self):
         print( f'{self.path}: Initialize RFDC')
@@ -2630,17 +2991,8 @@ class Rfdc(pr.Device):
         savedIgnoreMetalError = self.IgnoreMetalError.get(read=True)
         self.IgnoreMetalError.set(False)
 
-        # One restart per enabled tile: the DAC tiles first, because a DAC tile can
-        # source a clock distribution that feeds ADC tiles (DAC tile 0 feeds ADC
-        # tile 3 on SlacRfmcCarrier) and its restart knocks them, then the ADC
-        # tiles. Inside one converter type PyRFdc restarts the clock distribution
-        # sources before their members. The all-tile state 15 wait, the write-back of the
-        # settings written in this session and the read of every mirror follow.
-        # A tile that misses the wait is reported and never restarted again.
+        # The group start of idle tiles, then one restart per enabled tile (see _initSequence)
         self._runWithCleanup(
-            lambda: self._runSequence(
-                f'{self.path}.Init', 'Reset',
-                [lambda: self.ResetAllDacRaw(), lambda: self.ResetAllAdcRaw()],
-                self._allEnabledTiles(), apply=True, mirrorAll=True),
+            self._initSequence,
             lambda: self.IgnoreMetalError.set(savedIgnoreMetalError),
             'IgnoreMetalError restore')
