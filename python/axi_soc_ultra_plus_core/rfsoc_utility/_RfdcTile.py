@@ -969,7 +969,7 @@ class RfdcTile(pr.Device):
         command = (record >> 8) & 0xF
         flags = (record >> 4) & 0xF
         result = record & 0xF
-        opName = {1: 'Reset', 2: 'StartUp', 3: 'CustomStartUp', 5: 'SetClkDistribution'}.get(command, 'Unknown')
+        opName = {1: 'Reset', 2: 'StartUp', 3: 'CustomStartUp', 5: 'SetClkDistribution', 6: 'StartUpDist'}.get(command, 'Unknown')
         ok = (result == 1)
 
         if ok:
