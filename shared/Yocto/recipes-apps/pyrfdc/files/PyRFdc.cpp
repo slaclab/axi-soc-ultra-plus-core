@@ -26,6 +26,7 @@
 
 #include <inttypes.h>
 #include <algorithm>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -1691,6 +1692,134 @@ void PyRFdc::StartUp(int Tile_Id) {
 
     // One prechecked XRFdc_StartUp per tile
     RestartTiles(RestartOpStartUp, tileType_, Tile_Id, XRFDC_SM_STATE1, XRFDC_SM_STATE15);
+}
+
+//! Group start of the clock distribution (word 0x10080), modeled on XRFdc_StartUpDist,
+//! which is static in the vendor driver and so is rebuilt here from public driver calls.
+//! It keeps what the per-tile commands have: the planner (PlanGroupStart) refuses before
+//! any write, every span tile gets a restart record, and a failure is one error text
+//! naming every failed tile. Order rule: arm every span tile (RestartState 1 to 15),
+//! then trigger every one (Restart), in package order with nothing in between, because
+//! an ADC tile of the distribution stalls while another one still idles at state 1, so
+//! a tile started alone from idle never completes. The source then has to reach state 7
+//! (the driver wait) and every span tile has to read state 15 with Restart clear within
+//! one shared GroupSettleMs deadline. Nothing is retried: a second Restart after a
+//! partial group could not be told from a first. The driver register writes made here
+//! bypass the host write gate by construction, since the gate only looks at the host
+//! word, and the planner is this command's own precheck. A refusal leaves every record
+//! and every register untouched.
+void PyRFdc::StartUpDist() {
+
+    // Check if read
+    if (rdTxn_) {
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
+        return;
+    }
+
+    uint64_t seq0 = metalRingSeqNow();
+    ClkDistFetch();
+    uint32_t layout = XRFdc_GetTileLayout(RFdcInstPtr_);
+
+    uint32_t enabled[2] = {0, 0};
+    uint32_t state[2][4] = {};
+    uint32_t restart[2][4] = {};
+    for (uint32_t type = 0; type < 2; type++) {
+        for (uint32_t t = 0; t < 4; t++) {
+            if (ClkDistTileValid(layout, type, t) && (XRFdc_CheckTileEnabled(RFdcInstPtr_, type, t) == XRFDC_SUCCESS)) {
+                enabled[type] |= 1U << t;
+                TileStateRegs(RFdcInstPtr_, type, t, state[type][t], restart[type][t]);
+            }
+        }
+    }
+
+    GroupStartPlan plan = PlanGroupStart(layout, clkDist_, clkDistStatus_, enabled[XRFDC_ADC_TILE], enabled[XRFDC_DAC_TILE],
+                                         state, restart);
+    if (!plan.refusals.empty() || plan.order.empty()) {
+        // An empty order without a refusal is a topology the planner finds no span for
+        errMsg_ = plan.refusals.empty() ? std::string("StartUpDist(): no clock distribution holds every enabled tile; nothing written")
+                                        : JoinWholeLines(plan.refusals, ErrorTextMaxChars);
+        txnRefused_ = true;
+        LogWarning(log_, "StartUpDist refused: " + errMsg_);
+        clkDistFetched_ = false;
+        return;
+    }
+
+    // The restart makes the MTS outputs of both converter types stale
+    ClearMtsValidTypes(0x3);
+
+    // Arm every span tile, then trigger every one. The status of the writes is ignored
+    // like the driver does; a tile that did not start fails the wait below
+    for (size_t i = 0; i < plan.order.size(); i++) {
+        XRFdc_ClrSetReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(plan.order[i].first, plan.order[i].second), XRFDC_RESTART_STATE_OFFSET,
+                        XRFDC_PWR_STATE_MASK, (XRFDC_SM_STATE1 << XRFDC_RSR_START_SHIFT) | XRFDC_SM_STATE15);
+    }
+    for (size_t i = 0; i < plan.order.size(); i++) {
+        XRFdc_WriteReg(RFdcInstPtr_, XRFDC_CTRL_STS_BASE(plan.order[i].first, plan.order[i].second), XRFDC_RESTART_OFFSET,
+                       XRFDC_RESTART_MASK);
+    }
+
+    // The source has to reach a state where it can distribute its clock
+    std::vector<TileFailure> adcFail;
+    std::vector<TileFailure> dacFail;
+    bool sourceFailed = false;
+    // https://docs.amd.com/r/en-US/pg269-rf-data-converter/XRFdc_WaitForState
+    if (XRFdc_WaitForState(RFdcInstPtr_, plan.srcType, plan.srcTile, XRFDC_SM_STATE7) != XRFDC_SUCCESS) {
+        sourceFailed = true;
+        (plan.srcType == XRFDC_ADC_TILE ? adcFail : dacFail).push_back(
+            TileFailure{plan.srcTile, "XRFdc_WaitForState", "source did not reach state 7"});
+    }
+
+    // One shared deadline for every span tile; the last pass runs at or after the deadline
+    std::vector<std::pair<uint32_t, uint32_t> > pending = plan.order;
+    std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(GroupSettleMs);
+    for (;;) {
+        std::vector<std::pair<uint32_t, uint32_t> > still;
+        for (size_t i = 0; i < pending.size(); i++) {
+            if (!TileReady(pending[i].first, pending[i].second)) {
+                still.push_back(pending[i]);
+            }
+        }
+        pending.swap(still);
+        if (pending.empty() || (std::chrono::steady_clock::now() >= deadline)) {
+            break;
+        }
+        metal_sleep_usec(XRFDC_STATE_WAIT);
+    }
+
+    // One record per span tile, ok only when the tile is ready
+    for (size_t i = 0; i < plan.order.size(); i++) {
+        uint32_t type = plan.order[i].first;
+        uint32_t tile = plan.order[i].second;
+        bool ready = std::find(pending.begin(), pending.end(), plan.order[i]) == pending.end();
+        uint32_t flags = 0;
+        if (ready && !RefreshStaging(type, tile)) {
+            flags |= ResetFlagStagingNotRefreshed;
+            LogWarning(log_, std::string("staging not refreshed: StartUpDist ") + TileName(type, tile));
+        }
+        RecordRestart(type, tile, RestartOpGroupStartUp, ready ? ResetResultOk : ResetResultFailed, flags);
+    }
+
+    // The source failure comes first for its type, then the tiles that never became ready in tile
+    // order; a source that already failed its wait is not listed a second time
+    std::vector<TileFailure> adcState;
+    std::vector<TileFailure> dacState;
+    for (size_t i = 0; i < pending.size(); i++) {
+        if (sourceFailed && (pending[i].first == plan.srcType) && (pending[i].second == plan.srcTile)) {
+            continue;
+        }
+        (pending[i].first == XRFDC_ADC_TILE ? adcState : dacState).push_back(TileFailure{pending[i].second, "StateCheck", ""});
+    }
+    auto byTile = [](const TileFailure& a, const TileFailure& b) { return a.tile < b.tile; };
+    std::stable_sort(adcState.begin(), adcState.end(), byTile);
+    std::stable_sort(dacState.begin(), dacState.end(), byTile);
+    adcFail.insert(adcFail.end(), adcState.begin(), adcState.end());
+    dacFail.insert(dacFail.end(), dacState.begin(), dacState.end());
+    if (!adcFail.empty() || !dacFail.empty()) {
+        errMsg_ = RestartFailureError("StartUpDist", adcFail, dacFail, seq0);
+    }
+
+    // The next transaction reads the distribution again
+    clkDistFetched_ = false;
 }
 
 void PyRFdc::Shutdown(int Tile_Id) {
@@ -4871,6 +5000,9 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x10070) {
                 TileLayout();
+
+            } else if (addr==0x10080) {
+                StartUpDist();
 
             } else if (addr==0x11000) {
                 tileType_ = XRFDC_ADC_TILE;

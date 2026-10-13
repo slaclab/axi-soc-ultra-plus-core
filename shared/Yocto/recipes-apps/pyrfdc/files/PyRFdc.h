@@ -45,14 +45,22 @@
     #include <boost/python.hpp>
 #endif
 
-//! Restart operations (tile register 0x818 bits 11:8). Reset, StartUp, CustomStartUp
-//! and the SetClkDistribution commit are recorded; Shutdown is a dispatch and
-//! naming value only.
+//! Restart operations (tile register 0x818 bits 11:8). Reset, StartUp, CustomStartUp,
+//! the SetClkDistribution commit and the group start are recorded; Shutdown is a
+//! dispatch and naming value only.
 static const uint32_t RestartOpReset         = 1;
 static const uint32_t RestartOpStartUp       = 2;
 static const uint32_t RestartOpCustomStartUp = 3;
 static const uint32_t RestartOpShutdown      = 4;
 static const uint32_t RestartOpClkDist       = 5;
+//! The group start of a clock distribution (StartUpDist). PackResetRecord keeps four
+//! bits of the op, so 6 fits.
+static const uint32_t RestartOpGroupStartUp  = 6;
+
+//! Shared deadline of a group start, in ms: once the source tile reached state 7 every
+//! span tile must read state 15 with Restart clear within this time. The whole group
+//! took about 0.065 s on the board, so this is about 30 times that.
+static const uint32_t GroupSettleMs = 2000;
 
 //! Restart result (tile register 0x818 bits 3:0)
 static const uint32_t ResetResultOk     = 1;
@@ -624,6 +632,83 @@ inline void RestartOrder(uint32_t layout, const XRFdc_Distribution_System_Settin
     }
 }
 
+//! What a group start of one clock distribution does: the span tiles as (type, tile)
+//! pairs in package order, the source tile of the distribution and the refusal lines.
+//! A plan with a refusal has an empty order and writes nothing.
+struct GroupStartPlan {
+    std::vector<std::pair<uint32_t, uint32_t> > order;
+    uint32_t srcType = 0;
+    uint32_t srcTile = 0;
+    std::vector<std::string> refusals;
+};
+
+//! Plan the group start (StartUpDist), the part of XRFdc_StartUpDist that needs no
+//! hardware. The span is the one valid distribution whose inclusive bounds
+//! (Info.LowerBound to Info.UpperBound) hold the distribution index of every enabled
+//! tile. The order is the package order, the span index order from the lower to the
+//! upper bound, as the driver visits the tiles; on the nominal topology that is DAC 3,
+//! DAC 2, DAC 1, DAC 0, ADC 3, ADC 2, ADC 1, ADC 0. The source is the SourceType and
+//! SourceTileId of that distribution. The group writes every span tile at once, so a
+//! span tile that is live or still restarting must not be in it: any span tile that
+//! does not read CurrentState 1 with Restart 0 refuses the whole group, one line naming
+//! every such tile with its state and Restart. state and restart are indexed
+//! [type][tile]. Tiles the layout does not have are left out of the span.
+inline GroupStartPlan PlanGroupStart(uint32_t layout, const XRFdc_Distribution_System_Settings& topo, uint32_t topoStatus,
+                                     uint32_t adcEnabled, uint32_t dacEnabled,
+                                     const uint32_t state[2][4], const uint32_t restart[2][4]) {
+    GroupStartPlan plan;
+    if (topoStatus != 1) {
+        return plan;
+    }
+
+    uint32_t enabled = 0;
+    for (uint32_t t = 0; t < 4; t++) {
+        if ((((adcEnabled >> t) & 1U) != 0) && ClkDistTileValid(layout, XRFDC_ADC_TILE, t)) {
+            enabled |= 1U << DistIndex(layout, XRFDC_ADC_TILE, t);
+        }
+        if ((((dacEnabled >> t) & 1U) != 0) && ClkDistTileValid(layout, XRFDC_DAC_TILE, t)) {
+            enabled |= 1U << DistIndex(layout, XRFDC_DAC_TILE, t);
+        }
+    }
+    if (enabled == 0) {
+        return plan;
+    }
+
+    uint32_t count = ClkDistCount(topo);
+    for (uint32_t d = 0; d < count; d++) {
+        const XRFdc_Distribution_Settings& e = topo.Distributions[d];
+        if ((e.Info.LowerBound > e.Info.UpperBound) || (e.Info.UpperBound > 7)) {
+            continue;
+        }
+        if ((enabled & ~SpanMask(e.Info.LowerBound, e.Info.UpperBound)) != 0) {
+            continue;
+        }
+
+        plan.srcType = e.SourceType;
+        plan.srcTile = e.SourceTileId;
+        std::string busy;
+        for (uint32_t index = e.Info.LowerBound; index <= e.Info.UpperBound; index++) {
+            uint32_t type = 0;
+            uint32_t tile = 0;
+            DistTypeTile(layout, index, type, tile);
+            if (!ClkDistTileValid(layout, type, tile)) {
+                continue;
+            }
+            plan.order.push_back(std::make_pair(type, tile));
+            if ((state[type][tile] != XRFDC_SM_STATE1) || (restart[type][tile] != 0)) {
+                busy += std::string(busy.empty() ? "" : ", ") + ((type == XRFDC_ADC_TILE) ? "ADC" : "DAC") + " tile " +
+                        std::to_string(tile) + " " + std::to_string(state[type][tile]) + "/" + std::to_string(restart[type][tile]);
+            }
+        }
+        if (!busy.empty()) {
+            plan.order.clear();
+            plan.refusals.push_back("span tiles not idle (CurrentState/Restart, need 1/0): " + busy);
+        }
+        break;
+    }
+    return plan;
+}
+
 //! Tiles of an MTS sync group: the operator mask plus the reference tile, which the
 //! driver reads even when the mask leaves it out. The reference aliases to 0 to 3.
 inline uint32_t MtsGroupMask(uint32_t tiles, uint32_t refTile) {
@@ -678,6 +763,9 @@ inline WriteGateInfo ClassifyWrite(uint32_t addr) {
             case 0x10024: return WriteInfo(WriteGated, ScopeTypeAll, 1, "SetupFIFOAllDac");
             case 0x10028: return WriteInfo(WriteGated, ScopeTypeAll, 0, "SetupFIFOObsAllAdc");
             case 0x1002C: return WriteInfo(WriteGated, ScopeTypeAll, 0, "SetupFIFOBothAllAdc");
+            // The group start of the clock distribution is a restart command: it runs its own
+            // precheck (PlanGroupStart), so the write gate does not gate it
+            case 0x10080: return WriteInfo(WriteRestart, ScopeTile, -1, "StartUpDist");
             case 0x11008: return WriteInfo(WriteGated, ScopeMtsGroup, 0, "MtsSync");
             case 0x1100C: return WriteInfo(WriteGated, ScopeMtsGroup, 1, "MtsSync");
             case 0x11100: return WriteInfo(WriteGated, ScopeMtsSysref, -1, "MtsSysrefConfig");
@@ -875,6 +963,7 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
 
     //! Application functions
     void StartUp(int Tile_Id);
+    void StartUpDist();
     void Shutdown(int Tile_Id);
     void Reset(int Tile_Id);
     void CustomStartUp(int Tile_Id);
