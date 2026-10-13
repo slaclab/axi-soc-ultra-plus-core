@@ -2637,6 +2637,12 @@ class Rfdc(pr.Device):
             return 'unreadable'
         return {0: 'Unsupported', 1: 'Ok', 2: 'GetFailed'}.get(status, str(status))
 
+    # Deadline of one group of state reads: STATE_READ_BUDGET_S from now, or the overall
+    # deadline of the caller when that comes first. No overall deadline is today's budget
+    def _readDeadline(self, overall):
+        deadline = time.monotonic() + self.STATE_READ_BUDGET_S
+        return deadline if overall is None else min(deadline, overall)
+
     # int of a read, None for a failed read, a read with no value or a spent budget, so the
     # caller decides what a missing value means
     @staticmethod
@@ -2669,9 +2675,10 @@ class Rfdc(pr.Device):
         return self._tileDev(name.startswith('adc'), int(name[3:]))
 
     # [CurrentState, RestartStatus] of every enabled tile, ADC 0 to 3 then DAC 0 to 3, from one
-    # get(read=True) each; a value that cannot be read is None, never an exception
-    def TileStates(self):
-        deadline = time.monotonic() + self.STATE_READ_BUDGET_S
+    # get(read=True) each; a value that cannot be read is None, never an exception. An overall
+    # deadline, when given, also ends the reads: the words left to read are None
+    def TileStates(self, overall=None):
+        deadline = self._readDeadline(overall)
         states = {}
         for isAdc, enabled in ((True, self._enabledAdcTiles), (False, self._enabledDacTiles)):
             try:
@@ -2691,12 +2698,13 @@ class Rfdc(pr.Device):
     # distribution cache at the start of every transaction, so each word runs the driver call
     # afresh and a value read here is the driver's, never a cached one. A failed read is None,
     # never an exception. A device that is not enabled reads nothing, because a disabled device
-    # would answer from a stale cache.
-    def _readClkDist(self):
+    # would answer from a stale cache. An overall deadline, when given, also ends the reads:
+    # the words left to read are None.
+    def _readClkDist(self, overall=None):
         clk = self.ClkDist
         if self.enable.value() is not True or clk.enable.value() is not True:
             return {'enabled': False}
-        deadline = time.monotonic() + self.STATE_READ_BUDGET_S
+        deadline = self._readDeadline(overall)
 
         def word(variable):
             return self._readValue(variable, deadline)
@@ -2803,12 +2811,13 @@ class Rfdc(pr.Device):
             time.sleep(self.TILE_POLL_S)
 
     # Polls [CurrentState, RestartStatus] until it equals wanted or the deadline passes; returns
-    # the last pair read, with None for a value that did not read
-    def _waitTileState(self, tile, wanted, deadline):
+    # the last pair read, with None for a value that did not read. An overall deadline, when
+    # given, also ends the reads and the wait
+    def _waitTileState(self, tile, wanted, deadline, overall=None):
         while True:
-            readDeadline = time.monotonic() + self.STATE_READ_BUDGET_S
+            readDeadline = self._readDeadline(overall)
             states = [self._readValue(tile.CurrentState, readDeadline), self._readValue(tile.RestartStatus, readDeadline)]
-            if states == wanted or time.monotonic() >= deadline:
+            if states == wanted or time.monotonic() >= deadline or (overall is not None and time.monotonic() >= overall):
                 return states
             time.sleep(self.TILE_POLL_S)
 
@@ -2822,9 +2831,10 @@ class Rfdc(pr.Device):
         return f"{record['context']}: {text}, {record['elapsedS']} s"
 
     # The Shutdown of every tile of the order, with its checks; fills the record of QuiesceTiles
-    def _shutdownInOrder(self, record, deadline, budgetS):
+    # readBy is the overall deadline of the state reads, None for reads of their own budget
+    def _shutdownInOrder(self, record, deadline, budgetS, readBy=None):
         errors = record['errors']
-        record['entry'] = self.TileStates()
+        record['entry'] = self.TileStates(readBy)
         for name in record['order']:
             entry = record['entry'].get(name)
             if entry == [1, 0]:
@@ -2853,10 +2863,11 @@ class Rfdc(pr.Device):
                         errors.append(f'{name}: Shutdown failed twice ({first}; then {type(second).__name__}: {self._firstLine(second)[:300]}), state {entry}')
             if done:
                 record['commanded'].append(name)
-                states = self._waitTileState(tile, [1, 0], time.monotonic() + self.TILE_STATE_WAIT_S)
+                states = self._waitTileState(tile, [1, 0], time.monotonic() + self.TILE_STATE_WAIT_S, readBy)
                 if states != [1, 0]:
-                    errors.append(f'{name}: state {states} after Shutdown')
-        record['states'] = self.TileStates()
+                    spent = f', the budget of {budgetS} s is spent' if readBy is not None and time.monotonic() >= readBy else ''
+                    errors.append(f'{name}: state {states} after Shutdown{spent}')
+        record['states'] = self.TileStates(readBy)
 
     @pr.expose
     def QuiesceTiles(self, context='start', budgetS=None):
@@ -2876,19 +2887,25 @@ class Rfdc(pr.Device):
             'ok':        False,
         }
         self._lastQuiesce[context] = record
+        # The stop context ends every state read at its budget, so a bridge that dies after the
+        # liveness probe cannot hold stop() for the read budget of each group of reads. The start
+        # context keeps the reads of their own budget
+        readBy = started + budgetS if context == 'stop' else None
         try:
             with self._sequence():
                 names = self._enabledTileNames()
-                topology = self._readClkDist()
+                topology = self._readClkDist(readBy)
                 # No wait for tile devices when the ClkDist device itself is off: that refusal comes first
                 enabledOk = {
                     name: bool(topology.get('enabled')) and self._waitTileEnable(self._namedTile(name), time.monotonic() + self.TILE_ENABLE_WAIT_S)
                     for name in names
                 }
                 order, record['refused'] = self._quiesceOrder(topology, names, enabledOk)
+                if record['refused'] is not None and readBy is not None and time.monotonic() >= readBy:
+                    record['refused'] = f"the budget of {budgetS} s is spent before the state reads finished, {record['refused']}"
                 if record['refused'] is None:
                     record['order'] = order
-                    self._shutdownInOrder(record, started + budgetS, budgetS)
+                    self._shutdownInOrder(record, started + budgetS, budgetS, readBy)
             record['ok'] = record['refused'] is None and not record['errors']
         finally:
             record['elapsedS'] = round(time.monotonic() - started, 3)
