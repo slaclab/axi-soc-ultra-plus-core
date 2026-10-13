@@ -53,6 +53,9 @@ and no write-back.
    * - ``Rfdc.StartUpDist``
      - ``StartUpDistRaw`` (word 0x10080, state 1 to 15 of every tile of the distribution)
      - None: see Group start below
+   * - ``Rfdc.QuiesceTiles``
+     - ``Shutdown`` of every tile that is not idle, member first
+     - None: see Quiesce below
    * - ``ApplyConfig``
      - None (unless a committed PLL differs from the hardware)
      - Every enabled tile, then a read of the whole subtree
@@ -136,6 +139,76 @@ word answers ``Undefined memory``. That is raised as an error saying the image h
 start command and the Yocto image built from this repository must be deployed. The per-tile
 start is not used instead, since a per-tile start of idle tiles cannot complete and would
 only hang.
+
+Quiesce
+-------
+
+``Rfdc.QuiesceTiles(context='start', budgetS=None)`` shuts every enabled tile down to the
+idle state, state 1 with Restart clear, which is the state the group start needs. It runs
+at both ends of a session. At the start, ``RfmcCarrierCore._start`` calls it ahead of the
+LMK software reset, because the reset and both ``InitClock`` passes disturb the clock of
+every running tile, and an ADC calibration that starts under that disturbance can park
+tiles at state 12. At the stop, ``Root.stop()`` of rfmc-carrier-core calls it with
+``context='stop'`` before the transports close, so the next launch finds idle tiles. The
+LMK stays programmed after a stop, and a launch that finds every tile idle commands no
+``Shutdown`` at all.
+
+**Member first.** The order comes from ``Rfdc.ClkDist``, read while the tiles still run.
+Tiles are ordered by their chain distance to the source of the distribution. The start
+order is the source tile, then the other tiles of its converter type by ascending distance,
+then the other type the same way, and the shutdown order is its exact reverse: ADC 0, ADC 1,
+ADC 2, ADC 3, DAC 3, DAC 2, DAC 1, DAC 0 on SlacRfmcCarrier. A tile that sources a clock must
+go down after the tiles that run from it, because a member that loses its source while it is
+still up is knocked, so the sources go last. The per-tile ``Delay`` of ``ClkDist`` is not used
+for the order. The order is a function of the topology only, so two runs on one board shut the
+tiles down in the same order.
+
+**Refusals.** Every refusal is decided before the first ``Shutdown`` and raises a
+``RuntimeError`` that reads ``<path>.QuiesceTiles refused before any Shutdown: <reason>``.
+Tiles that were shut down under a topology the group start cannot restart would never start
+again, so nothing is shut down unless the whole distribution can be started afterwards. The
+checks run in this order and the first one that applies is the only one reported:
+
+1. ``ClkDist device not enabled``.
+2. ``no enabled tiles``.
+3. ``tile devices not enabled: ...``: a tile device did not become enabled within
+   ``TILE_ENABLE_WAIT_S`` (2 s).
+4. ``ClkDist Status <name>`` (anything but Ok) or ``ClkDist Count <n>`` (no distribution).
+5. ``a ClkDist read returned None``.
+6. ``no single valid distribution holds every enabled tile``. A board whose ADC tiles have
+   their own reference clock reports two distributions and gets this refusal, so the start
+   raises it and no tile is touched.
+7. ``ADC 3 is not strictly nearer the source than ADC 2, ADC 1 and ADC 0``: the ADC chain
+   is not the one the order assumes.
+8. ``distribution span holds tiles that are not enabled: ...``.
+9. ``distribution source <tile> is not in the span``.
+
+**Already idle tiles.** The state of every tile is read first, and a tile that reads state 1
+with Restart clear is skipped and listed under ``skipped``. Each of the other tiles gets one
+``Shutdown`` and must read state 1 with Restart clear within ``TILE_STATE_WAIT_S`` (1 s).
+A ``Shutdown`` that raises runs once more after ``QUIESCE_RETRY_S`` (1 s); a tile that
+recovers on the retry is logged and listed under ``retried`` and is not an error. A failure
+never stops the other tiles. Every failure is collected and raised once, naming each tile
+and its state. The poller is never touched, and only ``Exception`` is caught, so an
+interrupt ends the call.
+
+**Budgets.** The start quiesce is bounded by ``QUIESCE_BUDGET_S`` (20 s), checked before
+every ``Shutdown`` and before the retry. A tile left when the budget runs out is reported as
+``not attempted`` with its state. The stop quiesce is shorter, because it must never hold up
+a closing application. ``Root.stop()`` skips it for an emulated root, a root without an
+``Rfdc`` device, a root that is not running, and a bridge that does not answer one
+``waitReady`` slice of 0.5 s. Otherwise it lowers the transaction timeout of the ``Rfdc``
+subtree to 5 s, so one dead transaction cannot cost the 32 s start floor, and runs
+``QuiesceTiles(context='stop', budgetS=10.0)``. Any failure is logged with the tile and its
+state and never raised, and the parent ``stop()`` always runs afterwards. A process that is
+killed never reaches the stop, which is why the start quiesce handles any entry state on its
+own: tiles at state 15, at state 1 or parked.
+
+**Diagnostics.** ``TileStates()`` returns ``[CurrentState, RestartStatus]`` of every enabled
+tile, with ``None`` for a value that could not be read. ``LastQuiesce`` shows a one-line
+summary of the last call, and ``_lastQuiesce[context]`` keeps the record of the last call of
+each context: ``order``, ``entry``, ``skipped``, ``commanded``, ``retried``, ``states``,
+``errors``, ``refused``, ``elapsedS`` and ``ok``.
 
 The restart sequence
 --------------------
@@ -326,10 +399,21 @@ are programmed:
    ``ValueError`` that carries ``ConfigMessage``.
 2. It forces ``IgnoreMetalError`` off for the whole sequence and restores the saved
    value afterwards, whatever the outcome.
-3. It runs the common sequence with two raw steps: ``ResetAllDacRaw`` first, because a
+3. It refreshes the tile enable flags and reads the state of every enabled tile. When every
+   one of them reads state 1 with Restart clear, which is what ``QuiesceTiles`` leaves
+   behind, it starts the whole distribution as one group, as ``StartUpDist`` does (see
+   Group start). When any tile is not idle, no group start word is written, and the
+   per-tile resets below restart the live tiles in place.
+4. It runs the common sequence with two raw steps: ``ResetAllDacRaw`` first, because a
    DAC tile can source the clock distribution that feeds ADC tiles, then
    ``ResetAllAdcRaw``. Within each type, ``PyRFdc`` restarts the distribution sources
-   first. Each enabled tile is reset once.
+   first. Each enabled tile is reset once. These resets follow the group start because a
+   start from state 1 restores neither the Vivado register values nor the write-back of
+   this session.
+
+On a board image whose ``PyRFdc`` predates the group start word, ``Init`` of idle tiles
+raises the error of ``StartUpDist`` that names the image, and ``Init`` of live tiles is
+unchanged.
 
 ``Init`` never runs MTS sync: ``Mts.SyncAdcTiles`` and ``Mts.SyncDacTiles`` are explicit
 operator steps after the restart.
@@ -470,3 +554,8 @@ margin. ``Rfdc._start`` therefore raises the transaction timeout of the ``Rfdc``
 to ``TIMEOUT_FLOOR_S`` (32 s) when the Root timeout is lower. It never lowers a longer
 application timeout and never touches the rest of the tree. The gate and the write-back
 are many short transactions and are not affected.
+
+The quiesce has its own limits (see Quiesce): ``QUIESCE_BUDGET_S`` (20 s) at the start, and
+at the stop a 5 s transaction timeout for the ``Rfdc`` subtree, a 0.5 s liveness slice and
+a 10 s budget. The group start waits inside one transaction, with the 2000 ms shared
+deadline of Group start.
