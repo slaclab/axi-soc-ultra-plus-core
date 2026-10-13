@@ -50,6 +50,9 @@ and no write-back.
    * - ``RfdcTile.StartUp``, ``StartUpAllAdc`` / ``StartUpAllDac``
      - ``StartUpRaw`` and the like (state 1 to 15)
      - None: a StartUp keeps the settings, so it is the default recovery action
+   * - ``Rfdc.StartUpDist``
+     - ``StartUpDistRaw`` (word 0x10080, state 1 to 15 of every tile of the distribution)
+     - None: see Group start below
    * - ``ApplyConfig``
      - None (unless a committed PLL differs from the hardware)
      - Every enabled tile, then a read of the whole subtree
@@ -64,6 +67,75 @@ and no write-back.
 raw command only. It packs StartState into bits 3:0 and EndState into bits 7:4 of one
 word, so ``PyRFdc`` runs exactly one ``XRFdc_CustomStartUp`` per tile with exactly those
 two states.
+
+Group start
+-----------
+
+``Rfdc.StartUpDist`` starts every enabled tile of the clock distribution together. It
+applies to tiles that are idle at state 1 with Restart clear, which is where
+``Shutdown`` leaves them, and never to live tiles. The ADC tiles of a distribution gate
+each other: while any one of them idles at state 1 none of the others completes its
+start, so tiles that were shut down cannot be started one by one, and a tile started alone
+stops at state 3 with Restart set. ``StartUp``, ``StartUpAllAdc`` / ``StartUpAllDac`` and
+``RestartTiles`` keep the per-tile path described below; the group start is a separate
+command and nothing falls back from one to the other.
+
+The hidden ``StartUpDistRaw`` command writes the one ``PyRFdc`` word 0x10080 (a read
+returns 1). ``PyRFdc::StartUpDist`` rebuilds ``XRFdc_StartUpDist`` from public driver
+calls, because the vendor function is static:
+
+1. **Plan.** ``PlanGroupStart`` picks the span, the one valid distribution whose inclusive
+   bounds hold every enabled tile, and the package order from its lower to its upper
+   bound (DAC 3 to DAC 0, then ADC 3 to ADC 0 on the nominal topology).
+2. **Arm, then trigger.** Write RestartState (start state 1, end state 15) to every
+   span tile, then write Restart to every span tile, in package order with nothing in
+   between. Arming first matters because the ADC calibration of one tile waits until the
+   others have been restarted. Triggering one tile and waiting before arming the next
+   would stall exactly as the per-tile start does.
+3. **Source wait.** Wait for the source tile of the distribution to reach state 7, the
+   state where it can distribute its clock, as the vendor function does.
+4. **Shared settle.** Give every span tile one common 2000 ms deadline (``GroupSettleMs``)
+   to read state 15 with Restart clear. One shared deadline bounds the whole wait, where a
+   deadline per tile would add up.
+5. **Records.** Write one restart record per span tile with command 6 (``StartUpDist``),
+   result 1 when the tile is ready and 2 when it is not. A source that misses state 7 is
+   listed first for its type in the error, and every span tile still gets its record. One
+   error text names every tile that failed.
+
+Nothing is retried. A second Restart after a partial group could not be told from a
+first, so a failed group is reported as it is.
+
+**Refusals.** The planner refuses before any write, with one line and no change to any
+register or record. The checks run in this order and the first one that applies is the
+only one reported:
+
+1. The ``ClkDist`` status is not Ok (``ClkDist Status Unsupported``, ``GetFailed`` or the
+   raw value).
+2. No tile is enabled (``no enabled tiles``). The group never degrades into a start of
+   whatever tiles are left.
+3. No single valid distribution holds every enabled tile. This is also what a board whose
+   ADC tiles have their own reference clock gets, because that board reports two
+   distributions.
+4. A span tile is not enabled. The group would write a tile with no device behind it, and
+   every such tile is named.
+5. The source tile is not in the span, so the clock would come from a tile the group does
+   not restart.
+6. A span tile does not read state 1 with Restart clear. Every such tile is named with its
+   state and Restart (``ADC tile 2 12/1``), because a live or restarting tile must not
+   be restarted under its dependents.
+
+A tile whose distribution index equals the lower or the upper bound of the span is inside
+it. A distribution one index short on either side refuses with check 3.
+
+**Host side.** ``Rfdc.StartUpDist`` reads CurrentState and RestartStatus of every enabled
+tile first. When any tile does not read state 1 with Restart clear it raises a
+``RuntimeError`` that names each one as ``<ADC|DAC> tile i state s restart r`` and writes no
+command word. Otherwise it issues the word through the common sequence, which waits
+for every enabled tile and writes nothing back. A board image whose ``PyRFdc`` predates the
+word answers ``Undefined memory``. That is raised as an error saying the image has no group
+start command and the Yocto image built from this repository must be deployed. The per-tile
+start is not used instead, since a per-tile start of idle tiles cannot complete and would
+only hang.
 
 The restart sequence
 --------------------
@@ -331,7 +403,7 @@ Restart records and diagnostics
    * - ``ResetRecord``
      - 0x818
      - Sequence [31:16], command [11:8] (1 Reset, 2 StartUp, 3 CustomStartUp, 5
-       SetClkDistribution), flags [7:4] (0x10 parked, 0x20 staging not refreshed),
+       SetClkDistribution, 6 StartUpDist), flags [7:4] (0x10 parked, 0x20 staging not refreshed),
        result [3:0] (1 ok, 2 failed, 3 refused: state machine busy)
    * - ``ResetRecordStateAtFailure``
      - 0x81C
