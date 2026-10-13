@@ -559,3 +559,157 @@ The quiesce has its own limits (see Quiesce): ``QUIESCE_BUDGET_S`` (20 s) at the
 at the stop a 5 s transaction timeout for the ``Rfdc`` subtree, a 0.5 s liveness slice and
 a 10 s budget. The group start waits inside one transaction, with the 2000 ms shared
 deadline of Group start.
+
+PL reload
+---------
+
+A tile that parks at state 12 after a restart cannot be recovered by any software restart.
+Loading the PL again from the bitstream on the SD card does, and ``PyRFdc`` can start that
+reload in-band, over the same port 9002 the host already uses, so no ssh from an operator
+host is needed. The reload runs in a board helper, ``/usr/bin/rfsoc-pl-reload``
+(installed by the ``pyrfdc`` recipe), which stops the bridge, so ``PyRFdc`` starts the
+helper outside the bridge and answers before the bridge stops.
+
+Words
++++++
+
+.. list-table::
+   :header-rows: 1
+   :widths: 14 22 64
+
+   * - Word
+     - Name
+     - Read and write
+   * - 0x10084
+     - ``PlReload``
+     - A read returns 1. A write runs the checks below and starts the helper. Hidden
+       command ``Rfdc.PlReloadRaw``
+   * - 0x10088
+     - ``PlReloadStatus``
+     - Read-only. 0 ``Idle`` when this bridge instance scheduled no reload, 1 ``Scheduled``
+       when it did and the helper log has no ``ABORT`` or ``FAILED`` line, 2
+       ``HelperFailed`` when it has one. Reads the log, so read it only while the bridge answers
+   * - 0x1008C
+     - ``InstanceToken``
+     - Read-only, never 0. Fixed when the bridge process starts, from the seconds since boot
+       and the pid, so a restarted bridge answers a different value
+
+None of the three words is gated by the restart write gate: the reload is requested exactly
+when a tile is parked, so it never waits for state 15. A write to ``PlReloadStatus`` or
+``InstanceToken`` is refused as read-only. Like every other word, all three are refused while
+the RF data converter config ROM has not validated (see ConfigStatus).
+
+Checks
+++++++
+
+A write is refused with the text below, and nothing is started, when:
+
+- this bridge instance already scheduled a reload (``PL reload already scheduled by this bridge
+  instance``). A bridge schedules at most one reload in its life; the next bridge starts
+  with none.
+- ``/boot/system.bit`` is missing or ``/proc/mounts`` has no ``/boot`` mount (``PL reload
+  unavailable: no /boot/system.bit or /boot not mounted (tftp-only boot)``). On a tftp-only boot
+  U-Boot loads the PL and Linux has no bitstream, so there is nothing to reload from.
+  The helper checks the same two facts again before it stops anything.
+- ``/usr/bin/rfsoc-pl-reload`` is not executable.
+- the command line of the bridge cannot be read.
+
+A refusal reaches the host as the whole error text of the command word. On a board image
+whose ``PyRFdc`` has no such word the answer is ``Undefined memory``, which
+``Rfdc.PlReloadRequest`` reports as an image that is too old and never retries.
+
+Start of the helper
++++++++++++++++++++
+
+The write starts ``systemd-run`` with ``posix_spawn`` and a fixed argv, with no shell::
+
+   /usr/bin/systemd-run --no-block --collect --unit=rfsoc-pl-reload \
+       /usr/bin/rfsoc-pl-reload <bridge pid> <bridge exe> <bridge args>
+
+The pid is the bridge's own, the executable is the target of ``/proc/self/exe`` and the
+arguments are the words of ``/proc/self/cmdline`` after the first, so the helper restarts
+the bridge exactly as it was started. Nothing of the transaction reaches the argv. ``PyRFdc``
+waits for ``systemd-run`` for at most ``PlReloadSpawnWaitMs`` (3000 ms), a longer
+wait ends it and is an error, and replies before the bridge stops: the helper sleeps 2 s
+first, and the reply leaves when the transaction returns.
+
+The helper
+++++++++++
+
+The helper keeps one line per step in ``/tmp/rfsoc-pl-reload.log`` (the same lines go to the journal of
+the ``rfsoc-pl-reload`` unit). Every step has a cap in seconds and all of them sum to 72 s,
+which is also checked against ``/proc/uptime`` between steps.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 14 10 76
+
+   * - Step
+     - Cap
+     - What it does
+   * - pre-sleep
+     - 2
+     - Lets the reply of the command reach the host
+   * - unit
+     - 0
+     - Reads the unit of the bridge from its own cgroup: ``startup-app-init.service`` or
+       ``rfsoc-bridge.service``, anything else is an abort
+   * - stop
+     - 10
+     - ``systemctl stop`` of that unit
+   * - holders
+     - 5
+     - Sends TERM to each process that holds ``/dev/mem`` or ``/dev/axi_memory_map``,
+       never by name
+   * - rmmod
+     - 5
+     - Removes ``axi_memory_map``
+   * - fpgautil
+     - 25
+     - Loads ``/boot/system.bit``, at most 5 attempts one second apart. ``fpgautil`` is
+       never killed
+   * - fpga0
+     - 2
+     - The fpga manager state reads ``operating``
+   * - insmod
+     - 5
+     - Inserts ``axi_memory_map``
+   * - uptime
+     - 15
+     - ``UpTimeCnt`` of the new PL is nonzero
+   * - mac
+     - 0
+     - Writes the PS MAC address into the BSI words again, because the reload clears them. A
+       failure is logged and does not fail the reload
+   * - bridge
+     - 3
+     - Starts the bridge as the transient unit ``rfsoc-bridge``
+
+A failure before the load is an ``ABORT`` line: the PL was not touched and the line names the
+step. From ``fpgautil`` on a failure is a ``FAILED`` line and nothing is retried. The
+helper never starts ``startup-app-init``, whose own ``fpgautil`` would run again with the
+driver loaded, and it starts ``sshd`` when none is running, so a failed reload leaves the
+board reachable.
+
+After a reload
+++++++++++++++
+
+The bridge runs as the transient unit ``rfsoc-bridge`` (``Restart=on-failure``), no
+longer under ``startup-app-init``. Its journal is ``journalctl -u rfsoc-bridge``. A second
+reload resolves that unit from the cgroup and stops it the same way. The connection of every
+client of the bridge drops, and the new bridge answers a different ``InstanceToken``.
+
+Anyone who can reach port 9002 can trigger a reload: the bridge has no authentication and
+already lets any client write the PL, and it keeps no list of its clients, so other sessions
+only see their connection drop.
+
+Host side
++++++++++
+
+``Rfdc.PlReloadRequest`` is the one call site that triggers a reload. It writes the word
+and raises the refusal text whole, and it raises when the device is not enabled, because no
+word was sent. ``Rfdc.DiagnosticSnapshot`` returns one status line per enabled tile (ADC 0 to
+3, then DAC 0 to 3) with ``CurrentState``, ``RestartStatus``, ``ClockPresent``, ``SupplyUp``,
+``PowerUp``, ``PllLocked``, ``ClkDet`` and ``ClkSrc``, then one line for the clock
+distribution with its status and count and the shutdown order or the reason there is none. A
+read that fails is part of its line.
