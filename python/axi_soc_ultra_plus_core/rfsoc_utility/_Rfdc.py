@@ -351,6 +351,43 @@ class Rfdc(pr.Device):
             function     = lambda: self._startUpDistSequence(),
         ))
 
+        #######################################################################################
+        # PL reload: the board helper loads the PL from /boot/system.bit outside the bridge,
+        # then starts the bridge again
+        #######################################################################################
+        self.add(pr.RemoteCommand(
+            name         = 'PlReloadRaw',
+            description  = 'In-band PL reload: PyRFdc starts the board helper that reloads the PL from /boot/system.bit outside the bridge and replies before the bridge stops. The bridge then restarts, so the connection drops and the instance token changes. Refused on a tftp-only boot (no /boot/system.bit or /boot not mounted), when the helper is missing and when this bridge already scheduled a reload. Never waits for a tile state',
+            offset       = 0x10084,
+            bitSize      = 1,
+            function     = lambda cmd: self._plReloadCmd(cmd),
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'PlReloadStatus',
+            description  = 'PL reload of this bridge instance: Idle when it scheduled none, Scheduled when it did and the helper log holds no ABORT or FAILED line, HelperFailed when it does. Reads the helper log on the board, so read it only while the bridge answers',
+            offset       = 0x10088,
+            bitSize      = 32,
+            mode         = 'RO',
+            enum         = {
+                0 : 'Idle',
+                1 : 'Scheduled',
+                2 : 'HelperFailed',
+            },
+            hidden       = True,
+        ))
+
+        self.add(pr.RemoteVariable(
+            name         = 'InstanceToken',
+            description  = 'Token of the PyRFdc bridge process, fixed when it starts and never 0. A different value after a PL reload means the bridge was restarted',
+            offset       = 0x1008C,
+            bitSize      = 32,
+            mode         = 'RO',
+            disp         = '{:#010x}',
+            hidden       = True,
+        ))
+
         self.add(pr.LocalVariable(
             name         = 'LastQuiesce',
             description  = 'One line summary of the last QuiesceTiles call: its context, the outcome, the tiles commanded, skipped and retried and the time it took, or the reason it refused before any Shutdown. Empty until a quiesce has run',
@@ -2547,6 +2584,28 @@ class Rfdc(pr.Device):
                     f'it predates the group start, so deploy the Yocto image built from this axi-soc-ultra-plus-core') from e
             raise
 
+    #######################################################################################
+    # The PL reload word goes through _writeCommandWord so a refusal text reaches the caller
+    # whole. A board image whose PyRFdc has no such word answers 'Undefined memory': that is
+    # reported as a board image that is too old and is never retried.
+    #######################################################################################
+    def _plReloadCmd(self, cmd):
+        try:
+            self._writeCommandWord(cmd, 1)
+        except Exception as e:
+            if 'Undefined memory' in str(e):
+                raise RuntimeError(
+                    f'{cmd.path}: the board PyRFdc predates the PL reload command (word {cmd.offset:#x} answered Undefined memory); '
+                    f'deploy the Yocto image built from this axi-soc-ultra-plus-core') from e
+            raise
+
+    # The one call site that triggers a PL reload: a caller that must not reload (a test of a
+    # failed recovery) replaces this method and nothing else
+    def PlReloadRequest(self):
+        if self.enable.value() is not True:
+            raise RuntimeError(f'{self.path}: no PL reload was requested because the device is not enabled')
+        self.PlReloadRaw()
+
     def _groupRestartCmd(self, cmd):
         with self._seqLock:
             tiles = self._allEnabledTiles()
@@ -2915,6 +2974,50 @@ class Rfdc(pr.Device):
         if record['errors']:
             raise RuntimeError('\n'.join([f'{self.path}.QuiesceTiles failed'] + record['errors']))
         return record
+
+    #######################################################################################
+    # Status of the tiles and of the clock distribution as text, for the warning that
+    # comes before a PL reload. The tile line has the fields of _diagLine (without the
+    # restart op, the call and the word failed) and the restart status. A read that fails
+    # is part of the line and never raised.
+    #######################################################################################
+    def _statusLine(self, isAdc, i):
+        tile = self._tileDev(isAdc, i)
+        pll = tile.PllStatus
+        kind = 'ADC' if isAdc else 'DAC'
+        try:
+            state = int(tile.CurrentState.get(read=True))
+            restart = int(tile.RestartStatus.get(read=True))
+            present = int(pll.ClockPresent.get(read=True))
+            supply = int(pll.SupplyStable.get(read=True))
+            powered = int(pll.PoweredUp.get(read=True))
+            locked = int(pll.PllLocked.get(read=True))
+            clkDet = str(int(pll.ClockDetector.get(read=True))) if hasattr(pll, 'ClockDetector') else 'NA'
+            clkSrc = {0: 'External', 1: 'InternalPLL'}.get(int(pll.ClockSource.get(read=True)), 'Unknown')
+        except Exception as e:
+            return f'{kind} tile {i}: status read error: {self._firstLine(e)}'
+        return ('%s tile %d: CurrentState=%d RestartStatus=%d ClockPresent=%d SupplyUp=%d PowerUp=%d '
+                'PllLocked=%d ClkDet=%s ClkSrc=%s') % (
+            kind, i, state, restart, present, supply, powered, locked, clkDet, clkSrc)
+
+    # One line per enabled tile, ADC 0 to 3 then DAC 0 to 3, then one line for the clock
+    # distribution: its status and count, and the shutdown order QuiesceTiles would use or
+    # the reason there is none. Reads only.
+    def DiagnosticSnapshot(self):
+        names = self._enabledTileNames()
+        lines = [self._statusLine(name.startswith('adc'), int(name[3:])) for name in names]
+        try:
+            topology = self._readClkDist()
+            if not topology.get('enabled'):
+                lines.append('ClkDist: device not enabled')
+            else:
+                enabledOk = {name: self._namedTile(name).enable.value() is True for name in names}
+                order, problem = self._quiesceOrder(topology, names, enabledOk)
+                head = f"ClkDist: Status={self._clkDistStatusName(topology.get('status'))} Count={topology.get('count')}"
+                lines.append(f"{head}, shutdown order {' '.join(order)}" if problem is None else f'{head}, no safe order: {problem}')
+        except Exception as e:
+            lines.append(f'ClkDist: read error: {self._firstLine(e)}')
+        return lines
 
     #######################################################################################
     # CustomStartUpAllAdc/CustomStartUpAllDac compose that type's StartState and
