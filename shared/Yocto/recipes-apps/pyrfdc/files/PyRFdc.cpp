@@ -24,7 +24,14 @@
 #include "PyRFdc.h"
 #include "xrfdc_hw.h"
 
+#include <errno.h>
 #include <inttypes.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdarg>
@@ -47,6 +54,9 @@
 #include "rogue/interfaces/memory/TransactionLock.h"
 
 namespace rim = rogue::interfaces::memory;
+
+// The environment of the bridge, handed to the process that starts the PL reload helper
+extern char** environ;
 
 #ifndef NO_PYTHON
     #include <boost/python.hpp>
@@ -208,6 +218,12 @@ PyRFdc::PyRFdc(const std::string& cfg) : rim::Slave(4,0x1000) { // Set min=4B an
     // Every data member carries an in-class initializer (PyRFdc.h), so a
     // not-initialized object serves the allow-listed registers deterministically
     log_ = rogue::Logging::create("PyRFdc");
+
+    // Token of this bridge process: a host that reads another one knows the bridge was restarted
+    struct timespec boot;
+    clock_gettime(CLOCK_BOOTTIME, &boot);
+    instanceToken_ = InstanceTokenValue(uint32_t(boot.tv_sec), uint32_t(getpid()));
+    plReloadScheduled_ = false;
 
     // RFDC config ROM status: not loaded until the ladder below decides otherwise
     cfgStatus_ = CfgNotLoaded;
@@ -1692,6 +1708,159 @@ void PyRFdc::StartUp(int Tile_Id) {
 
     // One prechecked XRFdc_StartUp per tile
     RestartTiles(RestartOpStartUp, tileType_, Tile_Id, XRFDC_SM_STATE1, XRFDC_SM_STATE15);
+}
+
+//! Contents of a file, at most maxBytes of it, empty when it cannot be read
+static std::string ReadFileText(const char* path, std::size_t maxBytes) {
+    std::string text;
+    FILE* file = std::fopen(path, "rb");
+    if (file == nullptr) {
+        return text;
+    }
+    char buf[1024];
+    std::size_t got = 0;
+    while ((text.size() < maxBytes) && ((got = std::fread(buf, 1, sizeof(buf), file)) > 0)) {
+        text.append(buf, got);
+    }
+    std::fclose(file);
+    if (text.size() > maxBytes) {
+        text.resize(maxBytes);
+    }
+    return text;
+}
+
+//! PL reload (word 0x10084). A read returns 1. A write starts the board helper in a
+//! transient unit outside this bridge, with posix_spawn of the fixed argv of PlReloadArgv
+//! and no shell: the pid, the executable and the command line are this process's own, and
+//! nothing of the transaction reaches the argv. Every refusal and every failure sets
+//! errMsg_ and txnRefused_ (so IgnoreMetalError cannot swallow it) and leaves plReloadScheduled_ clear.
+//! The reply is not sent from here: it leaves when doTransaction returns. The helper
+//! sleeps 2 s before it stops the bridge, so the reply is on the wire long before the stop.
+void PyRFdc::PlReload() {
+
+    // Check if read
+    if (rdTxn_) {
+        data_ = 1; // Always return 1 so this is a set() and not posted() cmd
+        return;
+    }
+
+    struct stat st;
+    bool bitstreamPresent = (stat(PlReloadBitstreamPath, &st) == 0);
+    bool helperExecutable = (access(PlReloadHelperPath, X_OK) == 0);
+    std::string problem = PlReloadRefusal(bitstreamPresent, ReadFileText("/proc/mounts", 65536), helperExecutable, plReloadScheduled_);
+
+    std::vector<std::string> words;
+    if (problem.empty()) {
+        char exeBuf[4096];
+        ssize_t exeLen = readlink("/proc/self/exe", exeBuf, sizeof(exeBuf) - 1);
+        std::string exe = (exeLen > 0) ? std::string(exeBuf, std::size_t(exeLen)) : std::string();
+        words = PlReloadArgv(uint32_t(getpid()), exe, SplitCmdline(ReadFileText("/proc/self/cmdline", 65536)));
+        if (words.empty()) {
+            problem = "PL reload unavailable: the bridge argv is unreadable";
+        }
+    }
+    if (!problem.empty()) {
+        errMsg_ = problem;
+        txnRefused_ = true;
+        LogWarning(log_, "PlReload refused: " + problem);
+        return;
+    }
+
+    std::vector<char*> argv;
+    for (std::size_t i = 0; i < words.size(); i++) {
+        argv.push_back(const_cast<char*>(words[i].c_str()));
+    }
+    argv.push_back(nullptr);
+
+    // An empty signal mask: a bridge thread may block signals, and the SIGTERM below has to reach a stuck child
+    posix_spawnattr_t attr;
+    sigset_t noSignals;
+    sigemptyset(&noSignals);
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setsigmask(&attr, &noSignals);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGMASK);
+    pid_t child = 0;
+    int spawned = posix_spawn(&child, argv[0], nullptr, &attr, argv.data(), environ);
+    posix_spawnattr_destroy(&attr);
+    if (spawned != 0) {
+        errMsg_ = "PL reload failed: systemd-run could not be started (error " + std::to_string(spawned) + ")";
+        txnRefused_ = true;
+        LogWarning(log_, errMsg_);
+        return;
+    }
+
+    // systemd-run exits once the unit is queued: poll for it, bounded
+    int wstatus = 0;
+    int waitErrno = 0;
+    bool exited = false;
+    std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(PlReloadSpawnWaitMs);
+    for (;;) {
+        pid_t got = waitpid(child, &wstatus, WNOHANG);
+        if (got == child) {
+            exited = true;
+            break;
+        }
+        if ((got < 0) && (errno != EINTR)) {
+            waitErrno = errno;
+            break;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
+            break;
+        }
+        usleep(10000);
+    }
+
+    if (waitErrno != 0) {
+        problem = "PL reload failed: the status of systemd-run is unknown (error " + std::to_string(waitErrno) + ")";
+    } else if (!exited) {
+        // Stuck: ask it to end and reap it, then kill it when it ignores that
+        kill(child, SIGTERM);
+        for (int i = 0; i < 50 && !exited; i++) {
+            exited = (waitpid(child, &wstatus, WNOHANG) == child);
+            if (!exited) {
+                usleep(10000);
+            }
+        }
+        if (!exited) {
+            kill(child, SIGKILL);
+            waitpid(child, &wstatus, 0);
+        }
+        problem = "PL reload failed: systemd-run did not exit within " + std::to_string(PlReloadSpawnWaitMs) + " ms";
+    } else if (!WIFEXITED(wstatus)) {
+        problem = "PL reload failed: systemd-run ended on signal " + std::to_string(WTERMSIG(wstatus));
+    } else if (WEXITSTATUS(wstatus) != 0) {
+        problem = "PL reload failed: systemd-run exited with status " + std::to_string(WEXITSTATUS(wstatus));
+    }
+    if (!problem.empty()) {
+        errMsg_ = problem;
+        txnRefused_ = true;
+        LogWarning(log_, problem);
+        return;
+    }
+
+    plReloadScheduled_ = true;
+    LogWarning(log_, std::string("PL reload scheduled: ") + PlReloadHelperPath + " in the unit " + PlReloadUnit + ", this bridge stops shortly");
+}
+
+//! PL reload status (word 0x10088, read-only): 0 when this instance scheduled no reload, 1 when
+//! it did and the helper log has no ABORT or FAILED line, 2 when it has one
+void PyRFdc::PlReloadStatus() {
+    if (!rdTxn_) {
+        errMsg_ = "PlReloadStatus(): read-only\n";
+        txnRefused_ = true;
+        return;
+    }
+    data_ = PlReloadStatusCode(plReloadScheduled_, plReloadScheduled_ ? ReadFileText(PlReloadLogPath, 65536) : std::string());
+}
+
+//! Token of this bridge process (word 0x1008C, read-only), fixed at construction
+void PyRFdc::InstanceToken() {
+    if (!rdTxn_) {
+        errMsg_ = "InstanceToken(): read-only\n";
+        txnRefused_ = true;
+        return;
+    }
+    data_ = instanceToken_;
 }
 
 //! Group start of the clock distribution (word 0x10080), modeled on XRFdc_StartUpDist,
@@ -5006,6 +5175,15 @@ void PyRFdc::doTransaction(rim::TransactionPtr tran) {
 
             } else if (addr==0x10080) {
                 StartUpDist();
+
+            } else if (addr==0x10084) {
+                PlReload();
+
+            } else if (addr==0x10088) {
+                PlReloadStatus();
+
+            } else if (addr==0x1008C) {
+                InstanceToken();
 
             } else if (addr==0x11000) {
                 tileType_ = XRFDC_ADC_TILE;

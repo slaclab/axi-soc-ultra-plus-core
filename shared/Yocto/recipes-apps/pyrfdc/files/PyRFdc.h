@@ -786,6 +786,142 @@ inline bool ClkDistRefOk(double ref, double sourceRate) {
     return true;
 }
 
+//! PL reload (words 0x10084, 0x10088 and 0x1008C). The reload itself runs in a board helper
+//! that is started outside the bridge, because it stops the bridge and starts it again.
+//! Path of the helper, installed by the pyrfdc recipe
+static const char* const PlReloadHelperPath = "/usr/bin/rfsoc-pl-reload";
+
+//! Bitstream the helper loads. A tftp-only boot has none on /boot
+static const char* const PlReloadBitstreamPath = "/boot/system.bit";
+
+//! Log the helper writes, one line per step; the status word reads it
+static const char* const PlReloadLogPath = "/tmp/rfsoc-pl-reload.log";
+
+//! Transient unit the helper runs in, so it outlives the bridge it stops
+static const char* const PlReloadUnit = "rfsoc-pl-reload";
+
+//! Longest wait, in ms, for systemd-run to queue the unit and exit
+static const uint32_t PlReloadSpawnWaitMs = 3000;
+
+//! The whitespace separated field n (from 0) of a line, empty when the line has fewer
+inline std::string LineField(const std::string& line, int n) {
+    std::size_t i = 0;
+    std::string field;
+    for (int f = 0; f <= n; f++) {
+        while ((i < line.size()) && ((line[i] == ' ') || (line[i] == '\t'))) {
+            i++;
+        }
+        std::size_t start = i;
+        while ((i < line.size()) && (line[i] != ' ') && (line[i] != '\t')) {
+            i++;
+        }
+        field = line.substr(start, i - start);
+    }
+    return field;
+}
+
+//! Call fn with each line of a text, without its newline
+template <typename Fn>
+inline void ForEachLine(const std::string& text, Fn fn) {
+    std::size_t pos = 0;
+    while (pos < text.size()) {
+        std::size_t end = text.find('\n', pos);
+        if (end == std::string::npos) {
+            end = text.size();
+        }
+        fn(text.substr(pos, end - pos));
+        pos = end + 1;
+    }
+}
+
+//! True when a line of /proc/mounts has /boot as its second field, the mount point
+inline bool BootMounted(const std::string& procMounts) {
+    bool mounted = false;
+    ForEachLine(procMounts, [&mounted](const std::string& line) {
+        if (LineField(line, 1) == "/boot") {
+            mounted = true;
+        }
+    });
+    return mounted;
+}
+
+//! Why a PL reload request is refused, empty when it may run. Checked in this order: a
+//! reload already scheduled by this bridge instance, no bitstream or no /boot mount
+//! (a tftp-only boot, where U-Boot loads the PL and Linux has no bitstream), a helper
+//! that is not executable. No text holds a percent sign: the host treats it as a format.
+inline std::string PlReloadRefusal(bool bitstreamPresent, const std::string& procMounts, bool helperExecutable, bool scheduled) {
+    if (scheduled) {
+        return "PL reload already scheduled by this bridge instance";
+    }
+    if (!bitstreamPresent || !BootMounted(procMounts)) {
+        return "PL reload unavailable: no /boot/system.bit or /boot not mounted (tftp-only boot)";
+    }
+    if (!helperExecutable) {
+        return std::string("PL reload unavailable: ") + PlReloadHelperPath + " is not installed or not executable";
+    }
+    return std::string();
+}
+
+//! The words of the text of /proc/<pid>/cmdline: NUL terminated, an empty argument is an
+//! empty word, and a text without its final NUL keeps its last word
+inline std::vector<std::string> SplitCmdline(const std::string& raw) {
+    std::vector<std::string> words;
+    std::size_t pos = 0;
+    while (pos < raw.size()) {
+        std::size_t end = raw.find('\0', pos);
+        if (end == std::string::npos) {
+            end = raw.size();
+        }
+        words.push_back(raw.substr(pos, end - pos));
+        pos = end + 1;
+    }
+    return words;
+}
+
+//! The argv that starts the helper in its own transient unit: the pid and the executable
+//! of the bridge, then the words of its command line after argv[0], which the helper
+//! starts the bridge with again. Empty when the executable or the command line is empty.
+//! Nothing here comes from a transaction, and the words reach posix_spawn, never a shell.
+inline std::vector<std::string> PlReloadArgv(uint32_t pid, const std::string& exe, const std::vector<std::string>& cmdline) {
+    std::vector<std::string> argv;
+    if (exe.empty() || cmdline.empty()) {
+        return argv;
+    }
+    argv.push_back("/usr/bin/systemd-run");
+    argv.push_back("--no-block");
+    argv.push_back("--collect");
+    argv.push_back(std::string("--unit=") + PlReloadUnit);
+    argv.push_back(PlReloadHelperPath);
+    argv.push_back(std::to_string(pid));
+    argv.push_back(exe);
+    argv.insert(argv.end(), cmdline.begin() + 1, cmdline.end());
+    return argv;
+}
+
+//! Value of the status word: 0 when this bridge instance scheduled no reload, 1 when it did
+//! and the helper log has no ABORT or FAILED line, 2 when it has one. A log line is the
+//! board uptime, then the word, then the detail, so the word is the second field.
+inline uint32_t PlReloadStatusCode(bool scheduled, const std::string& helperLog) {
+    if (!scheduled) {
+        return 0;
+    }
+    uint32_t code = 1;
+    ForEachLine(helperLog, [&code](const std::string& line) {
+        std::string word = LineField(line, 1);
+        if ((word == "ABORT") || (word == "FAILED")) {
+            code = 2;
+        }
+    });
+    return code;
+}
+
+//! Token of one bridge process, from the seconds since boot at its construction and its
+//! pid: it differs for another pid or another second, so a host that reads two different
+//! tokens knows the bridge was restarted. The top bit is always set, so it is never 0.
+inline uint32_t InstanceTokenValue(uint32_t bootSeconds, uint32_t pid) {
+    return 0x80000000U | ((bootSeconds * 2654435761U) ^ pid);
+}
+
 //! Classify a write to a register address with the same address decode that
 //! doTransaction uses. Pure function of the address; reads are never classified.
 inline WriteGateInfo ClassifyWrite(uint32_t addr) {
@@ -804,6 +940,9 @@ inline WriteGateInfo ClassifyWrite(uint32_t addr) {
             // The group start of the clock distribution is a restart command: it runs its own
             // precheck (PlanGroupStart), so the write gate does not gate it
             case 0x10080: return WriteInfo(WriteRestart, ScopeTile, -1, "StartUpDist");
+            // 0x10084 (PlReload), 0x10088 (PlReloadStatus) and 0x1008C (InstanceToken) are
+            // deliberately not listed: the reload is requested exactly when a tile is parked,
+            // so it must never wait for state 15
             case 0x11008: return WriteInfo(WriteGated, ScopeMtsGroup, 0, "MtsSync");
             case 0x1100C: return WriteInfo(WriteGated, ScopeMtsGroup, 1, "MtsSync");
             case 0x11100: return WriteInfo(WriteGated, ScopeMtsSysref, -1, "MtsSysrefConfig");
@@ -999,9 +1138,17 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     XRFdc_Distribution_Settings clkDistStage_ = {};
     uint32_t clkDistLast_[4] = {};
 
+    //! PL reload: set once this instance scheduled the helper, and the token that tells a
+    //! host this bridge process from the one a reload starts
+    bool plReloadScheduled_ = false;
+    uint32_t instanceToken_ = 0;
+
     //! Application functions
     void StartUp(int Tile_Id);
     void StartUpDist();
+    void PlReload();
+    void PlReloadStatus();
+    void InstanceToken();
     void Shutdown(int Tile_Id);
     void Reset(int Tile_Id);
     void CustomStartUp(int Tile_Id);
