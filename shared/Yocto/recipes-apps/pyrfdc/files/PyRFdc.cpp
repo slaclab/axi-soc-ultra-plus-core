@@ -1707,7 +1707,9 @@ void PyRFdc::StartUp(int Tile_Id) {
 //! partial group could not be told from a first. The driver register writes made here
 //! bypass the host write gate by construction, since the gate only looks at the host
 //! word, and the planner is this command's own precheck. A refusal leaves every record
-//! and every register untouched.
+//! and every register untouched. Once the planner accepts, every span tile gets a record
+//! whatever happens next: a source that misses state 7 is listed first for its type in the
+//! error, and the tiles that never reach state 15 follow in tile order.
 void PyRFdc::StartUpDist() {
 
     // Check if read
@@ -1735,7 +1737,8 @@ void PyRFdc::StartUpDist() {
     GroupStartPlan plan = PlanGroupStart(layout, clkDist_, clkDistStatus_, enabled[XRFDC_ADC_TILE], enabled[XRFDC_DAC_TILE],
                                          state, restart);
     if (!plan.refusals.empty() || plan.order.empty()) {
-        // An empty order without a refusal is a topology the planner finds no span for
+        // The planner words every refusal. An empty order without one is not expected, but it is refused here
+        // rather than reported as a start that wrote nothing
         errMsg_ = plan.refusals.empty() ? std::string("StartUpDist(): no clock distribution holds every enabled tile; nothing written")
                                         : JoinWholeLines(plan.refusals, ErrorTextMaxChars);
         txnRefused_ = true;

@@ -25,6 +25,7 @@
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -648,17 +649,40 @@ struct GroupStartPlan {
 //! tile. The order is the package order, the span index order from the lower to the
 //! upper bound, as the driver visits the tiles; on the nominal topology that is DAC 3,
 //! DAC 2, DAC 1, DAC 0, ADC 3, ADC 2, ADC 1, ADC 0. The source is the SourceType and
-//! SourceTileId of that distribution. The group writes every span tile at once, so a
-//! span tile that is live or still restarting must not be in it: any span tile that
-//! does not read CurrentState 1 with Restart 0 refuses the whole group, one line naming
-//! every such tile with its state and Restart. state and restart are indexed
-//! [type][tile]. Tiles the layout does not have are left out of the span.
+//! SourceTileId of that distribution. state and restart are indexed [type][tile];
+//! tiles the layout does not have are left out of the span.
+//!
+//! The group writes every tile of the span at once, so anything that leaves no safe
+//! group refuses it, with one line and an empty order, before any write. The refusals
+//! are checked in this order and the first one that applies is the only one returned:
+//!   1. the topology status is not 1: the distribution read is not trustworthy
+//!   2. no tile is enabled: there is nothing to start, and the group must not degrade
+//!      into a start of the tiles that happen to be left
+//!   3. no single valid distribution holds every enabled tile: tiles of two
+//!      distributions cannot be started as one group
+//!   4. a span tile is not enabled: the group would write a tile that has no
+//!      device behind it (every such tile is named)
+//!   5. the source is not in the span: the clock of the group would come from a tile
+//!      that the group does not restart
+//!   6. a span tile does not read CurrentState 1 with Restart 0: a live or restarting
+//!      tile must not be restarted under its dependents (every such tile is named
+//!      with its state and Restart)
 inline GroupStartPlan PlanGroupStart(uint32_t layout, const XRFdc_Distribution_System_Settings& topo, uint32_t topoStatus,
                                      uint32_t adcEnabled, uint32_t dacEnabled,
                                      const uint32_t state[2][4], const uint32_t restart[2][4]) {
     GroupStartPlan plan;
-    if (topoStatus != 1) {
+    auto refuse = [&plan](const std::string& line) {
+        plan.order.clear();
+        plan.refusals.push_back(line);
         return plan;
+    };
+    auto tileName = [](uint32_t type, uint32_t tile) {
+        return std::string((type == XRFDC_ADC_TILE) ? "ADC" : "DAC") + " tile " + std::to_string(tile);
+    };
+
+    if (topoStatus != 1) {
+        return refuse(std::string("ClkDist Status ") + ((topoStatus == 0) ? "Unsupported" : (topoStatus == 2) ? "GetFailed" : std::to_string(topoStatus)) +
+                      ", need Ok; nothing written");
     }
 
     uint32_t enabled = 0;
@@ -671,7 +695,7 @@ inline GroupStartPlan PlanGroupStart(uint32_t layout, const XRFdc_Distribution_S
         }
     }
     if (enabled == 0) {
-        return plan;
+        return refuse("no enabled tiles; nothing written");
     }
 
     uint32_t count = ClkDistCount(topo);
@@ -684,8 +708,8 @@ inline GroupStartPlan PlanGroupStart(uint32_t layout, const XRFdc_Distribution_S
             continue;
         }
 
-        plan.srcType = e.SourceType;
-        plan.srcTile = e.SourceTileId;
+        std::vector<std::pair<uint32_t, uint32_t> > span;
+        std::string disabled;
         std::string busy;
         for (uint32_t index = e.Info.LowerBound; index <= e.Info.UpperBound; index++) {
             uint32_t type = 0;
@@ -694,19 +718,33 @@ inline GroupStartPlan PlanGroupStart(uint32_t layout, const XRFdc_Distribution_S
             if (!ClkDistTileValid(layout, type, tile)) {
                 continue;
             }
-            plan.order.push_back(std::make_pair(type, tile));
+            span.push_back(std::make_pair(type, tile));
+            if ((((((type == XRFDC_ADC_TILE) ? adcEnabled : dacEnabled) >> tile) & 1U)) == 0) {
+                disabled += std::string(disabled.empty() ? "" : ", ") + tileName(type, tile);
+            }
             if ((state[type][tile] != XRFDC_SM_STATE1) || (restart[type][tile] != 0)) {
-                busy += std::string(busy.empty() ? "" : ", ") + ((type == XRFDC_ADC_TILE) ? "ADC" : "DAC") + " tile " +
-                        std::to_string(tile) + " " + std::to_string(state[type][tile]) + "/" + std::to_string(restart[type][tile]);
+                busy += std::string(busy.empty() ? "" : ", ") + tileName(type, tile) + " " + std::to_string(state[type][tile]) + "/" +
+                        std::to_string(restart[type][tile]);
             }
         }
-        if (!busy.empty()) {
-            plan.order.clear();
-            plan.refusals.push_back("span tiles not idle (CurrentState/Restart, need 1/0): " + busy);
+        if (!disabled.empty()) {
+            return refuse("span tiles not enabled: " + disabled + "; nothing written");
         }
-        break;
+        if (!ClkDistTileValid(layout, e.SourceType, e.SourceTileId) ||
+            (std::find(span.begin(), span.end(), std::make_pair(uint32_t(e.SourceType), uint32_t(e.SourceTileId))) == span.end())) {
+            return refuse(std::string("source ") + ((e.SourceType == XRFDC_ADC_TILE) ? "ADC" : "DAC") + " tile " +
+                          std::to_string(e.SourceTileId) + " is not in the span; nothing written");
+        }
+        if (!busy.empty()) {
+            return refuse("span tiles not idle (CurrentState/Restart, need 1/0): " + busy);
+        }
+
+        plan.srcType = e.SourceType;
+        plan.srcTile = e.SourceTileId;
+        plan.order = span;
+        return plan;
     }
-    return plan;
+    return refuse("no single valid distribution holds every enabled tile; nothing written");
 }
 
 //! Tiles of an MTS sync group: the operator mask plus the reference tile, which the
