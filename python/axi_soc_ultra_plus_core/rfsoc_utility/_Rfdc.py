@@ -1583,8 +1583,12 @@ class Rfdc(pr.Device):
 
     # A tile is ready at state 15 with the restart clear and, when it runs from
     # its internal PLL, with the PLL locked. A tile on an external clock has no
-    # lock term. A read that fails counts as not ready for this pass.
+    # lock term. A read that fails counts as not ready for this pass, and so does a
+    # tile device that is not enabled yet: its variables would answer from the stale
+    # cache, not from the hardware.
     def _tileReady(self, tile):
+        if tile.enable.value() is not True:
+            return False
         try:
             if int(tile.CurrentState.get(read=True)) != 15:
                 return False
@@ -1604,6 +1608,8 @@ class Rfdc(pr.Device):
         tile = self._tileDev(isAdc, i)
         pll = tile.PllStatus
         kind = 'ADC' if isAdc else 'DAC'
+        if tile.enable.value() is not True:
+            return f'{op} {kind} tile {i}: {call} failed; tile device not enabled, no status read'
         try:
             state = int(tile.CurrentState.get(read=True))
             present = int(pll.ClockPresent.get(read=True))
@@ -2416,6 +2422,9 @@ class Rfdc(pr.Device):
         # The group is the mask plus the reference tile, checked once each in ascending order
         label = 'ADC' if isAdc else 'DAC'
         present = self.enAdcTile if isAdc else self.enDacTile
+        # The tile enables are read first so the readiness checks below read enabled
+        # tile devices, as _runSequence does
+        self._refreshTileEnables()
         enabled = set(self._enabledAdcTiles() if isAdc else self._enabledDacTiles())
         failing = []
         lines = []
@@ -2430,7 +2439,7 @@ class Rfdc(pr.Device):
                 if self._tileReady(tile):
                     continue
                 try:
-                    restart = int(tile.RestartStatus.get(read=True))
+                    restart = int(tile.RestartStatus.get(read=True)) if tile.enable.value() is True else 'NA'
                 except Exception:
                     restart = 'NA'
                 lines.append(self._diagLine('MtsSync', isAdc, i, 'MtsPrecheck') + f' Restart={restart}')
