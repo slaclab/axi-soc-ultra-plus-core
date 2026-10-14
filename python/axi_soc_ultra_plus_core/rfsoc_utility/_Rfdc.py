@@ -2734,8 +2734,13 @@ class Rfdc(pr.Device):
         return self._tileDev(name.startswith('adc'), int(name[3:]))
 
     # [CurrentState, RestartStatus] of every enabled tile, ADC 0 to 3 then DAC 0 to 3, from one
-    # get(read=True) each; a value that cannot be read is None, never an exception. An overall
-    # deadline, when given, also ends the reads: the words left to read are None
+    # get(read=True) each; a value that cannot be read is None, never an exception. A tile whose
+    # device is not enabled yet is [None, None] and is not read: a tile device enables only after
+    # the update of its Check variable has been processed, and a disabled device answers
+    # get(read=True) from its cache with no transaction and no error, which is 0 on a new Root, so
+    # a tile frozen at state 12 would read as 0/0. A caller that needs the state of every tile
+    # waits with _waitTileEnable first. An overall deadline, when given, also ends the reads: the
+    # words left to read are None
     def TileStates(self, overall=None):
         deadline = self._readDeadline(overall)
         states = {}
@@ -2746,6 +2751,9 @@ class Rfdc(pr.Device):
                 indices = []
             for i in indices:
                 tile = self._tileDev(isAdc, i)
+                if tile.enable.value() is not True:
+                    states[self._tileName(isAdc, i)] = [None, None]
+                    continue
                 states[self._tileName(isAdc, i)] = [
                     self._readValue(tile.CurrentState, deadline),
                     self._readValue(tile.RestartStatus, deadline),
