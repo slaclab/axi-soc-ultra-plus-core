@@ -56,9 +56,6 @@ and no write-back.
    * - ``PllConfig.PllConfigUpdate``
      - PLL commit, then ``StartUpRaw`` of the same tile
      - The tile, plus any knocked tile
-   * - ``ClkDist.SetClkDistribution``
-     - The clock distribution commit
-     - The tiles the commit restarted, plus any knocked tile
 
 ``CustomStartUp`` (per tile, and ``CustomStartUpAllAdc`` / ``CustomStartUpAllDac``) is a
 raw command only. It packs StartState into bits 3:0 and EndState into bits 7:4 of one
@@ -339,8 +336,8 @@ Restart records and diagnostics
      - Automatic restart count (tile register 0x38), saturates at 255
    * - ``ResetRecord``
      - 0x818
-     - Sequence [31:16], command [11:8] (1 Reset, 2 StartUp, 3 CustomStartUp, 5
-       SetClkDistribution), flags [7:4] (0x10 parked, 0x20 staging not refreshed),
+     - Sequence [31:16], command [11:8] (1 Reset, 2 StartUp, 3 CustomStartUp), flags [7:4]
+       (0x10 parked, 0x20 staging not refreshed),
        result [3:0] (1 ok, 2 failed, 3 refused: state machine busy)
    * - ``ResetRecordStateAtFailure``
      - 0x81C
@@ -413,9 +410,10 @@ Timeouts
 
 A restart transaction can block in ``PyRFdc`` far longer than the usual PyRogue
 timeout. For each tile, the driver can spend up to 1 s in the restart precheck, 1 s
-reaching state 1 and 1 s reaching state 15. The longest single transaction is a clock
-distribution Set over all eight tiles: 8 x 3 s, plus 1 s for the source tile, plus
-margin. ``Rfdc._start`` therefore raises the transaction timeout of the ``Rfdc`` subtree
+waiting for the PLL to lock and 1 s waiting for the restart to finish. The longest
+single transaction is the restart of all four tiles of one converter type:
+4 x 3 s = 12 s. ``Rfdc._start`` raises the transaction timeout of the ``Rfdc`` subtree
 to ``TIMEOUT_FLOOR_S`` (32 s) when the Root timeout is lower. It never lowers a longer
-application timeout and never touches the rest of the tree. The gate and the write-back
-are many short transactions and are not affected.
+application timeout and never touches the rest of the tree. The floor stays at 32 s,
+well above the 12 s, so existing applications see no change in timeout behavior. The
+gate and the write-back are many short transactions and are not affected.

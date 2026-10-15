@@ -207,81 +207,23 @@ behave as follows:
   ``ResetAllDac`` and a DAC tile 0 restart clear both flags. A restart of member tiles,
   or of a source with no member of the other converter type, clears only the flag of
   their own converter type: a DAC tile 1 ``Reset`` clears ``DacMtsValid`` only and an ADC
-  tile 2 ``Reset`` clears ``AdcMtsValid`` only. A ``SetClkDistribution`` clears every
-  converter type it touches, and on a device below Gen3 every restart clears both flags.
+  tile 2 ``Reset`` clears ``AdcMtsValid`` only. On a device below Gen3 every restart
+  clears both flags.
   A flag also reads 0 while any enabled tile of its group (the tile mask plus the
   reference tile) is restarting or below state 15; a restart that ``PyRFdc`` did not
   command and that has already finished is not detected, and the read never changes the
   latched value. The member rule assumes that restarting member tiles does not disturb a
   tile of the other converter type. That holds for this layout; on another layout the
   live check, which sees only a restart still in progress, is the only safeguard.
-- ``Rfdc.ClkDist`` is a read-only view of ``XRFdc_GetClkDistribution`` (Gen3 and DFE
-  only). ``PyRFdc`` serves it at 0x15000 to 0x157FC from one driver read per read
-  transaction, so a ``ReadAll`` refreshes it and nothing polls it. A write to the window
-  is refused with ``ClkDist(): read-only``, and every address of it is refused while
-  ``PyRFdc`` is not initialized. ``Status`` reads ``Unsupported`` with every other field 0
-  below Gen3, and ``GetFailed`` with every other field 0 when the driver refuses the call.
-  ``Count`` bounds the valid ``Distribution[d]`` entries; each gives the source tile, the
-  two edge tiles, ``DistRefClkFreq`` (MHz), ``DistributedClock`` and the per-tile sample
-  rates (MSPS). The ``AdcTileClk[t]`` and ``DacTileClk[t]`` views name the one
-  distribution that holds the tile and give its source, PLL enable, division factor,
-  delay, reference clock and sample rate. A reported sample rate comes from the tile PLL
-  FS register and can lag after a ``Reset`` that followed a PLL change, so
-  ``BlockStatus.SampleRate`` is the live block rate.
-- ``Rfdc.ClkDist.SetClkDistribution`` changes the clock distribution (Gen3 and DFE only) as
-  one explicit command. Stage the settings with the hidden ``RefreshStaging(<entry>)``,
-  which loads the ``Set`` variables (``SetSourceType``, ``SetSourceTileId``,
-  ``SetEdgeType``, ``SetEdgeTileId``, ``SetDistributedClock``, ``SetDistRefClkFreq``,
-  ``SetAdcSampleRate`` and ``SetDacSampleRate``) from entry ``<entry>`` of
-  ``Distribution`` and refuses an entry that does not exist. Edit them, read
-  ``PreviewStatus`` and the ``PreviewAdcAffected``, ``PreviewDacAffected``,
-  ``PreviewAdcSpan`` and ``PreviewDacSpan`` tile masks, which show what ``PyRFdc`` would
-  restart or why it would refuse, then run ``SetClkDistribution``. The hidden
-  ``SetClkDistributionRaw`` is the bare commit with no wait and no write-back; ``PyRFdc``
-  still prechecks it, and a refusal is never hidden by ``IgnoreMetalError``. The ``Last``
-  masks show what the last commit restarted and read 0 after a refused one. The Set
-  variables are staging words only: nothing reaches a tile before the commit, and none of
-  them is written back by ``Init`` or ``ApplyConfig``.
-
-  - ``ShutdownMode`` is always disabled, so every enabled tile of the distribution is
-    started up to state 15 inside the commit. A nonzero ``SetShutdownMode`` is refused.
-  - The affected tiles are the new span plus every current distribution that holds the
-    new source or a tile of the span; a neighbour that only touches the span is left
-    alone. A same-value Set is not a no-op: it restarts its whole span. A Set that would
-    leave an enabled tile of such a distribution without any clock is refused and the
-    tile is named. A span tile that is not enabled, a type, tile number or
-    ``DistributedClock`` out of range, an illegal span, and a sample rate or reference
-    clock that is not a finite number inside the limits of its tile are refused too, all
-    before the driver is called.
-  - A busy affected tile (Restart stays set while the state machine moves) refuses the
-    whole Set, naming every busy tile, and nothing is restarted. A parked tile (Restart
-    stays set with the state frozen) proceeds with a logged warning and the parked flag
-    in its ``ResetRecord``. Each tile of the distribution gets one ``ResetRecord`` with
-    command 5, read as ``SetClkDistribution``.
-  - The sequence waits for every enabled tile to reach state 15 with its PLL locked,
-    writes back the settings written in this session on the tiles the commit restarted
-    (the ``Last`` affected masks) and on the knocked tiles, and raises one error that
-    names every tile that did not get there; a refused Set writes nothing back. It clears
-    ``AdcMtsValid`` and ``DacMtsValid`` of every converter type that has an affected
-    tile, and drops the committed PLL record of every restarted tile, so a later
-    ``Reset`` does not replay an old ``PllConfigUpdate`` on top of the new clocking.
-  - A Set is transient. ``Init`` and every ``Reset`` restart from state 0 and return the
-    tiles to the Vivado clocking, and nothing re-applies a Set, so run it again after
-    ``Init`` when it is wanted. While a distribution other than the Vivado one is active,
-    partial resets (one tile, or one converter type) stay allowed and the state 15 wait
-    names every tile that fails; ``Init`` of both converter types is the recovery and
-    needs no power cycle. ``Init``, ``Reset`` and ``StartUp`` never run a Set.
-  - The longest Set restarts all eight tiles and can spend up to 25 s in the driver's own
-    waits, which is why the ``Rfdc`` transaction timeout floor is 32 s.
-
 - The hidden ``ResetRaw``, ``StartUpRaw``, ``ResetAllAdcRaw``, ``ResetAllDacRaw``,
   ``StartUpAllAdcRaw`` and ``StartUpAllDacRaw`` commands are bare restarts: they do not
   wait for the other tiles and write nothing back. The hidden ``SyncAdcTilesRaw`` and
   ``SyncDacTilesRaw`` commands are the bare multi-tile sync: they do not check the mask,
   and ``PyRFdc`` still refuses them while a tile of the group is not ready.
 - ``Rfdc`` raises its own transaction timeout to 32 s, so an application does not need
-  a large Root timeout. The floor covers a Set of the largest span: 8 tiles x 3 s of
-  driver waits plus 1 s for the source, plus 25 percent margin.
+  a large Root timeout. The longest single transaction is the restart of all four tiles
+  of one converter type: 4 tiles x 3 s of driver waits = 12 s. The floor stays at 32 s,
+  well above the 12 s, so existing applications see no change in timeout behavior.
 
 Source files:
 
