@@ -152,6 +152,15 @@ enforces the same rule by itself: gated writes are refused while a tile in their
 reads Restart set or CurrentState below 15. The gate never writes and never restarts. The
 settle time of each tile and the list of misses are kept in ``Rfdc._lastGate``.
 
+A tile whose ``RfdcTile`` device is disabled cannot be checked: its variables answer from
+the cache, not from the hardware. A device the operator disabled (enable ``False``) is
+left out of the wait and listed in ``_lastGate['skipped']``, so the sequence does not run
+the full timeout on it. A device that is disabled by its enable dependency (the
+``CheckAdcTileEnabled`` or ``CheckDacTileEnabled`` read not yet processed) stays in the
+wait and misses the gate, since that stale enable is exactly what the wait must not
+trust. A sequence on a disabled ``Rfdc`` device is refused before any restart, as is an
+MTS sync.
+
 Knocked tiles
 -------------
 
@@ -369,8 +378,9 @@ the status, the key list is replaced by one reason:
 
 The first form means the ``RfdcTile`` device is still disabled (its enable follows
 ``CheckAdcTileEnabled`` or ``CheckDacTileEnabled``), so a read would have answered from
-the cache instead of the hardware. The keys map onto the ``RfdcTile.PllStatus``
-variables:
+the cache instead of the hardware. An ``MtsPrecheck`` line with the key list also ends
+with ``Restart=<n|NA>``; a line with one reason has no Restart key. The keys map onto the
+``RfdcTile.PllStatus`` variables:
 
 .. list-table::
    :header-rows: 1

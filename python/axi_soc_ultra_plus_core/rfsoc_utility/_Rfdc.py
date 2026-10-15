@@ -1584,8 +1584,9 @@ class Rfdc(pr.Device):
     # A tile is ready at state 15 with the restart clear and, when it runs from
     # its internal PLL, with the PLL locked. A tile on an external clock has no
     # lock term. A read that fails counts as not ready for this pass, and so does a
-    # tile device that is not enabled yet: its variables would answer from the stale
-    # cache, not from the hardware.
+    # tile device that is not enabled: its variables would answer from the stale cache,
+    # not from the hardware. The gate leaves out the tile devices an operator disabled;
+    # here every other enable value (False, 'deps' or 'parent') counts as not ready.
     def _tileReady(self, tile):
         if tile.enable.value() is not True:
             return False
@@ -1628,12 +1629,19 @@ class Rfdc(pr.Device):
     # One shared deadline over every enabled ADC and DAC tile. Returns the diagnostic line
     # of each tile that is still not ready, keyed (isAdc, index). The last pass runs
     # at or after the deadline, so a tile that reaches state 15 within the last poll
-    # interval passes. Never writes and never restarts.
+    # interval passes. Never writes and never restarts. A tile whose device an operator
+    # disabled (enable False) is left out and listed in _lastGate['skipped']: its status
+    # cannot be read and waiting on it would only run the full timeout. A tile device
+    # that is disabled by its enable dependency ('deps') stays in and misses the gate,
+    # since that is the stale enable this wait must not trust.
     #######################################################################################
     def _gate(self, op):
         start = time.monotonic()
         deadline = start + self.GATE_TIMEOUT_S
-        pending = self._allEnabledTiles()
+        pending = []
+        skipped = []
+        for key in self._allEnabledTiles():
+            (skipped if self._tileDev(*key).enable.value() is False else pending).append(key)
         settle = {}
         while pending:
             still = []
@@ -1653,6 +1661,7 @@ class Rfdc(pr.Device):
         self._lastGate = {
             'settleS': settle,
             'missed':  [self._tileLabel(*key) for key in misses],
+            'skipped': [self._tileLabel(*key) for key in skipped],
             'elapsedS': round(time.monotonic() - start, 3),
         }
         return misses
@@ -2419,6 +2428,10 @@ class Rfdc(pr.Device):
 
     def _mtsPrecheck(self, isAdc):
         kind = 'Adc' if isAdc else 'Dac'
+        # Same refusal as _runSequence: with the Rfdc device not enabled every tile device
+        # reads 'parent', and the per-tile lines below would point at the tiles instead
+        if self.enable.value() is not True:
+            raise RuntimeError(f'{self.Mts.path}.Sync{kind}Tiles refused: {self.path} is not enabled, so no tile would be synchronized')
         mask = int(getattr(self.Mts, f'{kind}Tiles').get(read=True))
         ref = int(getattr(self.Mts, f'{kind}RefTile').get(read=True))
         if mask == 0:
@@ -2443,13 +2456,16 @@ class Rfdc(pr.Device):
                 tile = self._tileDev(isAdc, i)
                 if self._tileReady(tile):
                     continue
-                # A tile device that is not enabled would answer Restart from the cache
-                devEnabled = tile.enable.value() is True
-                try:
-                    restart = int(tile.RestartStatus.get(read=True)) if devEnabled else 'NA'
-                except Exception:
-                    restart = 'NA'
-                lines.append(self._diagLine('MtsSync', isAdc, i, 'MtsPrecheck') + f' Restart={restart}')
+                line = self._diagLine('MtsSync', isAdc, i, 'MtsPrecheck')
+                # The Restart key follows the status keys; a tile device that is not
+                # enabled would answer from the cache, so its line keeps the one reason
+                if tile.enable.value() is True:
+                    try:
+                        restart = int(tile.RestartStatus.get(read=True))
+                    except Exception:
+                        restart = 'NA'
+                    line += f' Restart={restart}'
+                lines.append(line)
             failing.append(self._tileLabel(isAdc, i))
         if failing or enableErrors:
             head = f'{self.Mts.path}.Sync{kind}Tiles refused on: ' + ', '.join(failing) if failing else f'{self.Mts.path}.Sync{kind}Tiles refused'

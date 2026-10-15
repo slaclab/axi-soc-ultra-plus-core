@@ -197,6 +197,7 @@ behave as follows:
   reference tile (``AdcRefTile`` or ``DacRefTile``) is enabled and passes the same state
   15, Restart clear and PLL lock test as the ``Init`` wait. They then run the multi-tile
   sync once with ``IgnoreMetalError`` held off and check ``AdcMtsValid`` (``DacMtsValid``).
+  A sync on a disabled ``Rfdc`` device is refused at once, before any tile is checked.
   A refusal names every failing tile, in the key=value form of the reset diagnostics, and
   nothing is written. ``Init`` and the ``Reset``, ``StartUp``, ``ApplyConfig`` and
   ``PllConfigUpdate`` commands never sync. ``AdcMtsValid`` and ``DacMtsValid`` read 1
