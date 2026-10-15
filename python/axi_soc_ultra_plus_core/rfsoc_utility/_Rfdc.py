@@ -2203,9 +2203,13 @@ class Rfdc(pr.Device):
     # passed the wait are read before the write-back. When apply is set, the write-back
     # and the mirror refresh cover the commanded tiles plus every knocked tile that
     # passed the wait; the knocked tiles are listed in _lastGate['knocked']. With mirrorAll the mirror refresh
-    # reads the whole Rfdc subtree instead of the commanded tiles.
+    # reads the whole Rfdc subtree instead of the commanded tiles. With the Rfdc device
+    # itself not enabled the raw restarts would be dropped without a word and every tile
+    # would miss the gate after the full timeout, so the sequence is refused at once.
     #######################################################################################
     def _runSequence(self, name, op, rawSteps, commanded, apply, mirrorAll=False):
+        if self.enable.value() is not True:
+            raise RuntimeError(f'{name} refused: {self.path} is not enabled, so no tile would be restarted')
         rawErrors = []
         with self._sequence():
             enableErrors = self._refreshTileEnables()
@@ -2423,8 +2427,9 @@ class Rfdc(pr.Device):
         label = 'ADC' if isAdc else 'DAC'
         present = self.enAdcTile if isAdc else self.enDacTile
         # The tile enables are read first so the readiness checks below read enabled
-        # tile devices, as _runSequence does
-        self._refreshTileEnables()
+        # tile devices, as _runSequence does, and a failed enable read is reported in
+        # the refusal instead of leaving the checks on the cached enables
+        enableErrors = self._refreshTileEnables()
         enabled = set(self._enabledAdcTiles() if isAdc else self._enabledDacTiles())
         failing = []
         lines = []
@@ -2438,14 +2443,17 @@ class Rfdc(pr.Device):
                 tile = self._tileDev(isAdc, i)
                 if self._tileReady(tile):
                     continue
+                # A tile device that is not enabled would answer Restart from the cache
+                devEnabled = tile.enable.value() is True
                 try:
-                    restart = int(tile.RestartStatus.get(read=True)) if tile.enable.value() is True else 'NA'
+                    restart = int(tile.RestartStatus.get(read=True)) if devEnabled else 'NA'
                 except Exception:
                     restart = 'NA'
                 lines.append(self._diagLine('MtsSync', isAdc, i, 'MtsPrecheck') + f' Restart={restart}')
             failing.append(self._tileLabel(isAdc, i))
-        if failing:
-            raise ValueError('\n'.join([f'{self.Mts.path}.Sync{kind}Tiles refused on: ' + ', '.join(failing)] + lines))
+        if failing or enableErrors:
+            head = f'{self.Mts.path}.Sync{kind}Tiles refused on: ' + ', '.join(failing) if failing else f'{self.Mts.path}.Sync{kind}Tiles refused'
+            raise ValueError('\n'.join([head] + lines + enableErrors))
         return (mask, ref)
 
     def _mtsSyncSequence(self, isAdc):

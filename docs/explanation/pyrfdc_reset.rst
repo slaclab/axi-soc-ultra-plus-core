@@ -358,8 +358,19 @@ the same one-line diagnostic per tile:
    SupplyUp=<0|1> PowerUp=<0|1> PllLocked=<0|1> ClkDet=<0|1|NA> ClkSrc=<name>
 
 ``<call>`` is the driver call (``XRFdc_Reset`` and the like), ``RestartPrecheck`` for a
-busy refusal, or ``StateGate`` for a tile that missed the state 15 wait. The keys map
-onto the ``RfdcTile.PllStatus`` variables:
+busy refusal, ``StateGate`` for a tile that missed the state 15 wait, or ``MtsPrecheck``
+for a tile that was not ready when an MTS sync was requested. When ``Rfdc`` cannot read
+the status, the key list is replaced by one reason:
+
+.. code-block:: text
+
+   <Op> <ADC|DAC> tile <n>: <call> failed; tile device not enabled, no status read
+   <Op> <ADC|DAC> tile <n>: <call> failed; status read error: <first line of the error>
+
+The first form means the ``RfdcTile`` device is still disabled (its enable follows
+``CheckAdcTileEnabled`` or ``CheckDacTileEnabled``), so a read would have answered from
+the cache instead of the hardware. The keys map onto the ``RfdcTile.PllStatus``
+variables:
 
 .. list-table::
    :header-rows: 1
