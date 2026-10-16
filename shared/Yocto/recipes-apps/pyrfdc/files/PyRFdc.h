@@ -25,7 +25,6 @@
 
 #include <stdint.h>
 
-#include <cmath>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -45,14 +44,12 @@
     #include <boost/python.hpp>
 #endif
 
-//! Restart operations (tile register 0x818 bits 11:8). Reset, StartUp, CustomStartUp
-//! and the SetClkDistribution commit are recorded; Shutdown is a dispatch and
-//! naming value only.
+//! Restart operations (tile register 0x818 bits 11:8). Reset, StartUp and CustomStartUp
+//! are recorded; Shutdown is a dispatch and naming value only.
 static const uint32_t RestartOpReset         = 1;
 static const uint32_t RestartOpStartUp       = 2;
 static const uint32_t RestartOpCustomStartUp = 3;
 static const uint32_t RestartOpShutdown      = 4;
-static const uint32_t RestartOpClkDist       = 5;
 
 //! Restart result (tile register 0x818 bits 3:0)
 static const uint32_t ResetResultOk     = 1;
@@ -75,8 +72,7 @@ inline RestartWait ClassifyRestartWait(bool clearedInTime, bool stateMoved) {
     return stateMoved ? RestartBusy : RestartParked;
 }
 
-//! The busy text of every restart precheck refusal (RestartProceed, RestartTiles and the
-//! SetClkDistribution commit).
+//! The busy text of the restart precheck refusals (RestartProceed and RestartTiles).
 inline std::string BusyText(uint32_t firstState, uint32_t lastState) {
     return "state machine busy: Restart stayed set for " + std::to_string(uint32_t(XRFDC_RESTART_CLR_DLY_CNT)) +
            " ms while CurrentState moved " + std::to_string(firstState) + " to " + std::to_string(lastState) +
@@ -217,13 +213,6 @@ inline void DistTypeTile(uint32_t layout, uint32_t index, uint32_t& type, uint32
     }
 }
 
-//! One 32-bit half of a double, low word first (the order DoubleToUint32 uses)
-inline uint32_t DoubleWord(double value, bool upper) {
-    uint64_t bits;
-    std::memcpy(&bits, &value, sizeof(bits));
-    return upper ? uint32_t(bits >> 32) : uint32_t(bits & 0xFFFFFFFFULL);
-}
-
 //! Valid distributions of a Get result: the entries before the first one that
 //! the driver marked with XRFDC_CLK_DST_INVALID, at most XRFDC_DIST_MAX
 inline uint32_t ClkDistCount(const XRFdc_Distribution_System_Settings& s) {
@@ -233,156 +222,6 @@ inline uint32_t ClkDistCount(const XRFdc_Distribution_System_Settings& s) {
     }
     return n;
 }
-
-inline bool ClkDistTileValid(uint32_t layout, uint32_t type, uint32_t tile);
-
-//! Clock distribution read window, 0x15000 to 0x157FC, read-only. Every word is
-//! ClkDistWord of one XRFdc_GetClkDistribution result. Offsets from 0x15000:
-//!   0x000 Status: 0 unsupported (IP below Gen3), 1 ok, 2 Get failed
-//!   0x004 Count: number of valid distributions
-//!   0x008 to 0x0FC reserved, read 0
-//!   Distribution d (0 to 7) at 0x100 + 0x80 * d, all zero from Count on:
-//!     +0x00 Valid, +0x04 SourceType (0 ADC, 1 DAC), +0x08 SourceTileId
-//!     +0x0C EdgeTypes[0], +0x10 EdgeTileIds[0], +0x14 EdgeTypes[1], +0x18 EdgeTileIds[1]
-//!     +0x1C DistributedClock (0 none, 1 RX, 2 OUTDIV)
-//!     +0x20 and +0x24 DistRefClkFreq in MHz (double, low word first)
-//!     +0x28 Info.Source 7:0, Info.UpperBound 15:8, Info.LowerBound 23:16
-//!     +0x2C Info.MaxDelay 7:0, Info.MinDelay 15:8, Info.IsDelayBalanced bit 16
-//!     +0x30 to +0x3C reserved, read 0
-//!     +0x40 + 0x8 * t SampleRates[0][t] (ADC tile t) and +0x60 + 0x8 * t SampleRates[1][t]
-//!     (DAC tile t), in MSPS as the driver reports them, two words each
-//!   Tile view of (type, tile) at 0x500 + 0x40 * (4 * type + tile):
-//!     +0x00 index of the valid entry whose LowerBound to UpperBound holds the tile
-//!     (0xFF when none, then every other word of the view is 0; the same holds for a tile
-//!     the layout does not have, which no entry can hold: ADC tile 3 and DAC tiles 2 and 3
-//!     of a 3 ADC and 2 DAC device)
-//!     +0x04 SourceType, +0x08 SourceTile, +0x0C PLLEnable, +0x10 DivisionFactor,
-//!     +0x14 DistributedClock, +0x18 Delay, +0x1C reserved, all from that entry's
-//!     Info.ClkSettings[type][tile]
-//!     +0x20 and +0x24 RefClkFreq in MHz, +0x28 and +0x2C SampleRate in MSPS
-//!     +0x30 to +0x3C reserved, read 0
-//!   0x700 to 0x7FC reserved, read 0
-//! A status other than 1 reads the status at 0x000 and 0 everywhere else.
-inline uint32_t ClkDistWord(const XRFdc_Distribution_System_Settings& s, uint32_t layout, uint32_t status, uint32_t off) {
-    if (off == 0x000) {
-        return status;
-    }
-    if ((status != 1) || ((off & 0x3) != 0) || (off > 0x7FC)) {
-        return 0;
-    }
-    uint32_t count = ClkDistCount(s);
-    if (off == 0x004) {
-        return count;
-    }
-    if (off < 0x100) {
-        return 0;
-    }
-
-    const XRFdc_Distribution_Settings* e = nullptr;
-    uint32_t w = 0;
-    uint32_t viewType = 0;
-    uint32_t viewTile = 0;
-    uint32_t viewIndex = 0xFF;
-
-    if (off < 0x500) {
-        uint32_t d = (off - 0x100) >> 7;
-        w = (off - 0x100) & 0x7F;
-        if (d >= count) {
-            return 0;
-        }
-        e = &s.Distributions[d];
-        const XRFdc_Distribution_Info& i = e->Info;
-        switch (w) {
-            case 0x00: return 1;
-            case 0x04: return e->SourceType;
-            case 0x08: return e->SourceTileId;
-            case 0x0C: return e->EdgeTypes[0];
-            case 0x10: return e->EdgeTileIds[0];
-            case 0x14: return e->EdgeTypes[1];
-            case 0x18: return e->EdgeTileIds[1];
-            case 0x1C: return e->DistributedClock;
-            case 0x20: return DoubleWord(e->DistRefClkFreq, false);
-            case 0x24: return DoubleWord(e->DistRefClkFreq, true);
-            case 0x28: return uint32_t(i.Source) | (uint32_t(i.UpperBound) << 8) | (uint32_t(i.LowerBound) << 16);
-            case 0x2C: return uint32_t(i.MaxDelay) | (uint32_t(i.MinDelay) << 8) | ((i.IsDelayBalanced ? 1U : 0U) << 16);
-            default: break;
-        }
-        if ((w >= 0x40) && (w <= 0x5C)) {
-            return DoubleWord(e->SampleRates[0][(w - 0x40) >> 3], ((w >> 2) & 1) != 0);
-        }
-        if ((w >= 0x60) && (w <= 0x7C)) {
-            return DoubleWord(e->SampleRates[1][(w - 0x60) >> 3], ((w >> 2) & 1) != 0);
-        }
-        return 0;
-    }
-
-    if (off < 0x700) {
-        uint32_t v = (off - 0x500) >> 6;
-        w = (off - 0x500) & 0x3F;
-        viewType = v >> 2;
-        viewTile = v & 0x3;
-        if (!ClkDistTileValid(layout, viewType, viewTile)) {
-            return (w == 0x00) ? 0xFFU : 0U;
-        }
-        uint32_t idx = DistIndex(layout, viewType, viewTile);
-        for (uint32_t d = 0; d < count; d++) {
-            const XRFdc_Distribution_Info& i = s.Distributions[d].Info;
-            if ((idx >= i.LowerBound) && (idx <= i.UpperBound)) {
-                viewIndex = d;
-                e = &s.Distributions[d];
-                break;
-            }
-        }
-        if (w == 0x00) {
-            return viewIndex;
-        }
-        if (e == nullptr) {
-            return 0;
-        }
-        const XRFdc_Tile_Clock_Settings& c = e->Info.ClkSettings[viewType][viewTile];
-        switch (w) {
-            case 0x04: return c.SourceType;
-            case 0x08: return c.SourceTile;
-            case 0x0C: return c.PLLEnable;
-            case 0x10: return c.DivisionFactor;
-            case 0x14: return c.DistributedClock;
-            case 0x18: return c.Delay;
-            case 0x20: return DoubleWord(c.RefClkFreq, false);
-            case 0x24: return DoubleWord(c.RefClkFreq, true);
-            case 0x28: return DoubleWord(c.SampleRate, false);
-            case 0x2C: return DoubleWord(c.SampleRate, true);
-            default: break;
-        }
-    }
-    return 0;
-}
-
-//! SetClkDistribution block, 0x15800 to 0x15928 (the read window ends at 0x157FC).
-//! Staging words 0x15800 to 0x1586C mirror XRFdc_Distribution_Settings; they are
-//! plain software words, never gated, and no hardware is touched by a write.
-//! Offsets from 0x15800:
-//!   0x00 SourceType, 0x04 SourceTileId, 0x08 EdgeTypes[0], 0x0C EdgeTileIds[0],
-//!   0x10 EdgeTypes[1], 0x14 EdgeTileIds[1], 0x18 DistributedClock,
-//!   0x1C ShutdownMode (a nonzero value is refused at the commit)
-//!   0x20 and 0x24 DistRefClkFreq in MHz (double, low word first), 0x28 and 0x2C reserved
-//!   0x30 + 0x8 * t ADC tile t SampleRates in MSPS, 0x50 + 0x8 * t DAC tile t SampleRates
-//!   0x100 write the index of a Get entry: load the staging from it (read 1)
-//!   0x104 write: commit the staging (read 1)
-//!   0x108 preview status (ClkDistCheck of the staging), 0x10C ADC affected, 0x110 DAC
-//!   affected, 0x114 ADC span, 0x118 DAC span (tile masks of the staging)
-//!   0x11C to 0x128 the same four masks of the last commit (all 0 after a refused commit)
-
-//! Outcome of checking the staged distribution before the driver sees it
-enum ClkDistCheck {
-    ClkDistOk = 0,
-    ClkDistUnsupported = 1,   // IP below Gen3, or the current distribution could not be read
-    ClkDistBadField = 2,      // a type, a tile id or DistributedClock outside its range
-    ClkDistShutdownMode = 3,  // a nonzero staged ShutdownMode
-    ClkDistBadSpan = 4,       // the staged span is not a legal distribution
-    ClkDistTileDisabled = 5,  // a span tile is not enabled
-    ClkDistBadRate = 6,       // a span tile rate or the reference frequency is out of range
-    ClkDistOrphan = 7         // an enabled tile would end up outside every distribution
-};
 
 //! Bits lower to upper of a mask over distribution tile indices (0 to 7)
 inline uint32_t SpanMask(uint32_t lower, uint32_t upper) {
@@ -406,64 +245,6 @@ inline bool ClkDistTileValid(uint32_t layout, uint32_t type, uint32_t tile) {
     return tile < n;
 }
 
-//! The span rules of XRFdc_CheckClkDistValid that need no hardware: lower, upper and
-//! source are the distribution tile indices of the staged settings (the two edges
-//! are put in order the way the driver does). Types are 0 or 1, tile ids are tiles of
-//! the layout, DistributedClock is at most OutDiv, the source lies between the edges,
-//! a single tile span distributes nothing and a multi tile span distributes RX or
-//! OutDiv, an ADC source may not reach a DAC tile, and on 4 ADC 4 DAC an edge tile
-//! (tile id 0 or 3) source may not distribute OutDiv or a full rate clock without
-//! its PLL. ShutdownMode, the enabled tiles and the rates are checked elsewhere.
-inline ClkDistCheck ClkDistGeometry(uint32_t layout, const XRFdc_Distribution_Settings& s,
-                                    uint32_t& lower, uint32_t& upper, uint32_t& source) {
-    lower = 0;
-    upper = 0;
-    source = 0;
-    if (!ClkDistTileValid(layout, s.SourceType, s.SourceTileId) ||
-        !ClkDistTileValid(layout, s.EdgeTypes[0], s.EdgeTileIds[0]) ||
-        !ClkDistTileValid(layout, s.EdgeTypes[1], s.EdgeTileIds[1]) ||
-        (s.DistributedClock > XRFDC_DIST_OUT_OUTDIV)) {
-        return ClkDistBadField;
-    }
-
-    source = DistIndex(layout, s.SourceType, s.SourceTileId);
-    upper = DistIndex(layout, s.EdgeTypes[0], s.EdgeTileIds[0]);
-    lower = DistIndex(layout, s.EdgeTypes[1], s.EdgeTileIds[1]);
-    if (upper < lower) {
-        uint32_t t = upper;
-        upper = lower;
-        lower = t;
-    }
-
-    if ((source < lower) || (source > upper)) {
-        return ClkDistBadSpan;
-    }
-    if (upper == lower) {
-        if (s.DistributedClock != XRFDC_DIST_OUT_NONE) {
-            return ClkDistBadSpan;
-        }
-    } else if (s.DistributedClock == XRFDC_DIST_OUT_NONE) {
-        return ClkDistBadSpan;
-    }
-
-    if (layout == XRFDC_4ADC_4DAC_TILES) {
-        // The driver runs the PLL when the rate is above the reference. A reference or rate that is
-        // not a number counts as a PLL here, so it is refused by the rate checks that name it
-        // instead of by this rule.
-        bool pll = !(s.SampleRates[s.SourceType][s.SourceTileId] <= s.DistRefClkFreq);
-        if (((s.SourceTileId == 0) || (s.SourceTileId == 3)) &&
-            ((s.DistributedClock == XRFDC_DIST_OUT_OUTDIV) || ((s.DistributedClock == XRFDC_DIST_OUT_RX) && !pll))) {
-            return ClkDistBadSpan;
-        }
-    }
-
-    uint32_t adcEdge = (layout == XRFDC_3ADC_2DAC_TILES) ? XRFDC_CLK_DST_TILE_226 : XRFDC_CLK_DST_TILE_227;
-    if ((s.SourceType == XRFDC_ADC_TILE) && (lower < adcEdge)) {
-        return ClkDistBadSpan;
-    }
-    return ClkDistOk;
-}
-
 //! Tile masks of a mask over distribution indices: bit t of adcMask or dacMask for
 //! each index that is a tile of the layout
 inline void DistMaskToTiles(uint32_t layout, uint32_t mask, uint32_t& adcMask, uint32_t& dacMask) {
@@ -485,67 +266,6 @@ inline void DistMaskToTiles(uint32_t layout, uint32_t mask, uint32_t& adcMask, u
             dacMask |= 1U << tile;
         }
     }
-}
-
-//! The tiles of two tile masks as (type, tile), ADC 0 to 3 first and then DAC 0 to 3
-inline std::vector<std::pair<uint32_t, uint32_t> > ClkDistOrderedTiles(uint32_t adcMask, uint32_t dacMask) {
-    std::vector<std::pair<uint32_t, uint32_t> > out;
-    for (uint32_t t = 0; t < 4; t++) {
-        if ((adcMask >> t) & 1U) {
-            out.push_back(std::make_pair(uint32_t(XRFDC_ADC_TILE), t));
-        }
-    }
-    for (uint32_t t = 0; t < 4; t++) {
-        if ((dacMask >> t) & 1U) {
-            out.push_back(std::make_pair(uint32_t(XRFDC_DAC_TILE), t));
-        }
-    }
-    return out;
-}
-
-//! The affected set of a Set, as a mask over distribution indices: the new span plus
-//! every current distribution (from Get) that holds the new source or a tile of the
-//! new span. orphanMask gets the members of those distributions that the Set cuts
-//! off from their clock: when the old source is inside the new span every member
-//! outside the span, otherwise the members outside the span that are not joined to the
-//! old source by a run of tiles outside the span (the source itself never is).
-inline uint32_t ClkDistAffected(const XRFdc_Distribution_System_Settings& cur, uint32_t spanMask,
-                                uint32_t source, uint32_t& orphanMask) {
-    orphanMask = 0;
-    uint32_t touch = spanMask | ((source < 8) ? (1U << source) : 0U);
-    uint32_t affected = spanMask;
-    uint32_t count = ClkDistCount(cur);
-
-    for (uint32_t d = 0; d < count; d++) {
-        const XRFdc_Distribution_Info& info = cur.Distributions[d].Info;
-        if ((info.LowerBound > info.UpperBound) || (info.UpperBound > 7)) {
-            continue;
-        }
-        uint32_t members = SpanMask(info.LowerBound, info.UpperBound);
-        if ((members & touch) == 0) {
-            continue;
-        }
-        affected |= members;
-
-        uint32_t outside = members & ~spanMask;
-        uint32_t src = info.Source;
-        if ((src < 8) && (((spanMask >> src) & 1U) != 0)) {
-            orphanMask |= outside;
-            continue;
-        }
-
-        uint32_t joined = 0;
-        if ((src < 8) && (((outside >> src) & 1U) != 0)) {
-            for (int k = int(src); (k >= int(info.LowerBound)) && (((outside >> k) & 1U) != 0); k--) {
-                joined |= 1U << k;
-            }
-            for (uint32_t k = src + 1; (k <= info.UpperBound) && (((outside >> k) & 1U) != 0); k++) {
-                joined |= 1U << k;
-            }
-        }
-        orphanMask |= outside & ~joined;
-    }
-    return affected;
 }
 
 //! Converter types whose MTS outputs a restart of the given tiles makes stale, as a
@@ -630,8 +350,8 @@ inline uint32_t MtsGroupMask(uint32_t tiles, uint32_t refTile) {
     return tiles | (1U << (refTile & 0x3));
 }
 
-//! The failure lines of a Set in report order: the ADC diagnostic lines, the DAC
-//! diagnostic lines, the ADC detail lines, the DAC detail lines, then the metal lines
+//! The failure lines of RestartFailureError in report order: the ADC diagnostic lines,
+//! the DAC diagnostic lines, the ADC detail lines, the DAC detail lines, then the metal lines
 inline std::vector<std::string> ClkDistComposeLines(const std::vector<std::string>& adcDiag,
                                                     const std::vector<std::string>& dacDiag,
                                                     const std::vector<std::string>& adcDetail,
@@ -644,23 +364,6 @@ inline std::vector<std::string> ClkDistComposeLines(const std::vector<std::strin
     lines.insert(lines.end(), dacDetail.begin(), dacDetail.end());
     lines.insert(lines.end(), metal.begin(), metal.end());
     return lines;
-}
-
-//! True when a staged sample rate is a finite number inside the limits of its tile (MSPS)
-inline bool ClkDistRateOk(double rate, double minRate, double maxRate) {
-    return std::isfinite(rate) && (rate >= minRate) && (rate <= maxRate);
-}
-
-//! True when the staged reference frequency (MHz) is finite and positive and, when the
-//! source rate is above it so the source runs its PLL, inside the PLL reference range
-inline bool ClkDistRefOk(double ref, double sourceRate) {
-    if (!std::isfinite(ref) || (ref <= 0.0)) {
-        return false;
-    }
-    if (sourceRate > ref) {
-        return (ref >= XRFDC_REFFREQ_MIN) && (ref <= XRFDC_REFFREQ_MAX);
-    }
-    return true;
 }
 
 //! Classify a write to a register address with the same address decode that
@@ -685,21 +388,6 @@ inline WriteGateInfo ClassifyWrite(uint32_t addr) {
         }
         if ((addr >= 0x11010) && (addr <= 0x1102C) && ((addr & 0x3) == 0)) {
             return WriteInfo(WriteStaging, ScopeTile, -1, "MtsConfig");
-        }
-        // 0x15000 to 0x157FC is the read-only clock distribution window: the handler
-        // answers a write with a refusal and nothing reaches a tile or the driver
-        if ((addr >= 0x15000) && (addr <= 0x157FC)) {
-            return WriteInfo(WriteNone, ScopeTile, -1, "ClkDist");
-        }
-        // 0x15800 to 0x1586C are the SetClkDistribution staging words: software only, never
-        // gated. 0x15904 is the commit, a restart command that runs its own restart
-        // precheck. 0x15900 (driver read into the staging) and 0x15908 to 0x15928 (read-only
-        // preview and last-commit words) are answered by the handler and fall to none.
-        if ((addr >= 0x15800) && (addr <= 0x1586C)) {
-            return WriteInfo(WriteStaging, ScopeTile, -1, "ClkDistStaging");
-        }
-        if (addr == 0x15904) {
-            return WriteInfo(WriteRestart, ScopeTile, -1, "SetClkDistribution");
         }
         return none;
     }
@@ -859,20 +547,6 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
     uint32_t clkDetAtFailure_[2][4] = {{0xFF, 0xFF, 0xFF, 0xFF}, {0xFF, 0xFF, 0xFF, 0xFF}};
     uint16_t resetSeq_[2][4] = {};
 
-    //! Clock distribution read window: the last XRFdc_GetClkDistribution result and
-    //! its status (0 unsupported, 1 ok, 2 Get failed). The result is fetched once per
-    //! transaction, on the first window word, and clkDistFetched_ is cleared where
-    //! doTransaction clears errMsg_, so one block read never mixes two snapshots.
-    XRFdc_Distribution_System_Settings clkDist_ = {};
-    uint32_t clkDistStatus_ = 0;
-    bool clkDistFetched_ = false;
-
-    //! SetClkDistribution: the staged settings (filled by the staging words or by a
-    //! staging refresh from a Get entry) and the masks of the last commit: ADC affected,
-    //! DAC affected, ADC span, DAC span. A commit zeroes the masks when it starts.
-    XRFdc_Distribution_Settings clkDistStage_ = {};
-    uint32_t clkDistLast_[4] = {};
-
     //! Application functions
     void StartUp(int Tile_Id);
     void Shutdown(int Tile_Id);
@@ -993,19 +667,6 @@ class PyRFdc : public rogue::interfaces::memory::Slave {
 
     //! RFDC config ROM status block (0x14000 to 0x141FC) and the not-initialized guard
     void ConfigStatusReg(uint32_t addr);
-
-    //! Read-only clock distribution window (0x15000 to 0x157FC) and its once per
-    //! transaction driver read
-    void ClkDistFetch();
-    void ClkDistReg(uint32_t addr);
-
-    //! SetClkDistribution block (0x15800 to 0x15928): staging words, the staging refresh
-    //! from a Get entry, the precheck, the preview and the commit
-    void ClkDistStagingReg(uint32_t addr);
-    void ClkDistRefreshCmd();
-    ClkDistCheck ClkDistValidate(uint32_t& adcAffected, uint32_t& dacAffected, uint32_t& adcSpan, uint32_t& dacSpan, std::vector<std::string>* lines);
-    void ClkDistPreviewReg(uint32_t addr);
-    void ClkDistCommit();
 
     //! Read-only Vivado mixer fields of the config ROM (tile-only 0x200 to 0x23C)
     void RomMixerConfigReg(uint32_t tileAddr);

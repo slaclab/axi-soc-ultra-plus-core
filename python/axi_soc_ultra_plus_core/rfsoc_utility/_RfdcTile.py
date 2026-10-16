@@ -142,7 +142,7 @@ class RfdcTile(pr.Device):
         #######################################################################################
         self.add(pr.RemoteVariable(
             name         = 'ResetRecord',
-            description  = 'Per-tile restart record: sequence[31:16], command[11:8] (1 Reset, 2 StartUp, 3 CustomStartUp, 5 SetClkDistribution), flags[7:4] (0x10 parked override, 0x20 staging not refreshed), result[3:0] (1 ok, 2 failed, 3 refused: state machine busy)',
+            description  = 'Per-tile restart record: sequence[31:16], command[11:8] (1 Reset, 2 StartUp, 3 CustomStartUp), flags[7:4] (0x10 parked override, 0x20 staging not refreshed), result[3:0] (1 ok, 2 failed, 3 refused: state machine busy)',
             offset       =  0x818,
             bitSize      =  32,
             mode         = 'RO',
@@ -969,7 +969,7 @@ class RfdcTile(pr.Device):
         command = (record >> 8) & 0xF
         flags = (record >> 4) & 0xF
         result = record & 0xF
-        opName = {1: 'Reset', 2: 'StartUp', 3: 'CustomStartUp', 5: 'SetClkDistribution'}.get(command, 'Unknown')
+        opName = {1: 'Reset', 2: 'StartUp', 3: 'CustomStartUp'}.get(command, 'Unknown')
         ok = (result == 1)
 
         if ok:
