@@ -90,7 +90,7 @@ class I2cGpio(pr.Device):
         ))
 
         self.add(pr.RemoteVariable(
-            name        = 'LMX_SDO',
+            name        = 'LMX_PLL_LOCK',
             description = 'LMX SDO / PLL-LOCK inputs: [0]=LMX_SDO0 (IO1_1 @0x04 bit1), [1]=LMX_SDO1 (IO2_1 @0x08 bit1)',
             offset      = 0x04,
             bitOffset   = 1,    # bit 1 within each bank word

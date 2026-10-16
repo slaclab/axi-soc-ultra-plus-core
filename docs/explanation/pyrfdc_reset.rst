@@ -56,9 +56,6 @@ and no write-back.
    * - ``PllConfig.PllConfigUpdate``
      - PLL commit, then ``StartUpRaw`` of the same tile
      - The tile, plus any knocked tile
-   * - ``ClkDist.SetClkDistribution``
-     - The clock distribution commit
-     - The tiles the commit restarted, plus any knocked tile
 
 ``CustomStartUp`` (per tile, and ``CustomStartUpAllAdc`` / ``CustomStartUpAllDac``) is a
 raw command only. It packs StartState into bits 3:0 and EndState into bits 7:4 of one
@@ -151,6 +148,15 @@ commanded, and a tile is not safe to write until it is back at state 15. ``PyRFd
 enforces the same rule by itself: gated writes are refused while a tile in their scope
 reads Restart set or CurrentState below 15. The gate never writes and never restarts. The
 settle time of each tile and the list of misses are kept in ``Rfdc._lastGate``.
+
+A tile whose ``RfdcTile`` device is disabled cannot be checked: its variables answer from
+the cache, not from the hardware. A device the operator disabled (enable ``False``) is
+left out of the wait and listed in ``_lastGate['skipped']``, so the sequence does not run
+the full timeout on it. A device that is disabled by its enable dependency (the
+``CheckAdcTileEnabled`` or ``CheckDacTileEnabled`` read not yet processed) stays in the
+wait and misses the gate, since that stale enable is exactly what the wait must not
+trust. A sequence on a disabled ``Rfdc`` device is refused before any restart, as is an
+MTS sync.
 
 Knocked tiles
 -------------
@@ -330,8 +336,8 @@ Restart records and diagnostics
      - Automatic restart count (tile register 0x38), saturates at 255
    * - ``ResetRecord``
      - 0x818
-     - Sequence [31:16], command [11:8] (1 Reset, 2 StartUp, 3 CustomStartUp, 5
-       SetClkDistribution), flags [7:4] (0x10 parked, 0x20 staging not refreshed),
+     - Sequence [31:16], command [11:8] (1 Reset, 2 StartUp, 3 CustomStartUp), flags [7:4]
+       (0x10 parked, 0x20 staging not refreshed),
        result [3:0] (1 ok, 2 failed, 3 refused: state machine busy)
    * - ``ResetRecordStateAtFailure``
      - 0x81C
@@ -358,8 +364,20 @@ the same one-line diagnostic per tile:
    SupplyUp=<0|1> PowerUp=<0|1> PllLocked=<0|1> ClkDet=<0|1|NA> ClkSrc=<name>
 
 ``<call>`` is the driver call (``XRFdc_Reset`` and the like), ``RestartPrecheck`` for a
-busy refusal, or ``StateGate`` for a tile that missed the state 15 wait. The keys map
-onto the ``RfdcTile.PllStatus`` variables:
+busy refusal, ``StateGate`` for a tile that missed the state 15 wait, or ``MtsPrecheck``
+for a tile that was not ready when an MTS sync was requested. When ``Rfdc`` cannot read
+the status, the key list is replaced by one reason:
+
+.. code-block:: text
+
+   <Op> <ADC|DAC> tile <n>: <call> failed; tile device not enabled, no status read
+   <Op> <ADC|DAC> tile <n>: <call> failed; status read error: <first line of the error>
+
+The first form means the ``RfdcTile`` device is still disabled (its enable follows
+``CheckAdcTileEnabled`` or ``CheckDacTileEnabled``), so a read would have answered from
+the cache instead of the hardware. An ``MtsPrecheck`` line with the key list also ends
+with ``Restart=<n|NA>``; a line with one reason has no Restart key. The keys map onto the
+``RfdcTile.PllStatus`` variables:
 
 .. list-table::
    :header-rows: 1
@@ -392,9 +410,10 @@ Timeouts
 
 A restart transaction can block in ``PyRFdc`` far longer than the usual PyRogue
 timeout. For each tile, the driver can spend up to 1 s in the restart precheck, 1 s
-reaching state 1 and 1 s reaching state 15. The longest single transaction is a clock
-distribution Set over all eight tiles: 8 x 3 s, plus 1 s for the source tile, plus
-margin. ``Rfdc._start`` therefore raises the transaction timeout of the ``Rfdc`` subtree
+waiting for the PLL to lock and 1 s waiting for the restart to finish. The longest
+single transaction is the restart of all four tiles of one converter type:
+4 x 3 s = 12 s. ``Rfdc._start`` raises the transaction timeout of the ``Rfdc`` subtree
 to ``TIMEOUT_FLOOR_S`` (32 s) when the Root timeout is lower. It never lowers a longer
-application timeout and never touches the rest of the tree. The gate and the write-back
-are many short transactions and are not affected.
+application timeout and never touches the rest of the tree. The floor stays at 32 s,
+well above the 12 s, so existing applications see no change in timeout behavior. The
+gate and the write-back are many short transactions and are not affected.
