@@ -53,28 +53,44 @@ board.
   `RealDigitalRfSoC4x2`, so `-f` is needed to bypass auto-detect; `-B` takes
   `system.bit` from beside `image.ub`. The script uses sudo, writes a dnsmasq
   config bound to a fixed interface (`eth2`) with `port=0` (TFTP only, no DHCP),
-  and changes the host it runs on. On a private network without DHCP the board
-  needs static `ipaddr` and `serverip`. This repository does not configure the
+  and changes the host it runs on. This repository does not configure the
   host's network.
-- Addressing: use DHCP, or set static `ipaddr` and `serverip` in the U-Boot
-  environment (`saveenv` stores it in QSPI on Kria). A saved environment replaces the
-  built-in defaults, so after any U-Boot or `BOOT.BIN` update run
-  `env default -a`, re-set the network variables, then `saveenv`; an
-  environment saved by an older U-Boot lacks the netboot variables. A set `serverip` is kept
-  over the DHCP server's address.
-- Interface: set `ethprime` to the jack facing the TFTP network. AMD's overlay
-  makes `ethernet0` = GEM0 (J10D).
+- Interface: the supported setup is J10D (GEM0, AMD's `ethernet0`, U-Boot
+  `eth0`) cabled to the TFTP network. Static `ipaddr` and `serverip` apply to
+  that device. Another jack needs that device selected and its own
+  `ipaddrN`, and `ipaddr` must still be non-empty, because `netboot` decides
+  DHCP versus static from `${ipaddr}` alone; that setup is untested. The
+  per-MAC file name comes from `ethaddr` (GEM0's MAC), which must be set: with
+  it empty, the `setexpr macfn` step fails and the network chain aborts.
+- Addressing: on a private network without DHCP, set static `ipaddr` and
+  `serverip`. With DHCP, a set `serverip` is kept over the DHCP server's
+  address. On a DHCP lab network, `fallback` tries TFTP on every boot from
+  whatever next-server the DHCP server offers.
+- Environment: the U-Boot environment lives in QSPI at `0x2200000` (redundant
+  copy `0x2220000`), outside both A/B slots, so both slots share it. A
+  `saveenv` from our U-Boot also changes what AMD's U-Boot in the recovery slot
+  runs, and an environment saved earlier by AMD's U-Boot hides our netboot
+  variables, because a saved environment replaces the built-in defaults. During
+  bring-up, run `printenv bootcmd` (and the netboot variables) first, and
+  prefer `setenv` without `saveenv`; record anything saved. To restore
+  defaults, run `env default -a; saveenv` from the slot whose U-Boot should own
+  the environment, or erase `0x2200000` and `0x2220000`.
 - Marker: `loadpl_net_marked` runs `loadpl_net` and then sets `bootargs` from
   `netbootargs`, which carries `axisoc.pl=tftp`. `bootm` and `pxe boot` pass it
   to the kernel, and `startup-app-init` then skips loading `/boot/system.bit`
   even if an SD card is present. To reload the PL at runtime on a TFTP-booted
   board, call `fpgautil -b` directly; `systemctl restart startup-app-init`
-  keeps the TFTP bitstream. The arguments in `UBOOT_NETBOOT_BOOTARGS:k26-kr`
-  must match `system-user.dtsi` `/chosen`.
-- Timeouts: with no answering server, `netboot` waits on each failed lwIP
-  attempt (about 6 s each; DHCP failure is unmeasured) before
-  `run sdboot` starts the SD boot (all timeouts unverified on this board). The shared header estimates about 85 s for
-  a silent server-down PXE walk, not measured on this board.
+  keeps the TFTP bitstream. `UBOOT_NETBOOT_BOOTARGS:k26-kr` holds the full
+  network-path arguments (initramfs root); the SD path instead uses
+  `boot.cmd.kria` with `KERNEL_COMMAND_APPEND`. Check effective arguments in
+  `/proc/cmdline`, not `/proc/device-tree/chosen/bootargs`.
+- Timeouts (unmeasured estimate): with no answering server, the four-name
+  bitstream probe in `loadpl_net` runs first, and its failure aborts the
+  network chain before the PXE walk, so the shared header's ~85 s PXE estimate
+  does not apply here. Expect roughly four failed lwIP TFTP attempts (about
+  6 s each, per the shared header; not measured on this board), or the DHCP
+  timeout (unmeasured) if no DHCP server answers either, before `run sdboot`
+  starts the SD boot.
 
 ## Rebuilding after board-support changes
 

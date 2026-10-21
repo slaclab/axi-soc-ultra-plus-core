@@ -15,8 +15,9 @@
 	/* && short-circuits so a dhcp or tftp failure each bail out at their own */ \
 	/* independent, hardcoded lwIP timeout (~6.2s measured for TFTP-fail; DHCP-fail unmeasured, */ \
 	/* see Common Pitfalls Pitfall 4) rather than summing both stages' timeouts. */ \
-	/* Bitstream fetch+program, run by netboot only in the tftp-only (diskless) */ \
-	/* build. 'setexpr gsub' rewrites ${ethaddr}'s colons to dashes into ${macfn} */ \
+	/* Bitstream fetch+program, run by netboot in the tftp-only (diskless) build */ \
+	/* and, through loadpl_net_marked, in the KR260 fallback build. 'setexpr gsub' */ \
+	/* rewrites ${ethaddr}'s colons to dashes into ${macfn} */ \
 	/* (U-Boot's tftpboot parses the first ':' in a filename as a hostIP separator, */ \
 	/* so a colon-form name is unusable). Probe order is most- to least-specific, */ \
 	/* preferring the Vivado .bit at each level: */ \
@@ -49,8 +50,8 @@
 	/* lets boot behavior change server-side without reflashing U-Boot or editing the */ \
 	/* board env. If no PXE config is served, fall back to fetching image.ub directly. */ \
 	/* Addresses (pxefile_addr_r/kernel_addr_r) come from ENV_MEM_LAYOUT_SETTINGS -- do */ \
-	/* not hand-set them here. 'run @LOADPL_SEL@' is substituted at build time by the */ \
-	/* u-boot bbappend per mode (loadpl_net, loadpl_skip or loadpl_net_marked); the */ \
+	/* not hand-set them here. The 'run' target below is substituted at build time by */ \
+	/* the u-boot bbappend per mode (loadpl_net, loadpl_skip or loadpl_net_marked); the */ \
 	/* bareword swap keeps '&&' out of the bbappend sed replacement. */ \
 	/* DHCP + serverip (lwIP): 'dhcp' unconditionally overwrites ${serverip} with the */ \
 	/* DHCP server's own address, and sets ${tftpserverip} from the next-server (siaddr) */ \
@@ -62,8 +63,9 @@
 	/* still bailing at the hardcoded lwIP timeout. To hand TFTP addressing back to DHCP, */ \
 	/* clear serverip ('setenv serverip'). */ \
 	"netboot=if test -n \"${ipaddr}\"; then true; else if test -n \"${serverip}\"; then setenv _sip ${serverip}; dhcp && setenv serverip ${_sip} && setenv tftpserverip && setenv _sip; else dhcp; fi; fi && run @LOADPL_SEL@ && if pxe get; then pxe boot; else tftpboot 0x10000000 image.ub && bootm 0x10000000; fi\0" \
-	/* SD boot. Default is the unmodified 'run distro_bootcmd'; a board may substitute */ \
-	/* @SDBOOT_CMD@ (the KR260 sets boot_targets first, since Kria's preboot clears it). */ \
+	/* SD boot. The bbappend substitutes UBOOT_SDBOOT_CMD into the value below. The */ \
+	/* default is the unmodified 'run distro_bootcmd'; the KR260 sets boot_targets */ \
+	/* first, since Kria's preboot clears it. */ \
 	"sdboot=@SDBOOT_CMD@\0" \
 	/* The WHOLE bootcmd value is substituted at build time by the u-boot bbappend, not */ \
 	/* just a trailing mode action, so a mode can opt out of netboot entirely: */ \

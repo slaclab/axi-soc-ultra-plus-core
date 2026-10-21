@@ -11,8 +11,14 @@ Ethernet/PTP logic belong to the consuming target.
 
 ## Current state, October 20, 2026
 
-Branch `kr260-support` created from `main` at `7.1.0` (`909aa43`). No files
-added yet.
+Branch `kr260-support` from `main` at `7.1.0` (`909aa43`). The M1 board
+files exist (hardware type, block design, XDC, Yocto fragment, device tree,
+README) together with the KR260 network boot with SD fallback (Task 8). The
+ptp-dev `PtpKr260` target has a routed Vivado build, and Yocto `rel-v2026.1`
+images exist in `sd-only` and `fallback` mode; the fallback image passes
+`check_yocto_outputs.sh`. Build records are in ptp-dev
+`firmware/targets/PtpKr260/README.md`. Nothing has been booted or measured on
+a KR260.
 
 ## Background
 
@@ -61,7 +67,8 @@ added yet.
 1. A Vivado 2026.1 build of a consuming target routes with timing met.
 2. Yocto produces `BOOT.BIN`, `boot.scr`, `image.ub` and `system.bit`.
 3. The QSPI slot boots and is validated, and an unvalidated image falls back once.
-4. `BOOT.BIN` is at most `0xD80000` bytes; the board boots from the USB SD card.
+4. `BOOT.BIN` is at most `0xD80000` bytes. The board boots over TFTP when the
+   server answers, and falls back to the USB SD card when it does not.
 5. Linux sees the USB hubs and `/dev/sda`. The jack Linux names `eth0` is identified and links with a stable MAC.
 6. Host access works through `roguetcpbridge`: AxiVersion reads, DMA PRBS
    loopback runs, XVC connects.
@@ -72,7 +79,6 @@ added yet.
 - K26 QSPI part and density, and the `xmutil bootfw_update` input format.
 - U-Boot USB boot with our configuration, including the hub and reset-chip
   drivers.
-- KR260 fan and SYSMON pins.
 
 ## References
 
@@ -84,5 +90,5 @@ The `ptp-dev` repository keeps copies under `docs/reference/kr260/`:
 
 ## Next step
 
-Execute [the M1 implementation plan](m1-implementation.md), starting with the
-hardware type and board directory.
+Hardware bring-up per ptp-dev `docs/plans/kr260-ptp/m1-implementation.md`
+Tasks 5–6, then close-out ([M1 plan](m1-implementation.md) Task 7).

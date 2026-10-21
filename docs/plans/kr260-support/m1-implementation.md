@@ -985,7 +985,7 @@ Why the shared `fallback` mode needs a KR260 variant:
 - ptp-dev: Modify `firmware/targets/PtpKr260/BuildYoctoProject` (pass `-m fallback`)
 
 **Interfaces:**
-- Produces: BitBake variables `UBOOT_NETBOOT_FALLBACK_LOADPL` (default `loadpl_skip`) and `UBOOT_NETBOOT_BOOTARGS` (default empty); U-Boot env `loadpl_net_marked`, `netbootargs`; kernel argument `axisoc.pl=tftp`. Other boards keep their current behavior.
+- Produces: BitBake variables `UBOOT_NETBOOT_FALLBACK_LOADPL` (default `loadpl_skip`), `UBOOT_NETBOOT_TFTP_LOADPL` (default `loadpl_net`), `UBOOT_SDBOOT_CMD` (default `run distro_bootcmd`; the KR260 sets `boot_targets` first) and `UBOOT_NETBOOT_BOOTARGS` (default empty); U-Boot env `sdboot`, `loadpl_net_marked`, `netbootargs`; kernel argument `axisoc.pl=tftp`. Other boards keep their current behavior.
 
 - [ ] **Step 1: Keep the hooks on the KR260 and make the fallback bitstream step selectable**
 
@@ -1062,7 +1062,7 @@ Expected: each new name appears where added, and `sh-ok`.
 
 - [ ] **Step 6: Build and inspect (rdsrv419)**
 
-Change ptp-dev `firmware/targets/PtpKr260/BuildYoctoProject` to pass `-m fallback` to the shared script. Re-run it on the Task 6 project (`-m` re-syncs `UBOOT_NETBOOT_MODE` without reconfiguring). Then:
+Change ptp-dev `firmware/targets/PtpKr260/BuildYoctoProject` to pass `-m fallback` to the shared script. Re-run it on the Task 6 project. `-m` re-syncs `UBOOT_NETBOOT_MODE` without reconfiguring, but the machine file is copied from `zynqmp-user.conf` only at configure time, so the changes from Step 3 need `-c` (or the machine file regenerated); see the board README, "Rebuilding after board-support changes". Then:
 - rerun `check_yocto_outputs.sh` (expect `Yocto outputs OK`; `BOOT.BIN` still without bitstream);
 - `strings linux/BOOT.BIN | grep -E 'run netboot; run sdboot|loadpl_net_marked|axisoc.pl=tftp'` shows all three;
 - the kernel FIT and rootfs are unchanged apart from `startup-app-init`.

@@ -20,9 +20,9 @@ UBOOT_NETBOOT_BOOTARGS ??= ""
 
 UBOOT_NETBOOT_MODE ??= "sd-only"
 
-# Kria strips platform-top.h from SRC_URI (Kria configures u-boot from
-# xilinx_zynqmp_kria_defconfig + .cfg fragments), so this body must no-op when the
-# file was not fetched. A do_configure:append:kria would not help — task appends are
+# Kria machines other than the KR260 strip platform-top.h from SRC_URI (see the
+# SRC_URI:remove:kria comment above), so this body must no-op when the file was
+# not fetched. A do_configure:append:kria would not help — task appends are
 # additive, so the base append still runs on Kria.
 do_configure:append () {
 	if [ -f ${WORKDIR}/platform-top.h ]; then
