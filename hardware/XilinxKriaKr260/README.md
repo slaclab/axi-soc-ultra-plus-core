@@ -76,6 +76,16 @@ board.
   `run sdboot` starts the SD boot (all timeouts unverified on this board). The shared header estimates about 85 s for
   a silent server-down PXE walk, not measured on this board.
 
+## Rebuilding after board-support changes
+
+`BuildYoctoProject.sh` copies `Yocto/zynqmp-user.conf` into the project's
+machine file only when it configures a project; `recipes-bsp` and the shared
+layers are symlinks and update live. After changing this directory's
+`zynqmp-user.conf`, rebuild with the target's `BuildYoctoProject -f <xsa> -c`
+(a full reconfigure; the shared-state cache is kept). Without `-c` the old
+machine settings stay in effect. On October 20, 2026 a rebuild without it kept
+the default `sdboot` and an empty `netbootargs` in `BOOT.BIN`.
+
 ## SD card
 
 Build with the target's `BuildYoctoProject`, then on a Linux host:
