@@ -79,8 +79,10 @@ board.
   `netbootargs`, which carries `axisoc.pl=tftp`. `bootm` and `pxe boot` pass it
   to the kernel, and `startup-app-init` then skips loading `/boot/system.bit`
   even if an SD card is present. To reload the PL at runtime on a TFTP-booted
-  board, call `fpgautil -b` directly; `systemctl restart startup-app-init`
-  keeps the TFTP bitstream. `UBOOT_NETBOOT_BOOTARGS:k26-kr` holds the full
+  board, stop the bridge and drivers first: `systemctl stop startup-app-init`,
+  `rmmod axi_memory_map axi_stream_dma`, `fpgautil -b /boot/system.bit`, then
+  `systemctl start startup-app-init`. A plain `systemctl restart
+  startup-app-init` keeps the TFTP bitstream. `UBOOT_NETBOOT_BOOTARGS:k26-kr` holds the full
   network-path arguments (initramfs root); the SD path instead uses
   `boot.cmd.kria` with `KERNEL_COMMAND_APPEND`. Check effective arguments in
   `/proc/cmdline`, not `/proc/device-tree/chosen/bootargs`.
