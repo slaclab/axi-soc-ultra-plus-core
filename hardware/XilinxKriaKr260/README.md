@@ -117,26 +117,39 @@ The card holds `BOOT.BIN`, `boot.scr`, `image.ub` and `system.bit` on the
 
 ## Installing BOOT.BIN in QSPI
 
-First install, while the board still runs AMD's firmware: use the Boot Image
-Recovery Tool (hold FWUEN/SW1 while powering on, then open the web page on the
-Ethernet port it reports on the serial console). Alternatively, run
-`sudo xmutil bootfw_update -i BOOT.BIN` from AMD's stock SD image. Load our
-`BOOT.BIN` into one slot and keep the other slot on AMD's image.
+Keep one slot on AMD's image as the recovery image, and write our `BOOT.BIN`
+only into the other slot. Use the Boot Image Recovery Tool for every write: it
+lets you choose the slot. Start it by holding FWUEN/SW1 while powering on, then
+open the web page on the Ethernet port it reports on the serial console. For
+the first install only, `sudo xmutil bootfw_update -i BOOT.BIN` from AMD's stock
+SD image also works, because under AMD's firmware the inactive slot is the
+other one.
 
-From our image, once Linux runs (`image-update` is installed):
+Before the first validation, back up AMD's slot from Linux (see "Image A" and
+"Image B" in `/proc/mtd`; `image_update -p` shows the running slot): `dd` the
+partition to a file, record its sha256 and copy it off the board.
+
+From our image (`image-update` is installed):
 
 ```bash
 command -v image_update        # required for slot validation and fallback acceptance
 cat /proc/mtd                  # expect AMD's partitions; image_update uses mtd3/mtd4
 image_update -p                # persistent state: running and requested image
-image_update -i /boot/BOOT.BIN # writes the inactive slot and requests it
-reboot
 image_update -v                # after a good boot: mark the running image bootable
 ```
 
-An image that is not marked bootable falls back to the other slot on the next
-boot. Keep `image-update` in the image: the Recovery Tool can install or recover
-firmware, but does not replace these on-target validation and fallback checks.
+Do not run `image_update -i` from our image. It writes the inactive slot, which
+is AMD's recovery image while ours is running. Restoring validation flags
+afterwards does not restore AMD's firmware. To replace our image, load the new
+`BOOT.BIN` into our slot with the Recovery Tool, boot it, and run
+`image_update -v`. If AMD's slot is overwritten, restore AMD's published Kria
+boot firmware through the Recovery Tool; the backup is the byte-exact reference.
+
+AMD's A/B description implies that a requested image never marked bootable
+falls back to the last bootable slot on the next boot. This is not yet observed
+on this board. Test it on the first, unvalidated install, not by writing a
+second copy. Keep `image-update` in the image: the Recovery Tool can install or
+recover firmware, but does not replace these on-target validation checks.
 
 ## USB and DMA memory checks
 

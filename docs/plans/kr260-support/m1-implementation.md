@@ -608,7 +608,8 @@ KERNEL_COMMAND_APPEND = "net.ifnames=0 biosdevname=0 clk_ignore_unused cma=1024M
 # local.conf value for this machine; its -m option has no effect on Kria.
 BIF_BITSTREAM_ATTR:k26-kr = ""
 
-# On-target QSPI A/B update: image_update -i BOOT.BIN, -v to validate, -p to print
+# On-target QSPI A/B tool: -v to validate, -p to print. Its -i writes the
+# inactive slot (AMD's recovery image while ours runs); see the board README
 IMAGE_INSTALL:append = " image-update"
 
 #### No additional settings should be after the Postamble
@@ -759,7 +760,6 @@ From our image, once Linux runs (`image-update` is installed):
 command -v image_update        # required for slot validation and fallback acceptance
 cat /proc/mtd                  # expect AMD's partitions; image_update uses mtd3/mtd4
 image_update -p                # persistent state: running and requested image
-image_update -i /boot/BOOT.BIN # writes the inactive slot and requests it
 reboot
 image_update -v                # after a good boot: mark the running image bootable
 ```

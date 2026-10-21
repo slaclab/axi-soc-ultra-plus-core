@@ -66,7 +66,7 @@ a KR260.
 
 1. A Vivado 2026.1 build of a consuming target routes with timing met.
 2. Yocto produces `BOOT.BIN`, `boot.scr`, `image.ub` and `system.bit`.
-3. The QSPI slot boots and is validated, and an unvalidated image falls back once.
+3. Our slot boots and is validated. The first, unvalidated install falls back to AMD's slot, and AMD's slot contents are unchanged (backup hash).
 4. `BOOT.BIN` is at most `0xD80000` bytes. The board boots over TFTP when the
    server answers, and falls back to the USB SD card when it does not.
 5. Linux sees the USB hubs and `/dev/sda`. The jack Linux names `eth0` is identified and links with a stable MAC.
