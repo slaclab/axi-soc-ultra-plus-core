@@ -43,7 +43,7 @@ The Yocto build needs an XSA from ptp-dev's `PtpKr260` target, and hardware acce
 | `hardware/XilinxKriaKr260/bd/2026.1/AxiSocUltraPlusCpuCore.{tcl,bd}` | PS and AXI wiring, generated in Task 3. |
 | `hardware/XilinxKriaKr260/Yocto/zynqmp-user.conf` | Machine fragment appended by `BuildYoctoProject.sh`. |
 | `hardware/XilinxKriaKr260/Yocto/recipes-bsp/device-tree/device-tree.bbappend` | Includes `system-user.dtsi` (same as KV260). |
-| `hardware/XilinxKriaKr260/Yocto/recipes-bsp/device-tree/files/system-user.dtsi` | Boot arguments, CMA, EEPROM MAC, DMA node. |
+| `hardware/XilinxKriaKr260/Yocto/recipes-bsp/device-tree/files/system-user.dtsi` | Boot arguments, EEPROM MAC, DMA node; CMA is allocated through the kernel command line. |
 | `hardware/XilinxKriaKr260/README.md` | Boot chain, SD card, QSPI update, validation and recovery. |
 | `docs/plans/kr260-support/checks/check_hw_type.py` | Task 1 check. |
 | `docs/plans/kr260-support/checks/generate_kr260_bd.tcl` | Task 3 generator. |
@@ -635,7 +635,9 @@ do_configure:append() {
 
 - [ ] **Step 3: Write `system-user.dtsi`**
 
-Differences from the KV260 file: the EEPROM MAC goes to `gem0` (alias `ethernet0` in AMD's KR overlay), and there is no `sdhci1` node. AMD's overlay owns both GEMs, the PHYs, the USB hubs, the SD bridge and the reset chip.
+Differences from the KV260 file: the EEPROM MAC goes to `gem0` (alias `ethernet0` in AMD's KR overlay), and there is no `sdhci1` node or board CMA carve-out. AMD's overlay owns both GEMs, the PHYs, the USB hubs and the reset chip. The USB2244 SD reader enumerates through USB; it has no required `microchip,usb2244` node in the [overlay pinned by the 2026.1 U-Boot recipe](https://github.com/Xilinx/u-boot-xlnx/blob/9a86d4351c5e29db068a2a0e230b74d4fbd55997/arch/arm/dts/zynqmp-sck-kr-g-revB.dtso).
+
+Do not copy the KV260 reservation at `0x80000000` for `0x60000000` bytes: that range is outside K26 DDR, and its `reusable` plus `no-map` properties conflict. Use the existing `cma=1024M` command-line setting to let the kernel allocate the default CMA pool in valid RAM. Check the effective bootargs, successful allocation and physical range on hardware before accepting DMA; the command line alone is not allocation evidence. Other upstream reserved-memory nodes remain intact.
 
 ```dts
 / {
@@ -646,20 +648,6 @@ Differences from the KV260 file: the EEPROM MAC goes to `gem0` (alias `ethernet0
 	aliases {
 		serial0 = &uart0;
 		serial1 = &uart1;
-	};
-
-	reserved-memory {
-		#address-cells = <2>;
-		#size-cells = <2>;
-		ranges;
-
-		cma_reserved: cma@0 {
-			compatible = "shared-dma-pool";
-			reusable;
-			reg = <0x0 0x80000000 0x0 0x60000000>; /* 1.5 GB reserved at 2GB boundary (as KV260) */
-			alignment = <0 0x1000>;
-			no-map;
-		};
 	};
 };
 &i2c1 {
@@ -695,10 +683,10 @@ Run:
 diff -w hardware/XilinxKriaKv260/Yocto/recipes-bsp/device-tree/device-tree.bbappend \
         hardware/XilinxKriaKr260/Yocto/recipes-bsp/device-tree/device-tree.bbappend && echo bbappend-same
 grep -c 'kv' hardware/XilinxKriaKr260/Yocto/zynqmp-user.conf
-grep -n 'sdhci\|gem3' hardware/XilinxKriaKr260/Yocto/recipes-bsp/device-tree/files/system-user.dtsi
+grep -n 'sdhci\|gem3\|reserved-memory\|cma_reserved' hardware/XilinxKriaKr260/Yocto/recipes-bsp/device-tree/files/system-user.dtsi
 ```
 
-Expected: `bbappend-same` (the files differ only in the KV260's trailing whitespace). The `kv` count is `0`. The last grep prints nothing.
+Expected: `bbappend-same` (the files differ only in the KV260's trailing whitespace). The `kv` count is `0`. The last grep prints nothing; this checks only our board fragment, not upstream reservations in the merged tree.
 
 - [ ] **Step 5: Commit (when authorized)**
 
@@ -768,6 +756,7 @@ Ethernet port it reports on the serial console). Alternatively, run
 From our image, once Linux runs (`image-update` is installed):
 
 ```bash
+command -v image_update        # required for slot validation and fallback acceptance
 cat /proc/mtd                  # expect AMD's partitions; image_update uses mtd3/mtd4
 image_update -p                # persistent state: running and requested image
 image_update -i /boot/BOOT.BIN # writes the inactive slot and requests it
@@ -776,7 +765,20 @@ image_update -v                # after a good boot: mark the running image boota
 ```
 
 An image that is not marked bootable falls back to the other slot on the next
-boot.
+boot. Keep `image-update` in the image: the Recovery Tool can install or recover
+firmware, but does not replace these on-target validation and fallback checks.
+
+## USB and DMA memory checks
+
+The carrier overlay describes the USB5744 hubs, their I2C control paths and
+SLG7XL45106 reset wiring. The USB2244 SD reader enumerates through USB without
+a `microchip,usb2244` DT node. Confirm enumeration with `lsusb` and the card's
+`/dev/sda1` and `/dev/sda2` devices and mounts.
+
+The kernel command line requests `cma=1024M`; this board fragment adds no fixed
+CMA reservation. Record the effective bootargs and kernel log showing a
+successful 1024 MiB CMA allocation and its physical range in DDR before DMA
+acceptance. An allocation failure must be resolved before accepting the image.
 
 ## Recovery
 
@@ -855,9 +857,10 @@ grep -q '^DMA_NUM_LANES = "2"' "$conf" || f "DMA_NUM_LANES is not 2"
 dtb=$(ls "$proj"/build/tmp/deploy/images/zynqmp-user/*zynqmp-sck-kr-g-revB.dtb 2>/dev/null | head -1)
 [ -n "$dtb" ] || f "no zynqmp-sck-kr-g-revB.dtb in deploy dir"
 if [ -n "$dtb" ]; then
-   strings "$dtb" | grep -q 'microchip,usb5744' || f "DTB lacks the USB5744 hub"
-   strings "$dtb" | grep -q 'microchip,usb2244' || f "DTB lacks the USB2244 SD bridge"
-   strings "$dtb" | grep -q 'axi_stream_dma'    || f "DTB lacks axi_stream_dma"
+   # The SD reader enumerates on USB; check the overlay's hub/control nodes.
+   for compatible in microchip,usb5744 usb424,2744 usb424,5744 dlg,slg7xl45106 gpio-delay nxp,pca9546 axi_stream_dma; do
+      strings "$dtb" | grep -Fq "$compatible" || f "DTB lacks $compatible"
+   done
 fi
 cfg=$(find "$proj/build/tmp/work" -path '*linux-xlnx*' -name .config -not -path '*/sysroot*' 2>/dev/null | head -1)
 [ -n "$cfg" ] || f "kernel .config not found"
@@ -867,8 +870,18 @@ if [ -n "$cfg" ]; then
    done
    grep -Eq '^CONFIG_USB_ONBOARD_(HUB|DEV)=[ym]' "$cfg" || f "kernel lacks the onboard USB hub driver"
 fi
-ls "$proj"/build/tmp/deploy/ipk/*/image-update_* >/dev/null 2>&1 || \
-   ls "$proj"/build/tmp/deploy/rpm/*/image-update-* >/dev/null 2>&1 || f "image-update package not built"
+manifest=""
+for candidate in "$proj"/build/tmp/deploy/images/zynqmp-user/petalinux-image-minimal-zynqmp-user{.rootfs,}.manifest; do
+   if [ -f "$candidate" ]; then
+      manifest="$candidate"
+      break
+   fi
+done
+if [ -n "$manifest" ]; then
+   grep -Eq '^image-update[[:space:]]' "$manifest" || f "image-update not installed in the rootfs"
+else
+   f "rootfs package manifest not found for petalinux-image-minimal-zynqmp-user"
+fi
 [ $fail -eq 0 ] && echo "Yocto outputs OK"
 exit $fail
 ```
@@ -891,6 +904,8 @@ Expected: ends with `linux.tar.gz image path: .../images/PtpKr260-...linux.tar.g
 Run: `bash <axi-soc>/docs/plans/kr260-support/checks/check_yocto_outputs.sh <ptp-dev>/firmware/build/YoctoProjects/PtpKr260`
 Expected: `Yocto outputs OK`.
 
+The string checks establish only that compatible nodes exist. Decompile the selected merged DTB using the build's native `dtc` and inspect both USB controllers: each USB2/USB3 hub pair must reference its I2C hub control node behind the `pca9546` mux, and the hub resets must resolve through `gpio-delay` to the `slg7xl45106` GPIO controller. Compare the resolved wiring with the `zynqmp-sck-kr-g-revB.dtso` selected by the build. Save the DTB/source revisions and inspection result in the board README. Confirm USB2244 enumeration and `/dev/sda` on hardware in ptp-dev Task 5.
+
 If a kernel option is missing: create `hardware/XilinxKriaKr260/Yocto/recipes-bsp/linux/linux-xlnx_%.bbappend`:
 
 ```
@@ -908,7 +923,7 @@ CONFIG_DP83867_PHY=y
 ```
 
 Then rebuild with `./BuildYoctoProject -f <xsa> -c` and rerun the check.
-If `image-update` fails to build or install, remove its `IMAGE_INSTALL` line, record that QSPI updates use the Recovery Tool, and continue.
+If `image-update` fails to build or install, repair the recipe or packaging and rerun these checks before the M1 QSPI install. Keep its `IMAGE_INSTALL` line: ptp-dev Task 5 requires `image_update -p`, `-v` and `-i` for slot validation and fallback acceptance. Recovery Tool access remains a recovery path; it does not satisfy those acceptance steps. Record unresolved failures as incomplete M1 acceptance.
 
 - [ ] **Step 4: Commit (when authorized)**
 
@@ -931,7 +946,7 @@ Runs after ptp-dev plan Task 6.
 
 - [ ] **Step 1: Record results in `docs/plans/kr260-support/README.md`**
 
-Update "Current state" with: branch revision; Vivado and Yocto versions used; check outputs (Tasks 3 and 6); the ptp-dev acceptance results (QSPI slot and validation, fallback test, USB boot, `/dev/sda`, `eth0` jack and MAC, `fpgautil` reload); and anything not run. Remove open checks that are now answered.
+Update "Current state" with: branch revision; Vivado and Yocto versions used; check outputs (Tasks 3 and 6), including the merged USB hub/reset topology and installed `image-update`; the ptp-dev acceptance results (QSPI slot and validation, fallback test, USB boot, `/dev/sda`, CMA size and physical range, `eth0` jack and MAC, `fpgautil` reload); and anything not run. Remove open checks that are now answered.
 
 - [ ] **Step 2: Fold procedures into the board README**
 
