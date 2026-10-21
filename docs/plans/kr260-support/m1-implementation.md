@@ -26,8 +26,8 @@ The Yocto build needs an XSA from ptp-dev's `PtpKr260` target, and hardware acce
 
 1. This plan, Tasks 1–5.
 2. ptp-dev `docs/plans/kr260-ptp/m1-implementation.md`, Tasks 1–4 (target, XSA, Python).
-3. This plan, Task 6 (Yocto build).
-4. ptp-dev plan, Tasks 5–6 (SD card, QSPI, boot and host acceptance).
+3. This plan, Task 6 (Yocto build), then Task 8 (network boot with SD fallback).
+4. ptp-dev plan, Tasks 5–6 (SD card, QSPI, network and SD boot, host acceptance).
 5. This plan, Task 7 (close-out).
 
 ## File structure
@@ -958,3 +958,115 @@ Add the regeneration command for the block design (the generator's steps) and an
 git add -A docs/plans/kr260-support hardware/XilinxKriaKr260/README.md
 git commit -m "Record KR260 M1 bring-up and retire the execution checklist"
 ```
+
+---
+
+### Task 8: Network boot with SD fallback (added October 20, 2026)
+
+Decision (user, October 20): the KR260 boots from TFTP when the server answers, otherwise from the USB SD card. TFTP is served first from rdsrv305 on a private network; its network cards are not configured yet, and that host setup belongs to the user. Run this task after Task 6 and before ptp-dev Task 5.
+
+Why the shared `fallback` mode needs a KR260 variant:
+- `shared/Yocto/recipes-bsp/u-boot/u-boot-xlnx_%.bbappend` removes `platform-top.h`/`bsp.cfg` on every `:kria` machine, so `-m` currently has no effect on this board.
+- The shared `fallback` mode uses `loadpl_skip` on its network path because other boards carry the bitstream in `BOOT.BIN`. On the KR260 `BOOT.BIN` has no bitstream, so the network path must run `loadpl_net`.
+- If an SD card is also present, `startup-app-init` would then reprogram the PL from `/boot/system.bit`, replacing the TFTP bitstream. The network path therefore sets a kernel-command-line marker, `axisoc.pl=tftp`, and the startup script skips its SD load when it is present. U-Boot's `bootm` and `pxe boot` (the provisioned `pxelinux.cfg/default` has no `APPEND`) both pass the environment `bootargs` to the kernel.
+
+**Files:**
+- Modify: `shared/Yocto/recipes-bsp/u-boot/u-boot-xlnx_%.bbappend`
+- Modify: `shared/Yocto/recipes-bsp/u-boot/files/platform-top.h`
+- Modify: `shared/Yocto/recipes-apps/startup-app-init/files/startup-app-init`
+- Modify: `hardware/XilinxKriaKr260/Yocto/zynqmp-user.conf`
+- Modify: `hardware/XilinxKriaKr260/README.md`
+- ptp-dev: Modify `firmware/targets/PtpKr260/BuildYoctoProject` (pass `-m fallback`)
+
+**Interfaces:**
+- Produces: BitBake variables `UBOOT_NETBOOT_FALLBACK_LOADPL` (default `loadpl_skip`) and `UBOOT_NETBOOT_BOOTARGS` (default empty); U-Boot env `loadpl_net_marked`, `netbootargs`; kernel argument `axisoc.pl=tftp`. Other boards keep their current behavior.
+
+- [ ] **Step 1: Keep the hooks on the KR260 and make the fallback bitstream step selectable**
+
+In `u-boot-xlnx_%.bbappend`, replace the `SRC_URI:remove:kria` line and its comment with:
+
+```
+# Kria machines configure U-Boot from xilinx_zynqmp_kria_defconfig plus .cfg
+# fragments and skip these hooks, except the KR260 (k26-kr): its SD card is on
+# USB and its QSPI BOOT.BIN carries no bitstream, so it uses the netboot hooks.
+SRC_URI:remove:kria = "${@'' if 'k26-kr' in (d.getVar('MACHINEOVERRIDES') or '').split(':') else ' file://platform-top.h file://bsp.cfg'}"
+
+# Bitstream step on the fallback netboot path. Boards whose BOOT.BIN programs
+# the PL skip it; the KR260 loads it over TFTP and marks the kernel command line.
+UBOOT_NETBOOT_FALLBACK_LOADPL ??= "loadpl_skip"
+# Full kernel bootargs for the marked network path (empty = unused).
+UBOOT_NETBOOT_BOOTARGS ??= ""
+```
+
+In the `fallback)` branch, replace `sed -i "s|@LOADPL_SEL@|loadpl_skip|" ...` with:
+
+```
+				sed -i "s|@LOADPL_SEL@|${UBOOT_NETBOOT_FALLBACK_LOADPL}|" ${S}/include/configs/platform-top.h
+```
+
+After the `case`/`esac` (still inside the `if [ -f ${WORKDIR}/platform-top.h ]` block), add:
+
+```
+		sed -i "s|@NETBOOT_BOOTARGS@|${UBOOT_NETBOOT_BOOTARGS}|" ${S}/include/configs/platform-top.h
+```
+
+- [ ] **Step 2: Add the marked bitstream step to `platform-top.h`**
+
+After the `"loadpl_skip=true\0" \` line, add:
+
+```c
+	/* KR260 fallback: program the PL over TFTP, then pass full bootargs with */ \
+	/* axisoc.pl=tftp so startup-app-init does not reload /boot/system.bit. */ \
+	"netbootargs=@NETBOOT_BOOTARGS@\0" \
+	"loadpl_net_marked=run loadpl_net && setenv bootargs \"${netbootargs}\"\0" \
+```
+
+- [ ] **Step 3: Set the KR260 values in `hardware/XilinxKriaKr260/Yocto/zynqmp-user.conf`**
+
+Before the Postamble, add:
+
+```
+# Network boot (fallback mode): load the bitstream over TFTP and mark the
+# kernel command line; the arguments match system-user.dtsi /chosen.
+UBOOT_NETBOOT_FALLBACK_LOADPL:k26-kr = "loadpl_net_marked"
+UBOOT_NETBOOT_BOOTARGS:k26-kr = "earlycon console=ttyPS1,115200 clk_ignore_unused root=/dev/ram0 rw net.ifnames=0 biosdevname=0 cma=1024M axisoc.pl=tftp"
+```
+
+- [ ] **Step 4: Skip the SD bitstream after a TFTP bitstream in `startup-app-init`**
+
+Replace `if [ -f "/boot/system.bit" ]` (the "2nd stage boot" block) with:
+
+```sh
+if grep -qw 'axisoc.pl=tftp' /proc/cmdline
+then
+   echo "PL programmed by U-Boot over TFTP; not loading /boot/system.bit"
+elif [ -f "/boot/system.bit" ]
+```
+
+The existing `fpga_manager` "operating" backstop still guards the driver load. A runtime reload on a TFTP-booted board must call `fpgautil -b` directly; `systemctl restart startup-app-init` keeps the TFTP bitstream.
+
+- [ ] **Step 5: Static checks**
+
+```bash
+grep -n 'NETBOOT_BOOTARGS\|loadpl_net_marked\|UBOOT_NETBOOT_FALLBACK_LOADPL' shared/Yocto/recipes-bsp/u-boot/u-boot-xlnx_%.bbappend shared/Yocto/recipes-bsp/u-boot/files/platform-top.h hardware/XilinxKriaKr260/Yocto/zynqmp-user.conf
+sh -n shared/Yocto/recipes-apps/startup-app-init/files/startup-app-init && echo sh-ok
+```
+
+Expected: each new name appears where added, and `sh-ok`.
+
+- [ ] **Step 6: Build and inspect (rdsrv419)**
+
+Change ptp-dev `firmware/targets/PtpKr260/BuildYoctoProject` to pass `-m fallback` to the shared script. Re-run it on the Task 6 project (`-m` re-syncs `UBOOT_NETBOOT_MODE` without reconfiguring). Then:
+- rerun `check_yocto_outputs.sh` (expect `Yocto outputs OK`; `BOOT.BIN` still without bitstream);
+- `strings linux/BOOT.BIN | grep -E 'run netboot; run sdboot|loadpl_net_marked|axisoc.pl=tftp'` shows all three;
+- the kernel FIT and rootfs are unchanged apart from `startup-app-init`.
+
+- [ ] **Step 7: Document the server and the board procedure in the board README**
+
+Add a "Network boot" section: modes on this board (`fallback` default); what the server must serve (`system.bit` or `system.bit.<mac>` for `loadpl_net`, `image.ub`, optional `pxelinux.cfg`) using `scripts/provision_tftp_host.sh -B` on a host the user has configured (rdsrv305, private network); DHCP or static `ipaddr`/`serverip` in the U-Boot environment (saved in QSPI on Kria); `ethprime` for the jack facing the TFTP network (AMD's overlay makes `ethernet0` = GEM0, J10D); the `axisoc.pl=tftp` marker; and timeouts when no server answers.
+
+- [ ] **Step 8: Commit (when authorized)**
+
+One axi-soc commit ("Network boot with SD fallback on the KR260") and one ptp-dev commit ("Build PtpKr260 Yocto images in netboot fallback mode").
+
+Hardware acceptance (ptp-dev Task 5 additions): with rdsrv305 serving, the board boots TFTP bitstream and kernel and logs the skip message; with the server unreachable, it falls back to the USB SD card after the network timeouts; a per-MAC `system.bit.<mac>` takes precedence.
