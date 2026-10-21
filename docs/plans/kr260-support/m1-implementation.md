@@ -854,18 +854,22 @@ if [ -f "$proj/linux/BOOT.BIN" ]; then
 fi
 conf="$proj/build/conf/local.conf"
 grep -q '^DMA_NUM_LANES = "2"' "$conf" || f "DMA_NUM_LANES is not 2"
-dtb=$(ls "$proj"/build/tmp/deploy/images/zynqmp-user/*zynqmp-sck-kr-g-revB.dtb 2>/dev/null | head -1)
-[ -n "$dtb" ] || f "no zynqmp-sck-kr-g-revB.dtb in deploy dir"
+# image.ub packages zynqmp-user-system.dtb (shared/Yocto/image.its): the SOM
+# tree with the KR260 carrier overlay merged
+dtb="$proj/build/tmp/deploy/images/zynqmp-user/zynqmp-user-system.dtb"
+[ -f "$dtb" ] || dtb=""
+[ -n "$dtb" ] || f "no zynqmp-user-system.dtb in deploy dir"
 if [ -n "$dtb" ]; then
    # The SD reader enumerates on USB; check the overlay's hub/control nodes.
-   for compatible in microchip,usb5744 usb424,2744 usb424,5744 dlg,slg7xl45106 gpio-delay nxp,pca9546 axi_stream_dma; do
+   for compatible in xlnx,zynqmp-sk-kr260 microchip,usb5744 usb424,2744 usb424,5744 dlg,slg7xl45106 gpio-delay nxp,pca9546 axi_stream_dma; do
       strings "$dtb" | grep -Fq "$compatible" || f "DTB lacks $compatible"
    done
 fi
 cfg=$(find "$proj/build/tmp/work" -path '*linux-xlnx*' -name .config -not -path '*/sysroot*' 2>/dev/null | head -1)
 [ -n "$cfg" ] || f "kernel .config not found"
 if [ -n "$cfg" ]; then
-   for o in USB_STORAGE GPIO_SLG7XL45106 DP83867_PHY MACB; do
+   # SLG7XL45106 is driven by gpio-pca9570; gpio-delay by the GPIO aggregator
+   for o in USB_STORAGE GPIO_PCA9570 GPIO_AGGREGATOR I2C_MUX_PCA954x DP83867_PHY MACB; do
       grep -q "^CONFIG_$o=[ym]" "$cfg" || f "kernel lacks CONFIG_$o"
    done
    grep -Eq '^CONFIG_USB_ONBOARD_(HUB|DEV)=[ym]' "$cfg" || f "kernel lacks the onboard USB hub driver"
@@ -918,7 +922,9 @@ and `hardware/XilinxKriaKr260/Yocto/recipes-bsp/linux/files/kr260.cfg` with only
 ```
 CONFIG_USB_STORAGE=y
 CONFIG_USB_ONBOARD_DEV=y
-CONFIG_GPIO_SLG7XL45106=y
+CONFIG_GPIO_PCA9570=y
+CONFIG_GPIO_AGGREGATOR=y
+CONFIG_I2C_MUX_PCA954x=y
 CONFIG_DP83867_PHY=y
 ```
 
