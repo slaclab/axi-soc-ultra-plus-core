@@ -98,7 +98,10 @@ fi
 ##############################################################################
 
 # Load the user's firmware (PL) .bit file (A.K.A. "2nd stage boot")
-if [ -f "/boot/system.bit" ]
+if grep -qw 'axisoc.pl=tftp' /proc/cmdline
+then
+   echo "PL programmed by U-Boot over TFTP; not loading /boot/system.bit"
+elif [ -f "/boot/system.bit" ]
 then
    # fpgautil is "flaky" command and sometimes needs multiple retries to be successful
    while [ ! -z "$(fpgautil -b /boot/system.bit | grep failed)" ]

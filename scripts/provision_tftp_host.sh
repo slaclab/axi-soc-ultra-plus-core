@@ -17,8 +17,10 @@
 ##
 ## With -B, also stages the PL bitstream (plus per-MAC copies via -M) for the
 ## tftp-only (diskless) build, whose U-Boot env fetches and 'fpga load's it
-## before booting the kernel. Fallback-mode servers do not need this -- omit -B
-## and only image.ub/PXE are staged.
+## before booting the kernel. Fallback-mode servers usually do not need this --
+## omit -B and only image.ub/PXE are staged. The exception is the KR260, whose
+## fallback build also loads the bitstream over TFTP (its BOOT.BIN has none),
+## so its server needs -B.
 ##
 ## -F selects the format. The default is the unconverted Vivado .bit: it needs no
 ## bootgen and is the name loadpl_net probes first, so it is the common case.
@@ -253,7 +255,7 @@ fi
 
 ##############################################################################
 # Step 5 (optional, -B/-F/-M): stage the PL bitstream for the tftp-only
-# (diskless) build. The build produces linux/system.bit (a .bit with a Vivado
+# (diskless) build and the KR260 fallback build. The build produces linux/system.bit (a .bit with a Vivado
 # header) next to image.ub.
 #
 # -F bit (the default) copies it unconverted: no bootgen, and it is the first
