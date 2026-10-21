@@ -16,11 +16,15 @@ SD-boot rework does not apply.
 2. Our `BOOT.BIN` (FSBL, PMU firmware, ATF, U-Boot from the design XSA)
    contains no bitstream.
 3. U-Boot runs the netboot hooks, which this board enables in `fallback` mode
-   (`BuildYoctoProject` passes `-m fallback`). `bootcmd` is
-   `run netboot; run sdboot`: it tries TFTP first and, if that fails, runs
-   meta-kria's `boot.scr` (`boot.cmd.kria` via `distro_bootcmd`), which scans
-   `usb0`/`usb1` and boots `image.ub` (kernel, device tree, initramfs) from the
-   SD card.
+   (the ptp-dev `PtpKr260` wrapper always passes `-m fallback`; another mode
+   means changing that wrapper). `bootcmd` is `run netboot; run sdboot`: it
+   tries TFTP first and, if that fails, `sdboot` runs
+   `setenv boot_targets ${usb_boot_devices}; run distro_bootcmd`. Kria's
+   `preboot` clears `boot_targets` and only Kria's own `bootcmd` refills it,
+   so `UBOOT_SDBOOT_CMD:k26-kr` sets it before distro boot. That runs
+   meta-kria's `boot.scr` (from `boot.cmd.kria`) on the USB SD card, which
+   boots `image.ub` (kernel, device tree, initramfs). The SD path does not
+   re-run `pxe`/`dhcp`. Unverified on hardware.
 4. `startup-app-init` mounts `/dev/sda1` at `/boot` and `/dev/sda2` at `/app`,
    loads `/boot/system.bit` with `fpgautil` unless the TFTP path already
    programmed the PL (see Network boot), then loads the DMA drivers.
@@ -28,9 +32,8 @@ SD-boot rework does not apply.
 `SRC_URI:remove:kria` keeps the netboot hooks (`platform-top.h`, `bsp.cfg`) for
 the `k26-kr` machine only; other Kria machines still skip them. The shared
 `fallback` mode skips the bitstream step because other boards carry it in
-`BOOT.BIN`; here `UBOOT_NETBOOT_FALLBACK_LOADPL:k26-kr` selects
-`loadpl_net_marked` instead. Mode `sd-only` or `tftp-only` can be selected with
-`-m`. The "BOOT.BIN bitstream: embedded" message from `BuildYoctoProject.sh` is
+`BOOT.BIN`; here `UBOOT_NETBOOT_FALLBACK_LOADPL:k26-kr` and
+`UBOOT_NETBOOT_TFTP_LOADPL:k26-kr` select `loadpl_net_marked` instead. The "BOOT.BIN bitstream: embedded" message from `BuildYoctoProject.sh` is
 wrong here: `BIF_BITSTREAM_ATTR:k26-kr` removes it.
 
 ## Network boot
@@ -38,16 +41,26 @@ wrong here: `BIF_BITSTREAM_ATTR:k26-kr` removes it.
 Hardware behavior described here follows the code and is unverified on the
 board.
 
-- Modes: `fallback` is the default for this board (`-m fallback`). `sd-only`
-  never tries the network; `tftp-only` never falls back to the SD card.
+- Modes: the board uses `fallback`. `sd-only` never tries the network (it
+  still uses the `boot_targets` SD command); `tftp-only` never falls back to
+  the SD card. The `PtpKr260` wrapper always passes `-m fallback`.
 - Server: it must serve `system.bit` (or a per-board `system.bit.<mac>`, MAC
   with dashes, which takes precedence; `system.bin` forms are also probed) for
   `loadpl_net`, the kernel FIT `image.ub`, and optionally `pxelinux.cfg/`. Set
-  up a host you have configured (rdsrv305, private network) with
-  `scripts/provision_tftp_host.sh -B`. The host's network setup is not done by
-  this repository.
+  up a host you own (rdsrv305, private network, not yet configured) with
+  `scripts/provision_tftp_host.sh -b XilinxKriaKr260 -f <yocto project>/linux/image.ub -B`.
+  `-b` is required, and the script maps a project name only for
+  `RealDigitalRfSoC4x2`, so `-f` is needed to bypass auto-detect; `-B` takes
+  `system.bit` from beside `image.ub`. The script uses sudo, writes a dnsmasq
+  config bound to a fixed interface (`eth2`) with `port=0` (TFTP only, no DHCP),
+  and changes the host it runs on. On a private network without DHCP the board
+  needs static `ipaddr` and `serverip`. This repository does not configure the
+  host's network.
 - Addressing: use DHCP, or set static `ipaddr` and `serverip` in the U-Boot
-  environment (`saveenv` stores it in QSPI on Kria). A set `serverip` is kept
+  environment (`saveenv` stores it in QSPI on Kria). A saved environment replaces the
+  built-in defaults, so after any U-Boot or `BOOT.BIN` update run
+  `env default -a`, re-set the network variables, then `saveenv`; an
+  environment saved by an older U-Boot lacks the netboot variables. A set `serverip` is kept
   over the DHCP server's address.
 - Interface: set `ethprime` to the jack facing the TFTP network. AMD's overlay
   makes `ethernet0` = GEM0 (J10D).
@@ -60,7 +73,7 @@ board.
   must match `system-user.dtsi` `/chosen`.
 - Timeouts: with no answering server, `netboot` waits on each failed lwIP
   attempt (about 6 s each; DHCP failure is unmeasured) before
-  `run sdboot` starts the SD boot. The shared header estimates about 85 s for
+  `run sdboot` starts the SD boot (all timeouts unverified on this board). The shared header estimates about 85 s for
   a silent server-down PXE walk, not measured on this board.
 
 ## SD card
