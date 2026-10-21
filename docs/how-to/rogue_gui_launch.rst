@@ -7,17 +7,16 @@ axi-soc-ultra-plus-core board over TCP.
 Prerequisites
 -------------
 
-- Rogue installed in a conda environment (see **Install Rogue** in this
-  how-to section).
-- The board is powered on and reachable at its IP address (default
-  ``10.0.0.10``).
+- Rogue installed in a conda environment (see :doc:`rogue_install`).
+- The board is powered on and reachable at its IP address
+  (``10.0.0.10`` in the examples below).
 - The application repository cloned locally (e.g.
   ``Simple-rfsoc-4x2-Example``).
 
 Steps
 -----
 
-1. Activate the Rogue environment.  On the SLAC AFS network use the
+1. Activate the Rogue environment.  On the SLAC network use the
    provided setup script:
 
    .. code-block:: bash
@@ -46,9 +45,11 @@ of the Simple-rfsoc-4x2-Example repository, which:
 
 - Opens a TCP memory-map connection to the board (default port 9000).
 - Opens TCP stream connections for ADC/DAC ring-buffer data.
-- Starts a ZMQ server (default port 9099) so that ``launch_gui.py``
-  can reconnect to an existing session.
-- Launches the PyDM GUI via ``pyrogue.pydm.runPyDM()``.
+- Starts a ZMQ server (default port 9099, bound to ``127.0.0.1``) so
+  that ``launch_gui.py`` can reconnect to an existing session.
+
+``devGui.py`` then launches the PyDM GUI via ``pyrogue.pydm.runPyDM()``
+(the default ``--guiType PyDM``).
 
 Troubleshooting
 ---------------
@@ -61,5 +62,5 @@ Troubleshooting
   ``Installed rogue is less than minimum version``.  Update your conda
   environment to Rogue 6.15.0 or later.
 - **Existing ZMQ server:** if a ``Root`` is already running on the
-  same host, use ``scripts/launch_gui.py --server 10.0.0.10`` to
-  attach to it instead of constructing a new one.
+  same host, use ``scripts/launch_gui.py --serverList localhost:9099``
+  (the default) to attach to it instead of constructing a new one.

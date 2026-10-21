@@ -8,7 +8,7 @@ Prerequisites
 -------------
 
 - The board has been imaged and booted at least once (see
-  **SD Card Imaging** in this how-to section).
+  :doc:`sd_card_imaging`).
 - SSH access to the board as ``root``.  Default IP is ``10.0.0.10``
   (DHCP-assigned; adjust if your network differs).
 - A freshly built ``.bit`` file in the Vivado images directory, e.g.:
@@ -49,8 +49,7 @@ reachable:
 
    ping -c 4 10.0.0.10
 
-Then connect with the Rogue GUI (see **Launch the Rogue GUI** in this
-how-to section) and
+Then connect with the Rogue GUI (see :doc:`rogue_gui_launch`) and
 verify the firmware version register matches the new build.
 
 Notes
@@ -65,6 +64,6 @@ Notes
 - This procedure updates the bitstream on the SD card, which the running
   Linux loads with ``fpgautil`` at startup. For a board with **no SD
   card** (diskless QSPI boot), the PL can instead be fetched over the
-  network at boot time; see **TFTP Network Boot** in this how-to section
+  network at boot time; see :doc:`tftp_network_boot`
   (build a ``tftp-only`` image and stage the bitstream with
   ``provision_tftp_host.sh -B``).

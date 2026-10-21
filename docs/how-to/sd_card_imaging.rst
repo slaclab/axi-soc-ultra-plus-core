@@ -37,9 +37,10 @@ Prerequisites
 - ``sudo`` rights on the host doing the imaging.
 - Standard util-linux and filesystem tooling on ``PATH``: ``lsblk``,
   ``mountpoint``, ``mkfs.vfat`` (dosfstools) and ``mkfs.ext4``
-  (e2fsprogs) for all recipes, plus ``losetup`` for
-  ``CreateDiskImage.sh`` and ``sfdisk``, ``wipefs``, ``partprobe`` and
-  ``udevadm`` for ``FormatSdCard.sh``.  These are present on a normal
+  (e2fsprogs) for all recipes, plus ``fdisk`` for ``CreateDiskImage.sh``
+  and the by-hand recipe, ``losetup`` for ``CreateDiskImage.sh``, and
+  ``sfdisk``, ``wipefs``, ``partprobe`` and ``udevadm`` for
+  ``FormatSdCard.sh``.  These are present on a normal
   desktop install but can be missing in a minimal container.
 
 Preferred: build a disk image with ``CreateDiskImage.sh``
@@ -71,8 +72,9 @@ packaged Yocto tarball:
 
 The default is a 2048 MiB image holding a 1 GiB FAT32 boot partition with
 the bootable flag set, plus an ext4 application partition in the
-remaining space.  The boot partition is identical to the one the other
-two recipes produce; the application partition is not, because it is
+remaining space.  The boot partition matches the one the other two
+recipes produce (apart from the MBR type byte, see the note in the
+by-hand reference); the application partition is not, because it is
 bounded by the image size rather than the card, which is what step 4
 below exists to correct.  ``-s`` sets the total image size in MiB and
 ``-b`` the boot partition size; ``-H`` prints the full usage.  Setting
@@ -163,7 +165,7 @@ it.  With the default layout, partition 2 starts at sector ``2099200``.
    signature prompt, loses the filesystem.
 
 Format the card directly with ``FormatSdCard.sh``
---------------------------------------------------
+-------------------------------------------------
 
 :repo:`scripts/FormatSdCard.sh` does the whole job in one pass:
 partitions the card, formats both partitions, and copies the boot images
@@ -201,10 +203,10 @@ If your card is on a reader that these checks reject, use the by-hand
 reference below rather than looking for a way around them.
 
 Reference: partition and format by hand
-----------------------------------------
+---------------------------------------
 
 The steps below were originally published in the Xilinx wiki article
-"Prepare boot medium" (https://xilinx-wiki.atlassian.net/wiki/x/EYMfAQ).
+`Prepare boot medium <https://xilinx-wiki.atlassian.net/wiki/x/EYMfAQ>`__.
 They are reproduced here in full, against a real card, so that following
 them does not require translating the wiki's generic instructions to
 your device node.  This is what the two scripts above automate, and the
@@ -225,7 +227,7 @@ Nothing here has the device interlocks that ``FormatSdCard.sh`` applies,
 so naming the wrong disk by hand repartitions that disk.
 
 Step 2: delete the old partitions and create two new ones
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The ``fdisk`` key sequence, in order: ``d`` to delete each existing
 partition, ``n`` then ``+1G`` for the 1 GiB boot partition, ``a`` to mark
@@ -316,13 +318,14 @@ If the card had more than one partition to begin with, repeat ``d`` until
    partition 1 gets a FAT32 filesystem in the next step, and it still
    boots: the Zynq UltraScale+ BootROM reads the FAT filesystem itself
    and does not consult the MBR partition type byte.  There is no need
-   to change it.  ``FormatSdCard.sh`` tags the boot partition ``c``
-   (W95 FAT32 LBA) instead, which is the more conventional label; either
-   type byte works, so do not treat a mismatch between a card made by
-   hand and one made by the script as a fault.
+   to change it.  ``CreateDiskImage.sh`` drives ``fdisk`` the same way and
+   leaves it at ``83`` too.  ``FormatSdCard.sh`` tags the boot partition
+   ``c`` (W95 FAT32 LBA) instead, which is the more conventional label;
+   either type byte works, so do not treat a mismatch between a card made
+   by hand and one made by the script as a fault.
 
 Step 3: format the two partitions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
@@ -337,7 +340,7 @@ some systems".  The lowercase ``boot`` label is what the boot flow
 expects, so the warning is harmless here.
 
 Step 4: copy the boot images to the boot partition
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 

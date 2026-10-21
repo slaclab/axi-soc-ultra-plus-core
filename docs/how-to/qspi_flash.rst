@@ -19,7 +19,7 @@ Prerequisites
 .. note::
 
    Set the correct boot mode before or after flashing using XSCT
-   (see **Change Boot Mode via XSCT** in this how-to section).
+   (see :doc:`xsct_boot_mode`).
 
 .. note::
 
@@ -57,9 +57,10 @@ Prerequisites
    in the tool's own example: "Zynq MP (1GB QSPI Dual Parallel) ...
    ``-flash_density 1024``".  It also selects the mini u-boot flash writer.
 
-Every board this platform supports wires QSPI as ``Dual Parallel`` with a
+Every board in the table below wires QSPI as ``Dual Parallel`` with a
 ``x4`` data mode, which is the ``qspi-x8-dual_parallel`` flash type.  Only
-the density differs.  Read it from the ``parallel-memories`` property of the
+the density differs.  (The KV260 configures QSPI as ``Single`` and the
+RFSoC 4x2 leaves it disabled, so neither is covered here.)  Read it from the ``parallel-memories`` property of the
 ``&qspi`` node in the board's device tree, which lists the size of each of
 the two parallel devices:
 
@@ -73,7 +74,7 @@ ZCU102               ``0x4000000`` each       64 MB      ``128``
 ==================== ======================== ========== ==========
 
 ``-d`` is the sum of the pair, so it is twice the per-device size.  The ``512``
-default therefore covers every supported board except the ZCU102, which needs
+default therefore covers every board in the table except the ZCU102, which needs
 ``-d 128``.
 
 .. note::
@@ -102,7 +103,13 @@ flash.
    default_parameter="\
    -flash_type qspi-x8-dual_parallel \
    -flash_density 512 \
+   -fsbl linux/zynqmp_fsbl.elf \
    -blank_check -verify"
+
+   # Run through the ARM DAP: without -target_name, program_flash picks the
+   # FPGA TAP and fails with "Problem in running uboot".  Find the arm_dap
+   # entry with 'program_flash -jtagtargets' and append it, for example
+   # default_parameter="$default_parameter -target_name jsn-...-5ba00477-0"
 
    # Program each boot image at its partition offset
    program_flash -f linux/BOOT.BIN  -offset 0x0000000 $default_parameter
@@ -121,8 +128,10 @@ Scripted recipe (``program_qspi_flash.sh``)
 The ``program_qspi_flash.sh`` script, provided as
 :repo:`scripts/program_qspi_flash.sh` in the platform repository, automates
 the recipe above.  Instead of a Yocto build directory it takes the packaged
-``.linux.tar.gz``, extracts it to a scratch directory, and programs each
-image at its partition offset.
+``.linux.tar.gz`` and extracts it to a scratch directory.  By default it
+programs only ``BOOT.BIN``, which is all a TFTP network boot needs in flash
+(see :doc:`tftp_network_boot`); pass ``-a`` to also program ``boot.scr`` and
+``image.ub`` at their partition offsets.
 
 .. code-block:: bash
 
@@ -150,6 +159,15 @@ Options:
   that packaging does the script fall back to the generic Vitis FSBL, which
   does not work on a custom carrier (see the FSBL warning under
   **Prerequisites**).
+- ``-a``: also program ``boot.scr`` and ``image.ub`` (default off).
+  Without it only ``BOOT.BIN`` is written: ``image.ub`` arrives over the
+  network, and ``boot.scr`` is read only by ``distro_bootcmd``, which the
+  ``tftp-only`` ``bootcmd`` never runs.  Use ``-a`` when the board must boot
+  entirely from flash with no TFTP server.
+- ``-S``: skip ``BOOT.BIN``, which is otherwise always programmed.  It holds
+  the FSBL and U-Boot, so it is the part a TFTP network boot needs resident;
+  build with ``BuildYoctoProject.sh -m tftp-only`` to get the bitstream-less
+  ``BOOT.BIN`` (under 2 MB) rather than the ~34 MB one.
 - ``-n``: skip the ``-blank_check -verify`` QA/QC pass, which is **on by
   default**.  ``-verify`` reads the payload back and compares it against the
   image, the only positive proof the dual-parallel addressing put the data
@@ -162,6 +180,10 @@ Options:
   and share its JTAG cable.  Note that ``killVivado`` does not reap
   ``hw_server``.
 - ``-J``: skip the JTAG boot mode step and flash the board as-is.
+- ``-x TOOL``: debugger console for the boot mode step, ``xsdb`` or
+  ``xsct`` (default ``xsdb`` if present, else ``xsct``).
+- ``-p PATH``: ``program_flash`` executable to use (default: the one on
+  ``PATH``), as an escape hatch when that one misbehaves.
 - ``-H``: show the help text.
 
 Throughput
@@ -197,9 +219,9 @@ Boot mode handling
 
 ``program_flash`` has to halt the PS and download an FSBL over JTAG, so the
 script puts the device into JTAG boot mode first, running the JTAG sequence
-from **Change Boot Mode via XSCT** verbatim: write ``0x0100`` to the Boot Mode
-register at ``0xff5e0200``, then ``rst -system``, which leaves the CPU halted
-instead of booting from flash.  Pass ``-J`` to skip this if you manage boot
+from :doc:`xsct_boot_mode` plus a poll (up to 30 s) for the PSU target to
+enumerate: write ``0x0100`` to the Boot Mode register at ``0xff5e0200``, then
+``rst -system``, which leaves the CPU halted instead of booting from flash.  Pass ``-J`` to skip this if you manage boot
 modes yourself.
 
 The board is **left in JTAG boot mode** afterwards, via the ``0xff5e0200``
@@ -280,9 +302,9 @@ finishes.
 After flashing
 --------------
 
-Switch the board to boot from the newly programmed flash using XSCT
-(**Change Boot Mode via XSCT** in this how-to section), then
-power-cycle the board.
+Either power-cycle the board, if its ``M[3:0]`` straps already select QSPI,
+or switch it to QSPI boot without a power-cycle using XSCT (see
+:doc:`xsct_boot_mode`).  Do not do both; see **Boot mode handling** above.
 
 .. note::
 
