@@ -47,19 +47,26 @@ The following application repos target different Xilinx Zynq UltraScale+ SoC boa
      - Pending verification
    * - `Simple-ZCU670-Example <https://github.com/slaclab/Simple-ZCU670-Example>`_
      - Xilinx ZCU670
-     - xczu67dr-fsve1156-2-e
+     - xczu67dr-fsve1156-2-i
      - SimpleZcu670Example
      - Pending verification
+   * - `Simple-SLAC-rfmc-carrier-example <https://github.com/slaclab/Simple-SLAC-rfmc-carrier-example>`_
+     - SLAC RFMC carrier
+     - xczu48dr-ffvg1517-2-e
+     - SimpleSlacRfmcCarrierExample
+     - Pending verification
+
+The ``hardware/TrenzTe0835`` board directory has no public ``Simple-*-Example`` repo.
 
 Finding the target directory name
-----------------------------------
+---------------------------------
 
 The target directory name maps directly to the Vivado project name and to the top-level VHDL
-entity. To find the name for any repo, inspect the ``Makefile``:
+entity. To find the name for any repo, list ``firmware/targets/``. The target's ``Makefile``
+carries the authoritative Xilinx device part string used during synthesis in its ``PRJ_PART``
+variable:
 
 .. code-block:: bash
 
-   cat firmware/targets/<TargetName>/Makefile | grep PRJ_PART
-
-The Makefile ``PRJ_PART`` variable also carries the authoritative Xilinx device part string used
-during synthesis.
+   ls firmware/targets/
+   grep PRJ_PART firmware/targets/<TargetName>/Makefile
