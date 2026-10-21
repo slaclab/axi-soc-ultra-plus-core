@@ -15,14 +15,53 @@ SD-boot rework does not apply.
    from slot A (`0x200000`) or B (`0xF80000`). Each slot holds `0xD80000` bytes.
 2. Our `BOOT.BIN` (FSBL, PMU firmware, ATF, U-Boot from the design XSA)
    contains no bitstream.
-3. meta-kria's U-Boot runs `boot.scr` (`boot.cmd.kria`), which scans `usb0`/`usb1`
-   and boots `image.ub` (kernel, device tree, initramfs) from the SD card.
+3. U-Boot runs the netboot hooks, which this board enables in `fallback` mode
+   (`BuildYoctoProject` passes `-m fallback`). `bootcmd` is
+   `run netboot; run sdboot`: it tries TFTP first and, if that fails, runs
+   meta-kria's `boot.scr` (`boot.cmd.kria` via `distro_bootcmd`), which scans
+   `usb0`/`usb1` and boots `image.ub` (kernel, device tree, initramfs) from the
+   SD card.
 4. `startup-app-init` mounts `/dev/sda1` at `/boot` and `/dev/sda2` at `/app`,
-   loads `/boot/system.bit` with `fpgautil`, then loads the DMA drivers.
+   loads `/boot/system.bit` with `fpgautil` unless the TFTP path already
+   programmed the PL (see Network boot), then loads the DMA drivers.
 
-The shared U-Boot netboot hooks are not used on Kria, so
-`BuildYoctoProject.sh -m` has no effect on this board. Its "BOOT.BIN bitstream:
-embedded" message is also wrong here: `BIF_BITSTREAM_ATTR:k26-kr` removes it.
+`SRC_URI:remove:kria` keeps the netboot hooks (`platform-top.h`, `bsp.cfg`) for
+the `k26-kr` machine only; other Kria machines still skip them. The shared
+`fallback` mode skips the bitstream step because other boards carry it in
+`BOOT.BIN`; here `UBOOT_NETBOOT_FALLBACK_LOADPL:k26-kr` selects
+`loadpl_net_marked` instead. Mode `sd-only` or `tftp-only` can be selected with
+`-m`. The "BOOT.BIN bitstream: embedded" message from `BuildYoctoProject.sh` is
+wrong here: `BIF_BITSTREAM_ATTR:k26-kr` removes it.
+
+## Network boot
+
+Hardware behavior described here follows the code and is unverified on the
+board.
+
+- Modes: `fallback` is the default for this board (`-m fallback`). `sd-only`
+  never tries the network; `tftp-only` never falls back to the SD card.
+- Server: it must serve `system.bit` (or a per-board `system.bit.<mac>`, MAC
+  with dashes, which takes precedence; `system.bin` forms are also probed) for
+  `loadpl_net`, the kernel FIT `image.ub`, and optionally `pxelinux.cfg/`. Set
+  up a host you have configured (rdsrv305, private network) with
+  `scripts/provision_tftp_host.sh -B`. The host's network setup is not done by
+  this repository.
+- Addressing: use DHCP, or set static `ipaddr` and `serverip` in the U-Boot
+  environment (`saveenv` stores it in QSPI on Kria). A set `serverip` is kept
+  over the DHCP server's address.
+- Interface: set `ethprime` to the jack facing the TFTP network. AMD's overlay
+  makes `ethernet0` = GEM0 (J10D).
+- Marker: `loadpl_net_marked` runs `loadpl_net` and then sets `bootargs` from
+  `netbootargs`, which carries `axisoc.pl=tftp`. `bootm` and `pxe boot` pass it
+  to the kernel, and `startup-app-init` then skips loading `/boot/system.bit`
+  even if an SD card is present. To reload the PL at runtime on a TFTP-booted
+  board, call `fpgautil -b` directly; `systemctl restart startup-app-init`
+  keeps the TFTP bitstream. The arguments in `UBOOT_NETBOOT_BOOTARGS:k26-kr`
+  must match `system-user.dtsi` `/chosen`.
+- Timeouts: with no answering server, `netboot` waits on each failed lwIP
+  attempt (about 6 s each; DHCP failure is unmeasured) before
+  `run sdboot` starts the SD boot. The shared header estimates about 85 s for
+  a silent server-down PXE walk, not measured on this board.
 
 ## SD card
 

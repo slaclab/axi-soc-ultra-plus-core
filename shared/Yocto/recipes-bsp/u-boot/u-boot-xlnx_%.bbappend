@@ -1,9 +1,16 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 
 SRC_URI:append = " file://platform-top.h file://bsp.cfg"
-# Exclude every Kria machine — meta-kria's own u-boot-xlnx bbappend already
-# proves ":kria" is an active override for this exact recipe on this exact machine family.
-SRC_URI:remove:kria = " file://platform-top.h file://bsp.cfg"
+# Kria machines configure U-Boot from xilinx_zynqmp_kria_defconfig plus .cfg
+# fragments and skip these hooks, except the KR260 (k26-kr): its SD card is on
+# USB and its QSPI BOOT.BIN carries no bitstream, so it uses the netboot hooks.
+SRC_URI:remove:kria = "${@'' if 'k26-kr' in (d.getVar('MACHINEOVERRIDES') or '').split(':') else ' file://platform-top.h file://bsp.cfg'}"
+
+# Bitstream step on the fallback netboot path. Boards whose BOOT.BIN programs
+# the PL skip it; the KR260 loads it over TFTP and marks the kernel command line.
+UBOOT_NETBOOT_FALLBACK_LOADPL ??= "loadpl_skip"
+# Full kernel bootargs for the marked network path (empty = unused).
+UBOOT_NETBOOT_BOOTARGS ??= ""
 
 UBOOT_NETBOOT_MODE ??= "sd-only"
 
@@ -33,7 +40,7 @@ do_configure:append () {
 				;;
 			fallback)
 				sed -i "s|@BOOTCMD_SEL@|run netboot; run sdboot|" ${S}/include/configs/platform-top.h
-				sed -i "s|@LOADPL_SEL@|loadpl_skip|" ${S}/include/configs/platform-top.h
+				sed -i "s|@LOADPL_SEL@|${UBOOT_NETBOOT_FALLBACK_LOADPL}|" ${S}/include/configs/platform-top.h
 				;;
 			*)
 				# sd-only (the default). The leading echo is not decoration: it is
@@ -48,5 +55,6 @@ do_configure:append () {
 				sed -i "s|@LOADPL_SEL@|loadpl_skip|" ${S}/include/configs/platform-top.h
 				;;
 		esac
+		sed -i "s|@NETBOOT_BOOTARGS@|${UBOOT_NETBOOT_BOOTARGS}|" ${S}/include/configs/platform-top.h
 	fi
 }

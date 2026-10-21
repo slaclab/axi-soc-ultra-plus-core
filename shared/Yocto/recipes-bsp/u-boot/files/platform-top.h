@@ -40,6 +40,10 @@
 	/* startup-app-init fpgautil owns the PL exactly as before (avoids a */ \
 	/* double-program). */ \
 	"loadpl_skip=true\0" \
+	/* KR260 fallback: program the PL over TFTP, then pass full bootargs with */ \
+	/* axisoc.pl=tftp so startup-app-init does not reload /boot/system.bit. */ \
+	"netbootargs=@NETBOOT_BOOTARGS@\0" \
+	"loadpl_net_marked=run loadpl_net && setenv bootargs \"${netbootargs}\"\0" \
 	/* PXE-first: 'pxe get' downloads pxelinux.cfg/01-<MAC> (else .../default) from */ \
 	/* ${serverip} and 'pxe boot' loads the KERNEL FIT it names (FIT -> bootm). This */ \
 	/* lets boot behavior change server-side without reflashing U-Boot or editing the */ \
