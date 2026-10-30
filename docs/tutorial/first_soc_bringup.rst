@@ -343,11 +343,12 @@ Boot
 3. Insert the SD card.
 4. Power up the board.
 5. Confirm the board is reachable on the network. The board takes its address from DHCP
-   (or from ``SOC_IP_STATIC`` if set at Yocto build time); the examples use ``10.0.0.10``:
+   (or from ``SOC_IP_STATIC`` if set at Yocto build time); replace ``<board-ip>`` below
+   with that address:
 
    .. code-block:: bash
 
-      ping 10.0.0.10
+      ping <board-ip>
 
 **Serial console** (for troubleshooting boot failures or network issues):
 
