@@ -9,7 +9,7 @@ Prerequisites
 
 - Rogue installed in a conda environment (see :doc:`rogue_install`).
 - The board is powered on and reachable at its IP address
-  (``10.0.0.10`` in the examples below).
+  (``<board-ip>`` in the examples below).
 - The application repository cloned locally (e.g.
   ``Simple-rfsoc-4x2-Example``).
 
@@ -31,10 +31,10 @@ Steps
    .. code-block:: bash
 
       cd Simple-rfsoc-4x2-Example/software
-      python scripts/devGui.py --ip 10.0.0.10
+      python scripts/devGui.py --ip <board-ip>
 
-   Replace ``10.0.0.10`` with the actual DHCP-assigned address of your
-   board if it differs.
+   Replace ``<board-ip>`` with the DHCP-assigned (or static) address of
+   your board.
 
 What the GUI provides
 ---------------------
@@ -55,7 +55,7 @@ Troubleshooting
 ---------------
 
 - **Connection refused:** verify the board is booted and the IP is
-  correct.  Run ``ping 10.0.0.10`` before launching.
+  correct.  Run ``ping <board-ip>`` before launching.
 - **Rogue version error at startup:** ``rfsoc_utility`` requires Rogue
   6.15.0 or later; importing it with an older Rogue raises
   ``rogue.GeneralError`` with

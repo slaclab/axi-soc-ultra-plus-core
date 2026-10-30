@@ -376,7 +376,7 @@ After imaging
 
    .. code-block:: bash
 
-      ping -c 4 10.0.0.10
+      ping -c 4 <board-ip>
 
 5. Connect a serial console (115200 baud, e.g. ``/dev/ttyUSB1``) if the
    network does not come up; the serial console shows the bootloader and

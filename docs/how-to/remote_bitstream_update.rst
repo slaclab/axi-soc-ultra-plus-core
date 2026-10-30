@@ -9,8 +9,8 @@ Prerequisites
 
 - The board has been imaged and booted at least once (see
   :doc:`sd_card_imaging`).
-- SSH access to the board as ``root``.  Default IP is ``10.0.0.10``
-  (DHCP-assigned; adjust if your network differs).
+- SSH access to the board as ``root`` at ``<board-ip>`` (the
+  DHCP-assigned or static address of your board).
 - A freshly built ``.bit`` file in the Vivado images directory, e.g.:
   ``firmware/targets/<your-target-dir>/images/<full-name>.bit``
 
@@ -22,7 +22,7 @@ Steps
    .. code-block:: bash
 
       scp firmware/targets/<your-target-dir>/images/<full-name>.bit \
-          root@10.0.0.10:/boot/system.bit
+          root@<board-ip>:/boot/system.bit
 
    Replace ``<your-target-dir>`` and ``<full-name>`` with your actual
    target directory name and the timestamped filename produced by the
@@ -33,7 +33,7 @@ Steps
 
    .. code-block:: bash
 
-      ssh root@10.0.0.10 '/bin/sync; /sbin/reboot'
+      ssh root@<board-ip> '/bin/sync; /sbin/reboot'
 
    The ``sync`` command is critical: writing to an SD card is slow and
    rebooting before the write completes may corrupt the file.  ``sync``
@@ -47,7 +47,7 @@ reachable:
 
 .. code-block:: bash
 
-   ping -c 4 10.0.0.10
+   ping -c 4 <board-ip>
 
 Then connect with the Rogue GUI (see :doc:`rogue_gui_launch`) and
 verify the firmware version register matches the new build.
