@@ -7,17 +7,16 @@ axi-soc-ultra-plus-core board over TCP.
 Prerequisites
 -------------
 
-- Rogue installed in a conda environment (see **Install Rogue** in this
-  how-to section).
-- The board is powered on and reachable at its IP address (default
-  ``10.0.0.10``).
+- Rogue installed in a conda environment (see :doc:`rogue_install`).
+- The board is powered on and reachable at its IP address
+  (``<board-ip>`` in the examples below).
 - The application repository cloned locally (e.g.
   ``Simple-rfsoc-4x2-Example``).
 
 Steps
 -----
 
-1. Activate the Rogue environment.  On the SLAC AFS network use the
+1. Activate the Rogue environment.  On the SLAC network use the
    provided setup script:
 
    .. code-block:: bash
@@ -32,10 +31,10 @@ Steps
    .. code-block:: bash
 
       cd Simple-rfsoc-4x2-Example/software
-      python scripts/devGui.py --ip 10.0.0.10
+      python scripts/devGui.py --ip <board-ip>
 
-   Replace ``10.0.0.10`` with the actual DHCP-assigned address of your
-   board if it differs.
+   Replace ``<board-ip>`` with the DHCP-assigned (or static) address of
+   your board.
 
 What the GUI provides
 ---------------------
@@ -46,20 +45,22 @@ of the Simple-rfsoc-4x2-Example repository, which:
 
 - Opens a TCP memory-map connection to the board (default port 9000).
 - Opens TCP stream connections for ADC/DAC ring-buffer data.
-- Starts a ZMQ server (default port 9099) so that ``launch_gui.py``
-  can reconnect to an existing session.
-- Launches the PyDM GUI via ``pyrogue.pydm.runPyDM()``.
+- Starts a ZMQ server (default port 9099, bound to ``127.0.0.1``) so
+  that ``launch_gui.py`` can reconnect to an existing session.
+
+``devGui.py`` then launches the PyDM GUI via ``pyrogue.pydm.runPyDM()``
+(the default ``--guiType PyDM``).
 
 Troubleshooting
 ---------------
 
 - **Connection refused:** verify the board is booted and the IP is
-  correct.  Run ``ping 10.0.0.10`` before launching.
+  correct.  Run ``ping <board-ip>`` before launching.
 - **Rogue version error at startup:** ``rfsoc_utility`` requires Rogue
   6.15.0 or later; importing it with an older Rogue raises
   ``rogue.GeneralError`` with
   ``Installed rogue is less than minimum version``.  Update your conda
   environment to Rogue 6.15.0 or later.
 - **Existing ZMQ server:** if a ``Root`` is already running on the
-  same host, use ``scripts/launch_gui.py --server 10.0.0.10`` to
-  attach to it instead of constructing a new one.
+  same host, use ``scripts/launch_gui.py --serverList localhost:9099``
+  (the default) to attach to it instead of constructing a new one.

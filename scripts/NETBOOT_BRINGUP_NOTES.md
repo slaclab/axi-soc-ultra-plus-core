@@ -1,8 +1,8 @@
-# TFTP Netboot — Bring-Up & Validation Notes (RFSoC 4x2)
+# TFTP Netboot: Bring-Up & Validation Notes (RFSoC 4x2)
 
 Reference values proven on real hardware for the shared U-Boot netboot hooks, the host
 TFTP provisioning tooling, and the how-to documentation. This file lives under `scripts/`
-alongside the provisioning tooling it documents — deliberately **not** under `docs/`, so it
+alongside the provisioning tooling it documents, deliberately **not** under `docs/`, so it
 cannot break the warnings-fatal `sphinx-build -W` docs build.
 
 **Dev host:** `rdsrv403`   **Lab interface:** `eth2` = `10.0.0.1/24`
@@ -14,7 +14,7 @@ cannot break the warnings-fatal `sphinx-build -W` docs build.
 
 Provisioning is scripted by `scripts/provision_tftp_host.sh`. The script is
 idempotent: it (a) writes the canonical dnsmasq config, (b) stages the built `image.ub`
-into the TFTP root, and (c) launches a standalone dnsmasq — and a re-run against an
+into the TFTP root, and (c) launches a standalone dnsmasq; a re-run against an
 already-provisioned host is a sudo-free no-op (no duplicate daemon).
 
 - **Config** `/etc/dnsmasq.d/tftp-lab.conf` (TFTP-only; DNS disabled):
@@ -34,7 +34,7 @@ already-provisioned host is a sudo-free no-op (no duplicate daemon).
   Stop it with `sudo kill "$(cat /run/dnsmasq-tftp-lab.pid)"`.
 - **TFTP root** `/tftpboot` (owned by the running user); **served FIT** `/tftpboot/image.ub`.
 - The dnsmasq daemon drops privileges to `nobody`. A liveness check therefore cannot use
-  `kill -0` from an unprivileged user (EPERM is indistinguishable from ESRCH) — the script
+  `kill -0` from an unprivileged user (EPERM is indistinguishable from ESRCH), so the script
   reads `/proc/<pid>/comm` when `kill -0` returns EPERM, and reaps a stale pidfile PID
   before any relaunch.
 
@@ -70,7 +70,7 @@ The RFSoC 4x2 (`fc:c2:3d:5a:9a:08`) now has a **static reservation** at `10.0.0.
 address is stable across reboots. It does **not** advertise `next-server`/`filename`, so
 `tftpserverip` is never set from DHCP and `serverip` resolves to the DHCP server's own
 address (`10.0.0.1`), which is also the TFTP server here. A board *without* a reservation
-takes a dynamic lease from `.151–.199` that rotates between reboots — for those, **never
+takes a dynamic lease from `.151-.199` that rotates between reboots; for those, **never
 gate pass/fail on the lease address**; gate on `serverip` and on the observable boot outcome.
 
 **Consequence:** the host TFTP server runs **TFTP-only**. Running a second DHCP server
@@ -78,30 +78,30 @@ gate pass/fail on the lease address**; gate on `serverip` and on the observable 
 leases to the *other* boards.
 
 ### DHCP model (design direction)
-- **Primary — site DHCP:** rely on the existing site DHCP server for board addressing; the
+- **Primary (site DHCP):** rely on the existing site DHCP server for board addressing; the
   host/submodule adds **only** TFTP-first + SD-fallback.
-- **Isolated-lab option:** a lab with *no* existing DHCP MAY run dnsmasq as DHCP+TFTP — but
+- **Isolated-lab option:** a lab with *no* existing DHCP MAY run dnsmasq as DHCP+TFTP, but
   **never run two DHCP servers on one segment.** Validate only on an isolated net, or with
-  the site DHCP deliberately stopped. (Not exercised here — the shared `dhcpd` was left
+  the site DHCP deliberately stopped. (Not exercised here: the shared `dhcpd` was left
   running to protect the other dev boards.)
-- **No-DHCP option — static-IP override:** set `serverip`/`ipaddr`/`gatewayip`/`netmask` on
+- **No-DHCP option (static-IP override):** set `serverip`/`ipaddr`/`gatewayip`/`netmask` on
   the board. These MUST be site-configurable with documented placeholder defaults, never a
   hardcoded subnet.
 
-### `serverip` vs. lwIP `dhcp` — save/restore (PR #107 review)
+### `serverip` vs. lwIP `dhcp`: save/restore (PR #107 review)
 lwIP `dhcp` **unconditionally overwrites `serverip`** with the DHCP server's own address on
 every successful bind, and additionally sets `tftpserverip` from the DHCP next-server (siaddr)
 field when one is advertised. Both `tftpboot` and the PXE fetch resolve the TFTP server in
-priority order: explicit `ip:` prefix → `tftpserverip` → `serverip` — so a DHCP-provided
+priority order: explicit `ip:` prefix → `tftpserverip` → `serverip`, so a DHCP-provided
 `tftpserverip` outranks a manually-set `serverip`, and a `saveenv`-persisted `serverip` is
 clobbered by every `dhcp`. The legacy `CONFIG_BOOTP_SERVERIP` knob that suppresses this in the
-old net stack **does not exist in the lwIP DHCP path**, so there is no Kconfig fix — it is
+old net stack **does not exist in the lwIP DHCP path**, so there is no Kconfig fix; it is
 handled in the shipped U-Boot env. `netboot` therefore treats a **non-empty `serverip` as
 authoritative site configuration**: it stashes `serverip` (scratch var `_sip`), runs `dhcp`,
 then restores `serverip` and clears `tftpserverip`. A failed `dhcp` short-circuits the `&&`
-chain *before* the restore — correct, because nothing was bound or clobbered — and preserves
+chain *before* the restore (correct, because nothing was bound or clobbered) and preserves
 the fail-fast timeout. **Practical rule: to hand TFTP addressing back to DHCP, clear `serverip`**
-(`setenv serverip`, optional `saveenv`). This covers the reviewer's mixed case — board IP from
+(`setenv serverip`, optional `saveenv`). This covers the reviewer's mixed case: board IP from
 DHCP, but `serverip` set manually because the site DHCP advertises a wrong next-server.
 
 **Verified on hardware (RFSoC 4x2, manual env at `ZynqMP>`):** with a manual
@@ -126,7 +126,7 @@ setenv serverip 10.0.0.1          # explicit; do NOT rely on a DHCP next-server
 tftpboot 0x10000000 image.ub      # -> "Bytes transferred = <FIT size>"
 bootm 0x10000000                  # -> kernel boots -> "SimpleRfSoc4x2Example login:"
 ```
-- Load address **`0x10000000`** (project-proven, from the repo's own `boot.scr`) — **not**
+- Load address **`0x10000000`** (project-proven, from the repo's own `boot.scr`), **not**
   the generic `loadaddr=0x08000000` / `kernel_addr_r=0x18000000` defaults.
 - **U-Boot 2026.01**; active net stack = **lwIP (`CONFIG_NET_LWIP`)**, confirmed by the
   `DHCP client bound to address … (N ms)` message.
@@ -164,7 +164,7 @@ signature and a serial-console one.
 
 **Sequential, not exit-code-gated (PR #107 review).** In the two modes whose `bootcmd`
 contains `run netboot` (`fallback`, `tftp-only`), `bootcmd` runs `netboot` and then the
-mode action **unconditionally in sequence** — it does *not* branch on `run netboot`'s exit
+mode action **unconditionally in sequence**; it does *not* branch on `run netboot`'s exit
 status. The invariant: a successful boot hands control to the kernel and **never returns to the
 U-Boot shell**, so merely reaching the mode action proves netboot failed. This is robust even
 for boot methods that report a dishonest exit code: upstream `pxe boot` returns **0** after a
@@ -176,7 +176,7 @@ the fallback**; the sequential form closes that gap without patching U-Boot. The
 `pxe get` succeeds / `pxe boot` returns-0 case is re-validated on hardware in §6.
 
 The three build modes produce byte-distinct `BOOT.BIN` and `image.ub`. Exact sizes and md5s
-change with every rebuild, so **do not compare against committed figures** — read the mode
+change with every rebuild, so **do not compare against committed figures**; read the mode
 out of the artifact instead. The baked-in `bootcmd` is the definitive discriminator and never
 goes stale:
 
@@ -203,7 +203,7 @@ TFTP attempts fail; a `tftp-only` build halts at `ZynqMP>`; an `sd-only` build p
 `SD-only build: skipping netboot` and emits no `DHCP client bound` or TFTP lines at all).
 
 ### Static-IP override (no-DHCP path)
-At `ZynqMP>`, set `ipaddr` (e.g. `10.0.0.50` — outside the dhcpd pool, not a fixed host,
+At `ZynqMP>`, set `ipaddr` (e.g. `10.0.0.50`: outside the dhcpd pool, not a fixed host,
 not the gateway) plus `serverip`/`gatewayip`/`netmask`, then `run netboot`: DHCP is skipped
 entirely (zero `DHCP client bound` lines) yet the FIT is still fetched and the board reaches
 `login:`. Leave it **volatile** (no `saveenv`) so a plain `reset` restores the DHCP path.
@@ -212,7 +212,7 @@ entirely (zero `DHCP client bound` lines) yet the FIT is still fetched and the b
 
 ## 4. Remote SD reflash
 
-### JTAG recovery net — `scripts/reflash_via_jtag.tcl`
+### JTAG recovery net: `scripts/reflash_via_jtag.tcl`
 - Provides a warm-inject path to a live `ZynqMP>` prompt over JTAG (`xsdb`/`hw_server`),
   used as the ultimate recovery net.
 - `warm_inject_reflash` requires **`configparams force-mem-accesses 1` before `dow`**
@@ -222,7 +222,7 @@ entirely (zero `DHCP client bound` lines) yet the FIT is still fetched and the b
   A53#0 while the other cores run an SMP kernel triggers RCU stalls). Recover with `con`,
   never `rst -system`.
 
-### U-Boot `fatwrite` is broken on this board — reflash from Linux instead
+### U-Boot `fatwrite` is broken on this board; reflash from Linux instead
 `fatwrite mmc 0:1` under **U-Boot 2026.01** is broken on this board's 1 GiB FAT32 boot
 partition: any write (even 4096 bytes) fails with a bogus `no space left` / `overflow`,
 because the FAT32 **FSInfo free-count is corrupt** (the reported free byte-count is larger
@@ -242,7 +242,7 @@ cmp /tmp/BOOT.BIN /boot/BOOT.BIN       # on-SD byte-identical
 - Identify the SD FAT partition **by content** (holds `BOOT.BIN`/`boot.scr`/`system.bit`/`ssh`),
   never by an assumed device node.
 - A clean `reboot`/`umount` rewrites the corrupt FSInfo correctly (`fsck.vfat` is unavailable).
-- **To switch netboot mode it is sufficient to replace only `BOOT.BIN`** — the mode lives in
+- **To switch netboot mode it is sufficient to replace only `BOOT.BIN`**: the mode lives in
   U-Boot (`platform-top.h`), and the SD `image.ub`/`boot.scr` are not consulted by the
   tftp-only build (it fetches the FIT over TFTP and, on failure, halts without touching SD).
 
@@ -252,7 +252,7 @@ cmp /tmp/BOOT.BIN /boot/BOOT.BIN       # on-SD byte-identical
 
 Both **netboot** build modes (`fallback`, `tftp-only`) were exercised on the board with TFTP
 made unreachable two ways. `sd-only` was added after this section was written and is **not
-covered by any measurement here** — see "sd-only is not yet hardware-validated" at the end of
+covered by any measurement here**; see "sd-only is not yet hardware-validated" at the end of
 §8.
 
 ### Fallback build (`UBOOT_NETBOOT_MODE=fallback`), TFTP down → boots SD
@@ -263,17 +263,17 @@ two **distinct** bounded timeouts (keep them separate).
 > **These are per-`tftpboot` figures, measured before the PXE-first hook existed.** They are
 > still correct per attempt, but they are **not** the end-to-end fallback time on the current
 > code: `pxe get` now issues 13 config-name attempts ahead of the FIT fetch, each paying the
-> timeout below. See §6 for the ~85–110 s aggregate.
+> timeout below. See §6 for the ~85-110 s aggregate.
 
 | Mechanism | Host TFTP state | Serial signature | Bounded fallback time |
 |-----------|-----------------|------------------|-----------------------|
 | dnsmasq stopped (port closed) | reachable, port closed | `ICMP destination unreachable (port unreachable)` ×6 → `TFTP error: -1 (Request timeout)` | **≈ 6 s** (≈ the 6.2 s host-reachable/port-closed figure) |
 | board-scoped silent DROP (black hole) | reachable, packets dropped | **no ICMP** (silent) → `TFTP error: -1 (Request timeout)` | **≈ 5 s** |
 
-- In both cases **no `Bytes transferred` line appears** — nothing is fetched, so the booted
+- In both cases **no `Bytes transferred` line appears**: nothing is fetched, so the booted
   kernel can only have come from SD.
 - The silent black-hole timeout (≈ 5 s) is **comparable to, and slightly under**, the
-  port-closed case — it is **not** longer: lwIP uses a single TFTP request-timeout regardless
+  port-closed case; it is **not** longer: lwIP uses a single TFTP request-timeout regardless
   of whether ICMP feedback is received. Do not assume the two numbers are equal, and do not
   assume the black hole is slower.
 - The black-hole run uses a firewall rule scoped to the board's current lease only, paired
@@ -287,7 +287,7 @@ two **distinct** bounded timeouts (keep them separate).
 
 ### tftp-only build (`UBOOT_NETBOOT_MODE=tftp-only`), TFTP down → halts, no SD
 On the **identical** TFTP failure, the tftp-only build's else-branch prints the literal
-line and then **halts at a bare `ZynqMP>` prompt** — no kernel banner, no `run sdboot`, no
+line and then **halts at a bare `ZynqMP>` prompt**: no kernel banner, no `run sdboot`, no
 SD boot:
 ```
 TFTP error: -1 (Request timeout)
@@ -315,7 +315,7 @@ Added after the bring-up above, in response to the PR review. The netboot hook i
 and boots the FIT that config names; the direct `tftpboot 0x10000000 image.ub && bootm
 0x10000000` stays as the in-`netboot` fallback for when no PXE config is served. The
 expanded `netboot` env value (as shipped today, including the `serverip` save/restore from
-§2 and the `@LOADPL_SEL@` bitstream hook from §7 — `run loadpl_skip` shown here for a
+§2 and the `@LOADPL_SEL@` bitstream hook from §7, with `run loadpl_skip` shown here for a
 `fallback` build):
 ```
 if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _sip ${serverip}; dhcp && setenv serverip ${_sip} && setenv tftpserverip && setenv _sip; else dhcp; fi; fi && run loadpl_skip && if pxe get; then pxe boot; else tftpboot 0x10000000 image.ub && bootm 0x10000000; fi
@@ -332,14 +332,14 @@ if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _s
   ```
   `KERNEL image.ub` points at the same flat `/tftpboot/image.ub` staged for the
   direct-fetch fallback.
-- **`serverip` is still required** (explicit or via DHCP) — PXE does not remove that
+- **`serverip` is still required** (explicit or via DHCP); PXE does not remove that
   dependency; it is the same requirement as the direct-tftp path in Section 3.
 - **Load addresses come from `ENV_MEM_LAYOUT_SETTINGS`** (`configs/xilinx_zynqmp.h`), not
   hand-set: `pxefile_addr_r=0x10000000`, `kernel_addr_r=0x18000000` (verified in the
   u-boot-xlnx 2026.01 source).
 - **No Kconfig added.** `CONFIG_CMD_PXE`, `CONFIG_PXE_UTILS`, and `CONFIG_MENU` are already
-  enabled by the ZynqMP defconfig (via `CONFIG_DISTRO_DEFAULTS`) — verified in the built
-  `.config` — and `bootcmd_pxe` (`run boot_net_usb_start; dhcp; if pxe get; then pxe boot;
+  enabled by the ZynqMP defconfig (via `CONFIG_DISTRO_DEFAULTS`), verified in the built
+  `.config`, and `bootcmd_pxe` (`run boot_net_usb_start; dhcp; if pxe get; then pxe boot;
   fi`) is present in the built default environment. `bsp.cfg` only carries a comment noting
   this so a future reader need not re-derive it.
 - **Validated on hardware (RFSoC 4x2, both netboot build modes).** The full PXE fetch/boot path was
@@ -350,27 +350,27 @@ if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _s
   `if run netboot; then true; else echo TFTP-only build: not falling back to SD; fi`
   (tftp-only).
 
-  **Update (PR #107 review) — sequential `bootcmd`.** `bootcmd` has since been changed to the
+  **Update (PR #107 review): sequential `bootcmd`.** `bootcmd` has since been changed to the
   exit-code-agnostic sequential form `run netboot; <mode-action>` (fallback →
   `run netboot; run sdboot`; tftp-only → `run netboot; echo TFTP-only build: not falling back to
   SD`). The validation recorded here was performed with the earlier exit-code-gated wrapper; the
   sequential form is behaviorally identical for every case below (a successful boot never returns
   to the shell, so the mode action still runs only on failure) and additionally closes the one
-  case the old wrapper could not — `pxe get` **succeeds** but `pxe boot` fails to retrieve the
+  case the old wrapper could not: `pxe get` **succeeds** but `pxe boot` fails to retrieve the
   kernel and returns 0, where `if run netboot; then true; else ...; fi` reads the lie as success
   and skips the fallback. The upstream `pxe boot` exit-0 behavior is confirmed in the pinned
   `xilinx-v2026.1` source; the decisive case is additionally re-checked on the RFSoC 4x2 in this
   session (see the added case in the validated list below).
-  - *PXE default happy path* — `run netboot` → `pxe get` fetches `pxelinux.cfg/default` →
+  - *PXE default happy path*: `run netboot` → `pxe get` fetches `pxelinux.cfg/default` →
     `pxe boot` loads the `KERNEL` FIT at `kernel_addr_r` (`0x18000000`) → boots to `login:`.
     The observed `pxe get` search order matches the documented one exactly: MAC
     (`pxelinux.cfg/01-fc-c2-3d-5a-9a-08`) → descending IP-hex (`0A00000D`…`0`, for
     `10.0.0.13`) → `default-<arch>`… → `default`, 13 names in total.
-  - *MAC-specific override* — a `pxelinux.cfg/01-<mac>` file naming a different FIT is taken
+  - *MAC-specific override*: a `pxelinux.cfg/01-<mac>` file naming a different FIT is taken
     in preference to `default`; the board boots the FIT the MAC file names.
-  - *No PXE config served* — `pxe get` fails and the in-`netboot` fallback
+  - *No PXE config served*: `pxe get` fails and the in-`netboot` fallback
     `tftpboot 0x10000000 image.ub && bootm 0x10000000` runs (FIT at `0x10000000`) → boots.
-  - *`bootcmd` else-branch on total netboot failure* (the previously-open question) — with
+  - *`bootcmd` else-branch on total netboot failure* (the previously-open question): with
     TFTP down, `pxe get` fails **and** the fallback `tftpboot` also fails, so `netboot`
     returns nonzero and `bootcmd`'s else-branch runs: **fallback → `run sdboot` (SD boot);
     tftp-only → prints `TFTP-only build: not falling back to SD` and halts at `ZynqMP>`.**
@@ -380,21 +380,21 @@ if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _s
   - Static-IP override (DHCP skipped, `ipaddr` set) and the distro `run bootcmd_pxe`
     one-liner also PXE-boot as expected.
   - *`pxe boot` exit-0 lie / sequential-`bootcmd` gap (PR #107 review, re-validated on
-    the RFSoC 4x2)* — with a board-MAC `pxelinux.cfg/01-fc-c2-3d-5a-9a-08` naming a
+    the RFSoC 4x2)*: with a board-MAC `pxelinux.cfg/01-fc-c2-3d-5a-9a-08` naming a
     **nonexistent** kernel FIT, `pxe get` succeeded (`GET_RC=0`, 41-byte config fetched)
     but `pxe boot` failed to retrieve the kernel (`TFTP error: 256 (... not found)` →
-    `Skipping Linux for failure retrieving kernel`) and **still returned `BOOT_RC=0`** —
+    `Skipping Linux for failure retrieving kernel`) and **still returned `BOOT_RC=0`**:
     the upstream lie, reproduced. Consequences observed at `ZynqMP>`: the old
     exit-code-gated wrapper (`if run netboot; then true; else ...; fi`) took the `true`
     branch and **skipped the fallback** (`OLD_SAID_OK_NO_FALLBACK`), while the new
     sequential `bootcmd` (`run netboot; <mode-action>`) **always ran the mode action**
-    (`NEW_FALLBACK_RAN`) — the gap is closed without patching U-Boot. The reviewer fixes
+    (`NEW_FALLBACK_RAN`), so the gap is closed without patching U-Boot. The reviewer fixes
     were exercised by loading the new env at the prompt (the board's SD `BOOT.BIN` was an
     older stock build predating the hooks, so a baked-in `printenv` byte-match awaits the
     next full rebuild+reflash). The positive path was also re-run end-to-end: the full new
     `netboot` (serverip preserved across `dhcp`) → `pxe get` default → `pxe boot` →
     `SimpleRfSoc4x2Example login:`.
-- **PXE-first multiplies every TFTP-failure timeout by the probe count (~85–110 s).** This is
+- **PXE-first multiplies every TFTP-failure timeout by the probe count (~85-110 s).** This is
   a behavioral change the PXE-first hook introduces relative to Section 5's pre-PXE figures,
   and it matters wherever a bounded fallback time does. `pxe get` walks **13** config names
   (MAC → 9 IP-hex prefixes → 3 `default-*` variants → `default`), and the in-`netboot`
@@ -410,10 +410,10 @@ if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _s
   **ICMP does not short-circuit a probe.** An earlier revision of this section claimed the
   port-closed case "stays fast (~6 s) because ICMP destination-unreachable aborts each probe
   immediately." That is wrong. Re-measured on the RFSoC 4x2 with dnsmasq stopped: the ICMP
-  *does* arrive — 6 `ICMP destination unreachable (port unreachable)` lines per attempt, as
-  Section 5 records — and each attempt **still** ends in `TFTP error: -1 (Request timeout)`.
+  *does* arrive (6 `ICMP destination unreachable (port unreachable)` lines per attempt, as
+  Section 5 records), and each attempt **still** ends in `TFTP error: -1 (Request timeout)`.
   Boot-to-SSH took **134.5 s**, against **50.0 s** for the same 14 attempts with the server up
-  and NAK'ing: a delta of 84.5 s over 14 attempts, i.e. ≈ 6.0 s each. Section 5's ≈ 5–6 s
+  and NAK'ing: a delta of 84.5 s over 14 attempts, i.e. ≈ 6.0 s each. Section 5's ≈ 5-6 s
   figures are per-`tftpboot` and remain correct; what changed is that PXE-first fires fourteen
   of them, so port-closed and black-hole failures now cost the same order of magnitude rather
   than differing by ~20×.
@@ -438,18 +438,18 @@ if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; then setenv _s
 Added for the diskless-QSPI use case: a `tftp-only` build has no SD card, so the runtime
 `fpgautil -b /boot/system.bit` load in `startup-app-init` (which needs the SD FAT mounted at
 `/boot`) never runs. To keep the PL updatable server-side without reflashing QSPI, U-Boot now
-fetches the bitstream over TFTP and `fpga load`s it before booting the kernel — but **only in
+fetches the bitstream over TFTP and `fpga load`s it before booting the kernel, but **only in
 `tftp-only` mode**. `fallback` builds are untouched (SD `fpgautil` still owns the PL).
 
 ### Where the PL bitstream comes from today (the gap this closes)
-- **`BOOT.BIN` embeds the bitstream** — FSBL programs the PL from SD/QSPI at boot. Confirmed
+- **`BOOT.BIN` embeds the bitstream**: FSBL programs the PL from SD/QSPI at boot. Confirmed
   by size: RFSoC 4x2 `BOOT.BIN` is **36 383 360 B** vs `system.bit` **34 437 578 B**
   (`BOOT.BIN` = FSBL+PMU+ATF+U-Boot + the ~34 MB bitstream). So a diskless QSPI board is
   frozen at the baked-in PL until QSPI is reflashed.
-- **Runtime reload** — on an SD boot, `startup-app-init` mounts the SD FAT at `/boot` and runs
+- **Runtime reload**: on an SD boot, `startup-app-init` mounts the SD FAT at `/boot` and runs
   `fpgautil -b /boot/system.bit` (the "2nd stage" load). No SD ⇒ no `/boot` ⇒ this is skipped.
 - The `tftp-only` `fpga load` **re-programs the PL over** the FSBL bitstream. Halt-on-failure
-  (below) means the net kernel never boots over the FSBL/stale PL — so there is intentionally
+  (below) means the net kernel never boots over the FSBL/stale PL, so there is intentionally
   **no reliance on the BOOT.BIN bitstream as a fallback**.
 
 ### Mechanism (mode-gated, in the shared U-Boot env)
@@ -481,16 +481,16 @@ netboot    = if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; t
   `system.bin.<mac>` and `system.bit` to generic `system.bin`. U-Boot's `tftpboot`
   parses the first `:` in a filename as a
   `hostIP:file` separator, so `system.bin.${ethaddr}` (colon form) is silently mis-parsed
-  and never fetched (observed on HW — see below). `loadpl_net` therefore runs
+  and never fetched (observed on HW; see below). `loadpl_net` therefore runs
   `setexpr macfn gsub : - ${ethaddr}` to rewrite colons to dashes, then fetches
-  `system.bit.${macfn}`. `setexpr gsub` needs `CONFIG_CMD_SETEXPR` + `CONFIG_REGEX` (both
-  on in the ZynqMP defconfig — verified in the built `.config`). A miss returns an immediate
+  `system.bit.${macfn}`. `setexpr gsub` needs `CONFIG_CMD_SETEXPR` and `CONFIG_REGEX` (both
+  on in the ZynqMP defconfig, verified in the built `.config`). A miss returns an immediate
   TFTP NAK rather than a timeout, so the extra probes cost ~nothing.
 - **Either `.bit` or `.bin` loads.** `zynqmp_load()` (`drivers/fpga/zynqmppl.c`) calls
   `zynqmp_validate_bitstream()` **only** when `zynqmp_firmware_version() <= PMUFW_V1_0`; on
   current PMUFW it takes the `else { bstype = 0; }` branch, does no sync-word scan and no
   byte-swap, and hands the buffer verbatim to the PMU via `PM_FPGA_LOAD`. The PMU's PCAP
-  loader skips the Vivado header, so an unconverted `.bit` programs fine — confirmed in the
+  loader skips the Vivado header, so an unconverted `.bit` programs fine, confirmed in the
   field before it was confirmed in the source. The size delta seen here is exactly the header:
   `system.bit` 34 437 578 B vs the staged `.bin` 34 437 356 B = **222 B**. On PMUFW ≤ v1.0 the
   validator does run and rejects a `.bit`: `check_data()` finds the sync word at a nonzero
@@ -501,7 +501,7 @@ netboot    = if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; t
   `AA 99 55 66` → `66 55 99 AA`; bus-width `00 00 00 BB` → `BB 00 00 00`), so **2 363 968 of
   34 437 356 bytes differ** and stripping the header off a `.bit` does not yield the `.bin`. The
   `.bit` loads because the PCAP auto-detects bus width/endianness from the `000000BB/11220044`
-  pattern ahead of the sync word — not because the payloads agree. Measured cost:
+  pattern ahead of the sync word, not because the payloads agree. Measured cost:
   **~16.6 s** in `fpga load` for a `.bit` versus **~0.2 s** for a `.bin`, with an identical
   ~17.6 MiB/s TFTP transfer either way (~60 s vs ~40 s total netboot). Since `.bit` is preferred
   at each specificity level, a `.bit`-served board pays that on every boot.
@@ -510,14 +510,14 @@ netboot    = if test -n "${ipaddr}"; then true; else if test -n "${serverip}"; t
   hard-depends on `fpga load`). Verify present in the built `.config`.
 
 ### Host staging
-`provision_tftp_host.sh -B` stages `linux/system.bit` unconverted as `/tftpboot/system.bit` —
-no bootgen, no Vitis environment — which is the name `loadpl_net` probes first. `-F bin`
+`provision_tftp_host.sh -B` stages `linux/system.bit` unconverted as `/tftpboot/system.bit`
+(no bootgen, no Vitis environment), which is the name `loadpl_net` probes first. `-F bin`
 converts to a raw `.bin` instead (`bootgen -arch zynqmp -image <bif> -process_bitstream bin`;
 needs Vitis/Vivado `bootgen` on `PATH`) and stages `/tftpboot/system.bin`. `-M <mac>`
 (repeatable) adds per-MAC copies of whichever format is selected. Idempotent (`cmp`-guarded)
 like the `image.ub`/PXE steps. Fallback-mode servers omit `-B`/`-F`/`-M`.
 
-Staging one format removes the other's names — the generic one plus each `-M` MAC — so a stale
+Staging one format removes the other's names (the generic one plus each `-M` MAC), so a stale
 `system.bit` can no longer outrank a freshly staged `system.bin`. A run without `-M` cannot know
 the board's MAC and so cannot clean a per-MAC leftover; it warns instead, since any per-MAC name
 outranks the generic one.
@@ -529,19 +529,19 @@ cryptic DMA failures). NOTE: the **primary** guard is the U-Boot `&&`-chain halt
 check can read `operating` from the FSBL bitstream even if `fpga load` failed, so it is a
 secondary backstop, not the mode guard.
 
-### Hardware validation — Stage A (SD-simulated diskless), all PASS on the RFSoC 4x2
+### Hardware validation, Stage A (SD-simulated diskless), all PASS on the RFSoC 4x2
 Method: reflash the SD `BOOT.BIN` in place with the tftp-only build (Linux VFAT `cp`), rename
 `/boot/system.bit` → `system.old` so the runtime `fpgautil` step is skipped (isolating the PL
 to the U-Boot `fpga load`), stage `image.ub` + `system.bin` (+ per-MAC) with
 `provision_tftp_host.sh -B -M`, boot, and capture serial. `${filesize}` is set by `tftpboot`
-under lwIP (confirmed — `fpga load` consumed it). Observed:
+under lwIP (confirmed: `fpga load` consumed it). Observed:
 
 - **Per-MAC bitstream fetch + fpga load + net kernel boot.** `DHCP client bound` →
   `Filename 'system.bin.fc-c2-3d-5a-9a-08'` → `Bytes transferred = 34437356` → `fpga load`
   (silent, `FPGA_RC=0` confirmed at the prompt) → `pxe get` finds `pxelinux.cfg/default` → kernel
   FIT at `0x18000000` → `SimpleRfSoc4x2Example login:`. In Linux the DMA drivers bound
   (`axi_stream_dma … Found Version 2 Device`) and `axiversiondump` read `Root.AxiVersion`
-  (`FwVersion 0x3030000`) — i.e. the PL is programmed and the app runs.
+  (`FwVersion 0x3030000`), i.e. the PL is programmed and the app runs.
 - **Per-MAC → generic fallback.** With the per-MAC file removed:
   `Filename 'system.bin.fc-c2-3d-5a-9a-08'` → `TFTP error: 256 (… not found)` →
   `Filename 'system.bin'` → `Bytes transferred = 34437356` → boots. The `if…else…fi` falls
@@ -549,27 +549,27 @@ under lwIP (confirmed — `fpga load` consumed it). Observed:
 - **Halt-on-failure (tftp-only).** With **both** bitstream files removed:
   per-MAC MISS → generic MISS → `TFTP-only build: not falling back to SD` → **halt at
   `ZynqMP>`**, and the kernel FIT is **never fetched** (the `&&` chain aborts inside `loadpl_net`,
-  before the kernel) — never a net kernel over an unprogrammed PL. Restaging the bitstream and
+  before the kernel), never a net kernel over an unprogrammed PL. Restaging the bitstream and
   `reset` recovers it.
 
 **LANDMINE (found on HW): a colon-form per-MAC name does not work.** The first cut used
 `system.bin.${ethaddr}` (colon form). U-Boot's `tftpboot` parses the first `:` in a filename
 as a `hostIP:file` separator, so it silently skipped the per-MAC attempt and went straight to the
-generic name — no per-MAC line, no error. Fix: `setexpr macfn gsub : - ${ethaddr}` (validated
+generic name: no per-MAC line, no error. Fix: `setexpr macfn gsub : - ${ethaddr}` (validated
 live: `ethaddr=fc:c2:3d:5a:9a:08` → `macfn=fc-c2-3d-5a-9a-08`) and request the per-MAC name in
 dash form; `provision_tftp_host.sh -M` stores the dash form to match. The constraint is about
-the colon, not the name — it applies equally to `system.bit.<mac>` and `system.bin.<mac>`.
+the colon, not the name; it applies equally to `system.bit.<mac>` and `system.bin.<mac>`.
 
 Note: `fpga0/state` read `operating` here even in the disabled-SD case, because the tftp-only
-`BOOT.BIN` still carries an FSBL bitstream that programs the PL before U-Boot runs — so the
+`BOOT.BIN` still carries an FSBL bitstream that programs the PL before U-Boot runs, so the
 state check cannot by itself prove the `fpga load` ran. The decisive proof is the `&&`-chain
 halt (a failed `fpga load` would have halted before Linux) plus `FPGA_RC=0` at the prompt.
 
-The literal no-SD QSPI diskless boot (Stage B) is deferred by decision — not run.
+The literal no-SD QSPI diskless boot (Stage B) is deferred by decision and was not run.
 
 ---
 
-## 8. Hardware validation — Stage C (bitstream-format matrix), all PASS on the RFSoC 4x2
+## 8. Hardware validation, Stage C (bitstream-format matrix), all PASS on the RFSoC 4x2
 
 Run after `loadpl_net` was changed to probe four names. Method as Stage A (tftp-only `BOOT.BIN`
 flashed by Linux VFAT `cp`, `/boot/system.bit` parked so the runtime `fpgautil` step cannot
@@ -581,12 +581,12 @@ which makes every case unambiguous.
 |---|--------|---------|--------------|-------------|---------|
 | T1 | `system.bin` | `system.bin` | 3 | 0.00 s | boots |
 | T2 | `system.bit` | `system.bit` | 2 | 16.60 s | boots |
-| T3 | both generic | `system.bit` | 2 | 16.60 s | boots — `.bit` preferred |
+| T3 | both generic | `system.bit` | 2 | 16.60 s | boots; `.bit` preferred |
 | T4 | `system.bin.<mac>` | `system.bin.<mac>` | 1 | 0.20 s | boots |
 | T5 | `system.bit.<mac>` | `system.bit.<mac>` | 0 | 16.60 s | boots |
-| T6 | all four | `system.bit.<mac>` | 0 | 16.60 s | boots — full precedence |
-| T7 | `.bit.<mac>` + `.bin` | `system.bit.<mac>` | 0 | 16.80 s | boots — per-MAC beats generic |
-| T8 | nothing | — | 4 | — | **halts at `ZynqMP>`** |
+| T6 | all four | `system.bit.<mac>` | 0 | 16.60 s | boots; full precedence |
+| T7 | `.bit.<mac>` + `.bin` | `system.bit.<mac>` | 0 | 16.80 s | boots; per-MAC beats generic |
+| T8 | nothing | n/a | 4 | n/a | **halts at `ZynqMP>`** |
 
 - All four T8 misses landed inside **1 ms**, confirming that a miss costs an immediate NAK and
   not a timeout. No kernel was fetched in T8 **even though `image.ub` was staged and reachable**,
@@ -596,7 +596,7 @@ which makes every case unambiguous.
 ### Conclusive format proof
 Because `BOOT.BIN` embeds an FSBL bitstream, the cases above cannot by themselves show that the
 *fetched* bitstream is what ends up running (same caveat as §7's `fpga0/state` note). Rebuilt
-with `BIF_BITSTREAM_ATTR = ""` — 1 946 016 B, no `download-zynqmp-user.bit` partition — with
+with `BIF_BITSTREAM_ATTR = ""` (1 946 016 B, no `download-zynqmp-user.bit` partition), with
 `/boot/system.bit` still parked, so the TFTP fetch became the only possible programmer. Both a
 `.bit` and a `.bin` then bound `axi_memory_map` at `0x400000000` and `axi_stream_dma` at
 `0xb0000000` ("Found Version 2 Device") and answered `axiversiondump`. Those are PL-side
@@ -605,7 +605,7 @@ registers, so the fetched bitstream configures the fabric in either format.
 ### `startup-app-init` guard
 Exercised for the first time with `BIF_BITSTREAM_ATTR = ""`, `fallback` mode and no
 `/boot/system.bit`: it printed `ERROR: PL not programmed …` and skipped the driver load, with
-zero driver-bind lines — the diagnosis lands as intended.
+zero driver-bind lines; the diagnosis lands as intended.
 
 Note that the guard wraps only the two `insmod`s. `axiversiondump` and the runtime app run
 afterwards regardless and both die on `/dev/axi_memory_map`, so the service respawns roughly every
@@ -621,7 +621,7 @@ With the FIT and PXE config unstaged, `pxe get` exhausted every `pxelinux.cfg` n
 in-`netboot` direct `tftpboot image.ub` NAK'd, and `run sdboot` booted the on-SD `image.ub`
 (14.4 MiB/s). This used an immediate NAK (files unstaged) rather than either §5 timeout
 mechanism, both of which need root on the shared lab host. The port-closed mechanism has since
-been re-measured with `pxe get` in front of it — see §6: the per-attempt figure holds at ≈ 6 s,
+been re-measured with `pxe get` in front of it (see §6): the per-attempt figure holds at ≈ 6 s,
 but 14 attempts make the end-to-end fallback ≈ 85 s, and ICMP does not cut an attempt short.
 
 ### The login banner is not a mode indicator

@@ -7,7 +7,7 @@ application repo; only the per-application sub-indices (documented in each appli
 own reference pages) differ.
 
 Hierarchical AXI-Lite crossbar
--------------------------------
+------------------------------
 
 The Zynq UltraScale+ PS initiates all AXI-Lite register transactions. These are forwarded
 across the PS-to-PL boundary through the ``AxiSocUltraPlusCore`` block and dispatched by a
@@ -24,7 +24,7 @@ two-level crossbar tree:
         │
         ▼
    Top-level AxiLiteCrossbar (3 slaves, 28-bit decode)
-        ├─ [0] HW_INDEX_C   → AxiSocUltraPlusCore registers
+        ├─ [0] HW_INDEX_C   → board-specific Hardware block (if any)
         ├─ [1] RFDC_INDEX_C → RfDataConverter / RFDC IP registers
         └─ [2] APP_INDEX_C  → Application crossbar (second level)
 
@@ -45,7 +45,7 @@ to the register's leaf node. Python-side offsets in ``pr.Device`` subclasses mus
 VHDL crossbar configuration exactly.
 
 ``genAxiLiteConfig`` pattern
------------------------------
+----------------------------
 
 The ``surf`` library function ``genAxiLiteConfig`` generates the ``AXIL_CONFIG_C`` constant
 array that parameterizes every ``AxiLiteCrossbar`` instance:
@@ -53,21 +53,23 @@ array that parameterizes every ``AxiLiteCrossbar`` instance:
 .. code-block:: vhdl
 
    -- Declare the number of slaves and index constants
-   constant NUM_AXIL_MASTERS_C : natural := 3;
+   constant NUM_AXIL_MASTERS_C : positive := 3;
    constant HW_INDEX_C         : natural := 0;
    constant RFDC_INDEX_C       : natural := 1;
    constant APP_INDEX_C        : natural := 2;
 
    -- Generate the crossbar configuration
    constant AXIL_CONFIG_C : AxiLiteCrossbarMasterConfigArray(NUM_AXIL_MASTERS_C-1 downto 0) :=
-       genAxiLiteConfig(NUM_AXIL_MASTERS_C, AXIL_BASE_ADDR_G, 28, 26);
+       genAxiLiteConfig(NUM_AXIL_MASTERS_C, APP_ADDR_OFFSET_C, 31, 28);
 
 Arguments to ``genAxiLiteConfig``:
 
-- ``NUM_MASTERS``: number of slave slots
-- ``BASE_ADDR``: base address of the crossbar (passed in as a generic)
-- ``ADDR_BITS``: total decode width in bits
-- ``DECODE_BITS``: bits used to select among slaves (upper bits of the decode window)
+- ``num``: number of slave slots
+- ``base``: base address of the crossbar (``APP_ADDR_OFFSET_C = 0x8000_0000`` from
+  ``AxiSocUltraPlusPkg`` at the top level; the ``AXIL_BASE_ADDR_G`` generic in sub-crossbars)
+- ``baseBot``: bits ``[31:baseBot]`` are taken from ``base``
+- ``addrBits``: address window width of each slave; bits ``[baseBot-1:addrBits]`` carry the
+  slot index
 
 Each slave's base address is then ``AXIL_CONFIG_C(INDEX).baseAddr``.
 
@@ -75,9 +77,10 @@ The Python device tree mirrors these addresses:
 
 .. code-block:: python
 
-   # Top-level offsets from the PS base address 0x04_0000_0000
-   # HW_INDEX_C=0  → AxiSocCore at offset 0x0000_0000
-   # RFDC_INDEX_C=1 → Rfdc device at offset determined by AXIL_CONFIG_C(1).baseAddr
+   # Offsets from the PS base address 0x04_0000_0000
+   # AxiSocCore     → offset 0x0000_0000 (registers decoded inside AxiSocUltraPlusCore)
+   # HW_INDEX_C=0   → AXIL_CONFIG_C(0).baseAddr = 0x8000_0000
+   # RFDC_INDEX_C=1 → AXIL_CONFIG_C(1).baseAddr = 0x9000_0000 (Rfdc device uses TCP port 9002)
    # APP_INDEX_C=2  → Application device at offset 0xA000_0000
 
    self.add(soc_core.AxiSocCore(
@@ -99,7 +102,7 @@ Signal initialization for undriven slaves uses the DECERR constant:
 Any unmapped address returns DECERR rather than hanging the bus.
 
 ``Slv256Array`` sample bus
----------------------------
+--------------------------
 
 ADC and DAC sample data between the RFDC wrapper and the application logic flows on a
 256-bit parallel bus at ``dspClk`` (312.5 MHz). The type is defined in ``surf.StdRtlPkg``:
@@ -121,7 +124,7 @@ The ``Slv256Array`` type is generic across all channel counts. Each application'
 entity declares the port widths to match its board's RFDC configuration.
 
 ``AppPkg`` constants pattern
------------------------------
+----------------------------
 
 Each application repo contains a VHDL package ``AppPkg.vhd`` that declares the
 design-wide constants tying RTL generics to Python parameters:
@@ -136,7 +139,7 @@ design-wide constants tying RTL generics to Python parameters:
       -- Samples per dspClk cycle; must match smplPerCycle in Python Application device
       constant SAMPLE_PER_CYCLE_C : positive := 16;
 
-      -- AXI-Lite clock frequency (used by surf timing primitives)
+      -- AXI-Lite clock frequency (Units of Hz)
       constant AXIL_CLK_FREQ_C : real := 100.0E+6;
 
    end package AppPkg;
@@ -149,17 +152,26 @@ These constants are consumed by RTL generics throughout the design:
        generic map (
            ADC_SAMPLE_PER_CYCLE_G => SAMPLE_PER_CYCLE_C,
            DAC_SAMPLE_PER_CYCLE_G => SAMPLE_PER_CYCLE_C,
-           DMA_SIZE_G             => DMA_SIZE_C)
+           ...)
        port map (...);
 
-The Python ``Application`` device must pass a matching value:
+   U_DacSigGen : entity axi_soc_ultra_plus_core.SigGen
+       generic map (
+           SAMPLE_PER_CYCLE_G => SAMPLE_PER_CYCLE_C,
+           ...)
+       port map (...);
+
+The Python ``Application`` device must pass a matching ``smplPerCycle`` to its
+``SigGen`` child:
 
 .. code-block:: python
 
-   self.add(hardware.AppRingBuffer(
-       numAdcCh     = NUM_ADC_CH_C,
-       numDacCh     = NUM_DAC_CH_C,
-       smplPerCycle = SAMPLE_PER_CYCLE_C,   # must equal AppPkg.SAMPLE_PER_CYCLE_C
+   self.add(rfsoc_utility.SigGen(
+       name         = 'DacSigGen',
+       offset       = 0x01_000000,
+       numCh        = 2,  # Must match NUM_CH_G config
+       ramWidth     = 10, # Must match RAM_ADDR_WIDTH_G config
+       smplPerCycle = 16, # must equal AppPkg.SAMPLE_PER_CYCLE_C
    ))
 
 Changing ``SAMPLE_PER_CYCLE_C`` requires synchronized updates in both the VHDL package and
