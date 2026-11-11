@@ -1559,6 +1559,7 @@ class Rfdc(pr.Device):
     # The Vivado value of a mixer that was never committed: the restart-restored event
     # source, coarse frequency, mode, scale and type, read from the staging that
     # RefreshStaging just loaded, with Freq from the config ROM NCO and PhaseOffset 0.
+    # The config ROM is indexed by slice: on a high-speed ADC tile block j is slice 2*j.
     # A DAC block in full bandwidth bypass (DataPathMode 4) refuses a mixer commit and a
     # staged MixerType 3 (disabled) has nothing to restore. Returns the error text, or None.
     def _applyMixerDefault(self, tile, label, j, block, isAdc):
@@ -1567,7 +1568,8 @@ class Rfdc(pr.Device):
             dataPath = getattr(block, 'DataPathMode', None)
             if dataPath is not None and int(dataPath.get(read=True)) == 4:
                 return None
-            values = {'Freq': float(tile.ConfigNCOFreq[j].get(read=True)), 'PhaseOffset': 0.0}
+            rom = 2 * j if isAdc and bool(tile.IsHighSpeedADC.get(read=True)) else j
+            values = {'Freq': float(tile.ConfigNCOFreq[rom].get(read=True)), 'PhaseOffset': 0.0}
             for name in ('EventSource', 'CoarseMixFreq', 'MixerMode', 'FineMixerScale', 'MixerType'):
                 values[name] = int(mixer.variables[name].get(read=True))
             if values['MixerType'] == 3:

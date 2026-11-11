@@ -868,13 +868,15 @@ class RfdcTile(pr.Device):
         ))
 
         #######################################################################################
-        # Vivado mixer configuration of each block, served by PyRFdc from the PYRFDC_CONFIG ROM
+        # Vivado mixer configuration of each slice, served by PyRFdc from the PYRFDC_CONFIG ROM
         # (XRFdc_Config) fixed at PyRFdc construction. Read-only; used to restore a mixer that
         # was never written, since a tile restart returns the mixer NCO to these values.
+        # The index is the IP slice, not the driver block: they are the same except on a
+        # high-speed ADC tile, where block j is slice 2*j.
         #######################################################################################
         self.addRemoteVariables(
             name         = 'ConfigMixerType',
-            description  = 'Vivado mixer type of block n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
+            description  = 'Vivado mixer type of slice n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
             offset       = 0x200,
             bitSize      = 32,
             mode         = 'RO',
@@ -891,7 +893,7 @@ class RfdcTile(pr.Device):
 
         self.addRemoteVariables(
             name         = 'ConfigMixerInputDataType',
-            description  = 'Vivado mixer input data type of block n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
+            description  = 'Vivado mixer input data type of slice n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
             offset       = 0x204,
             bitSize      = 32,
             mode         = 'RO',
@@ -902,7 +904,7 @@ class RfdcTile(pr.Device):
 
         self.addRemoteVariables(
             name         = 'ConfigNCOFreq',
-            description  = 'Vivado mixer NCO frequency of block n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
+            description  = 'Vivado mixer NCO frequency of slice n from the PYRFDC_CONFIG ROM (XRFdc_Config), fixed at PyRFdc construction',
             offset       = 0x208,
             bitSize      = 64,
             mode         = 'RO',
