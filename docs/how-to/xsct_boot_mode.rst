@@ -1,8 +1,8 @@
 Change Boot Mode via XSCT
-==========================
+=========================
 
-Use the Xilinx System Debugger over JTAG to change the persistent boot
-mode register of a Zynq UltraScale+ MPSoC without physically moving a
+Use the Xilinx System Debugger over JTAG to change the boot mode
+override register of a Zynq UltraScale+ MPSoC without physically moving a
 DIP switch.  This is useful for switching between SD, QSPI, NAND, and
 JTAG boot modes on boards that expose JTAG headers.
 
@@ -10,8 +10,8 @@ The sequences below use ``xsdb``, the current debugger console.  They are
 unchanged apart from the launch command if you are on an older release
 that still has a working ``xsct``: every command in them is common to both.
 
-See also:
-https://www.zachpfeffer.com/single-post/change-the-boot-mode-of-the-xilinx-zynq-ultrascale-mpsoc-from-xsct
+See also `Change the boot mode of the Xilinx Zynq UltraScale+ MPSoC from XSCT
+<https://www.zachpfeffer.com/single-post/change-the-boot-mode-of-the-xilinx-zynq-ultrascale-mpsoc-from-xsct>`__.
 
 Prerequisites
 -------------
@@ -32,7 +32,10 @@ Prerequisites
    Each sequence can also be run non-interactively by putting its commands
    (everything after the ``xsdb`` line) in a file and running
    ``xsdb <script.tcl>``.  ``xsdb`` returns a non-zero exit status if a
-   command fails, so this form is safe to call from a shell script.
+   command fails, so this form is safe to call from a shell script.  Wait
+   after ``connect`` (for example ``after 4000``, or poll as the flashing
+   scripts do): run back-to-back, ``targets -set`` races the arm_dap
+   enumeration and fails with ``no targets found``.
 
 .. note::
 
@@ -44,7 +47,8 @@ Prerequisites
 
    Each sequence below writes to the Boot Mode register at ``0xff5e0200``
    and issues a system reset (``rst -system``).  The boot mode takes effect
-   on the **next** power-cycle or reset.
+   on that reset.  A power-cycle clears the override, and the ``M[3:0]``
+   straps take effect again.
 
    The flash and SD sequences then reconnect (``con``) to leave the
    processor running.  The JTAG sequence deliberately omits ``con``: in JTAG
@@ -95,7 +99,7 @@ JTAG boot mode
    disconnect
 
 Quad-SPI (32-bit, dual-parallel) boot mode
--------------------------------------------
+------------------------------------------
 
 .. code-block:: text
 
@@ -109,7 +113,7 @@ Quad-SPI (32-bit, dual-parallel) boot mode
    disconnect
 
 SD0 (SD 2.0) boot mode
------------------------
+----------------------
 
 .. code-block:: text
 
@@ -144,5 +148,5 @@ newly configured source.  Monitor the serial console (115200 baud,
 ``/dev/ttyUSB1`` or similar) to confirm the bootloader selects the
 correct boot device.
 
-Register reference:
-https://www.xilinx.com/html_docs/registers/ug1087/ug1087-zynq-ultrascale-registers.html
+Register reference: `Zynq UltraScale+ Devices Register Reference (UG1087)
+<https://www.xilinx.com/html_docs/registers/ug1087/ug1087-zynq-ultrascale-registers.html>`__.

@@ -34,20 +34,25 @@ Key rules:
 - Offset addresses use hex with underscore byte groupings: ``0x00_000000``,
   ``0xA000_0000``, ``0x04_0000_0000``.
 - Each ``pr.Device`` offset must match the corresponding ``AXIL_CONFIG_C(INDEX).baseAddr``
-  value generated in the VHDL crossbar.
+  value generated in the VHDL crossbar, minus the parent's base address (crossbars built
+  with ``genAxiLiteConfig(..., AXIL_BASE_ADDR_G, ...)`` hold absolute addresses).
 
 AxiSocCore
 ----------
 
 :repo:`python/axi_soc_ultra_plus_core/_AxiSocCore.py`
 
-``AxiSocCore`` is the platform core PyRogue ``Device``. It wraps the AXI-Lite bridge from
-the Zynq PS to the PL, the DMA engine, and the ``SysMon`` subsystem.
+``AxiSocCore`` is the platform core PyRogue ``Device``. It maps the ``AxiSocUltraPlusReg``
+register block of the ``AxiSocUltraPlusCore`` RTL; the DMA engine registers are not mapped.
 
 Responsibilities:
 
-- Exposes the AXI-Lite register space of the ``AxiSocUltraPlusCore`` RTL block.
-- Provides ``AxiVersion``, system monitor (``SysMonLvAuxDet``), and DMA status registers.
+- Exposes the AXI-Lite register space of ``shared/rtl/AxiSocUltraPlusReg.vhd``.
+- Provides ``AxiVersion`` (``0x0_0000``), the ``AxiSysMonUltraScale`` system monitor
+  (``0x1_0000``), the hidden ``SysMonLvAuxDet`` LVAUX detector (``0x1_1000``), and the
+  ``DmaIbAxisMon`` / ``DmaObAxisMon`` DMA AXI stream monitors (``0x2_0000`` / ``0x3_0000``).
+- Takes ``numDmaLanes`` (default 1), which sizes the DMA monitors and is checked against
+  ``AxiVersion.DMA_SIZE_G`` at start (a mismatch prints a warning).
 - Acts as the first-level child of the application ``RFSoC`` device at a fixed offset
   determined by the platform crossbar.
 
@@ -58,8 +63,8 @@ Typical instantiation (inside the application ``RFSoC`` device):
    import axi_soc_ultra_plus_core as soc_core
 
    self.add(soc_core.AxiSocCore(
-       offset = 0x0000_0000,
-       expand = True,
+       offset      = 0x0000_0000,
+       numDmaLanes = 2, # Must match DMA_SIZE_G
    ))
 
 AppRingBuffer
@@ -73,21 +78,29 @@ status, and is the source of the DMA inbound data stream.
 
 Responsibilities:
 
-- Sets the ring buffer trigger mode, depth, and channel enables.
-- Reports capture status (fill level, overrun flags).
-- Coordinates with the host-side ``RingBufferProcessor`` to frame captured ADC/DAC samples.
+- Holds one surf ``AxiStreamRingBuffer`` per channel (``Adc.Ch[i]`` at ``0x0_0000``,
+  ``Dac.Ch[i]`` at ``0x1_0000``, ``0x1000`` apart) with trigger control (``TrigBurst``,
+  ``ContinuousMode``). The depth is fixed at build time (``RAM_ADDR_WIDTH_G``, read only)
+  and there are no per-channel enables.
+- Reports capture status (``BufferLength``, ``TrigCnt`` and the trigger and data FSM
+  states); there are no fill level or overrun flags.
+- Limits the outgoing frame rate with the ``RateLimiter`` (``AxiStreamFrameRateLimiter``
+  at ``0x2_0000``). The frames reach the host-side ``RingBufferProcessor`` on the DMA
+  streams (ADC channels on TDEST ``0x00`` to ``0x0F``, DAC channels on ``0x10`` to ``0x1F``).
 
 ``AppRingBuffer`` is instantiated inside the application ``Application`` device, not directly
-in ``AxiSocCore``. Each application repo sets the ``numAdcCh`` and ``numDacCh`` generics to
+in ``AxiSocCore``. Each application repo sets the ``numAdcCh`` and ``numDacCh`` arguments to
 match the board's RFDC configuration.
 
 RingBufferProcessor
 -------------------
 
-:repo:`python/axi_soc_ultra_plus_core/hardware/_RingBufferProcessor.py`
+:repo:`python/axi_soc_ultra_plus_core/rfsoc_utility/_RingBufferProcessor.py`
 
 ``RingBufferProcessor`` is a host-side Rogue stream receiver. It sits at the end of the
-DMA TCP stream pipeline and processes captured ADC or DAC frames for display or storage.
+DMA TCP stream pipeline and processes captured ADC or DAC frames for display (waveform
+and averaged FFT magnitude). File storage is done by the ``Root`` ``StreamWriter`` on a
+separate branch of the same stream.
 
 The stream is wired in the application ``Root`` using the Rogue ``>>`` operator:
 
@@ -104,35 +117,40 @@ RFDC API
 
 :repo:`python/axi_soc_ultra_plus_core/rfsoc_utility/_Rfdc.py`
 
-The ``Rfdc`` device (and its children ``RfdcTile`` and ``RfdcBlock``) wraps the Xilinx RF
-Data Converter IP core register map. It exposes:
+The ``Rfdc`` device (and its children ``RfdcTile`` and ``RfdcBlock``) is the host-side
+mapping of the board-side ``PyRFdc`` memory slave
+(``shared/Yocto/recipes-apps/pyrfdc/files/PyRFdc.cpp``), which calls the Xilinx RFdc
+driver API (``XRFdc_*``) rather than exposing the IP core register map. It exposes:
 
 - Per-tile and per-block ADC/DAC configuration registers.
 - Multi-Tile Synchronization (MTS) control.
 - Sample rate, decimation/interpolation factor, and mixer frequency settings.
 
-The ``Rfdc`` device is instantiated at the RFDC crossbar slot (index 1 in the top-level
-crossbar). Application ``Root.start()`` sequences clock initialization before calling
-``Rfdc.Init()`` to program the IP core.
+The ``Rfdc`` device is added directly to the application ``Root``, with ``memBase`` a
+``rogue.interfaces.memory.TcpClient`` to port 9002, where ``roguetcpbridge`` on the board
+serves ``PyRFdc``. It is not behind the AXI-Lite crossbar: index 1 of the
+``AxiSocUltraPlusReg`` crossbar holds only the read-only ``PYRFDC_CONFIG`` ROM that
+``roguetcpbridge`` reads to construct ``PyRFdc``. Application ``Root.start()`` sequences
+clock initialization before calling ``Rfdc.Init()`` to program the IP core.
 
 ``Rfdc.Init()`` resets every enabled tile once (DAC tiles first, and inside each
 converter type the clock distribution sources before their members), waits for state 15
-with the PLL locked on every tile, re-applies the settings written in this session and
+with the PLL locked on every tile, re-applies the settings written in this session, and
 raises one exception naming every tile that missed the wait. The operator commands
 behave as follows:
 
 - ``Reset`` on a tile, ``ResetAllAdc`` and ``ResetAllDac`` run the same sequence for
-  one tile or one converter type, and also re-apply the tiles the restart knocked.
-  Settings written in the session are written back in a fixed order. Settings not
-  written in the session read their Vivado value for the registers a restart reloads;
-  a mixer that was never committed is returned to the Vivado NCO, and a QMC that was
-  never committed to its power-up default. A bare restart
-  does not restore mixer NCO settings, so ``Reset`` followed by ``ApplyConfig``
+  one tile or one converter type, and also re-apply any tile the restart knocked (see
+  :doc:`../explanation/pyrfdc_reset`). Settings written in the session are written
+  back in a fixed order. A register that a restart reloads returns to its Vivado value
+  when the session never wrote it; a mixer that was never committed is returned to the
+  Vivado NCO, and a QMC that was never committed to its power-up default. A bare
+  restart does not restore mixer NCO settings, so ``Reset`` followed by ``ApplyConfig``
   returns to the Vivado baseline only for settings not written in the session.
 - A committed PLL (``PllConfig`` with ``PllConfigUpdate``) is written back when the
   hardware differs from it. The commit reprograms the PLL live and restarts the tile
   only from state 6 (states 1 to 5 do not run), and a tile left like that can stall at
-  state 7 when a neighbouring tile restart knocks it. Every PLL commit, from the
+  state 7 when a neighboring tile restart knocks it. Every PLL commit, from the
   operator ``PllConfigUpdate`` or from the write-back, is therefore followed by a
   ``StartUp`` of the same tile (state 1 to 15, settings kept), which advances that
   tile's restart record by one, and then by the wait for every enabled tile. A commit
@@ -145,14 +163,18 @@ behave as follows:
   in this session on demand, without a restart unless a committed PLL differs from the
   hardware.
 - Settings that were not surveyed on the board are written back only when the operator
-  wrote them: the FabClkOutDiv, PwrModeSettings, calibration coefficient overrides,
-  DisableFreezePin, FreezeCalibration and DACVOP settings, the threshold clear mode
-  words, an external ClockSource, the QMC phase settings of blocks that are not an IQ
-  pair, the DAC mixer and interpolation factor settings that the tile refuses, the ADC
-  observation channel settings (``DecimationFactorObs``, ``FabRdVldWordsObs`` and the
-  observation FIFO enable, which ``SetupFIFOObs`` and ``SetupFIFOBoth`` also drive),
-  which were read on SlacRfmcCarrier only, and every tile other than the ones used as
-  representatives.
+  wrote them:
+
+  - the FabClkOutDiv, PwrModeSettings, calibration coefficient override,
+    DisableFreezePin, FreezeCalibration and DACVOP settings
+  - the threshold clear mode words
+  - an external ClockSource
+  - the QMC phase settings of blocks that are not an IQ pair
+  - the DAC mixer and interpolation factor settings that the tile refuses
+  - the ADC observation channel settings (``DecimationFactorObs``, ``FabRdVldWordsObs``
+    and the observation FIFO enable, which ``SetupFIFOObs`` and ``SetupFIFOBoth`` also
+    drive), which were read on SlacRfmcCarrier only
+  - every tile other than the ones used as representatives
 - A setting counts as written only when its write returned without an error on an
   enabled device. A value that pyrogue or the memory slave refuses records nothing and
   keeps the setting's earlier record. A write under a disabled block or device (for
@@ -208,9 +230,8 @@ behave as follows:
   or of a source with no member of the other converter type, clears only the flag of
   their own converter type: a DAC tile 1 ``Reset`` clears ``DacMtsValid`` only and an ADC
   tile 2 ``Reset`` clears ``AdcMtsValid`` only. On a device below Gen3 every restart
-  clears both flags.
-  A flag also reads 0 while any enabled tile of its group (the tile mask plus the
-  reference tile) is restarting or below state 15; a restart that ``PyRFdc`` did not
+  clears both flags. A flag also reads 0 while any enabled tile of its group (the tile
+  mask plus the reference tile) is restarting or below state 15; a restart that ``PyRFdc`` did not
   command and that has already finished is not detected, and the read never changes the
   latched value. The member rule assumes that restarting member tiles does not disturb a
   tile of the other converter type. That holds for this layout; on another layout the
@@ -222,7 +243,7 @@ behave as follows:
   and ``PyRFdc`` still refuses them while a tile of the group is not ready.
 - ``Rfdc`` raises its own transaction timeout to 32 s, so an application does not need
   a large Root timeout. The longest single transaction is the restart of all four tiles
-  of one converter type: 4 tiles x 3 s of driver waits = 12 s. The floor stays at 32 s,
+  of one converter type: 4 tiles × 3 s of driver waits = 12 s. The floor stays at 32 s,
   well above the 12 s, so existing applications see no change in timeout behavior.
 
 Source files:
@@ -239,13 +260,23 @@ The platform package provides a PyDM-based GUI entry point:
 .. code-block:: python
 
    from axi_soc_ultra_plus_core.rfsoc_utility import pydm as rfsoc_pydm
-   rfsoc_pydm.runPyDM(root=root, title='RFSoC Demo')
+   rfsoc_pydm.runPyDM(serverList='localhost:9099', ui=uiFile, title='RFSoC Demo')
 
-The GUI launcher is invoked by each application repo's ``devGui.py`` script after
-constructing the ``Root`` object and calling ``root.start()``. It launches the
-``pyrogue.pydm.runPyDM()`` GUI backed by the platform ZMQ server at the address
-configured in ``Root.__init__``.
+Its signature is ``runPyDM(serverList='localhost:9090', ui=None, title=None, sizeX=800,
+sizeY=1000, maxListExpand=5, maxListSize=100, numAdcCh=1, numDacCh=1)``: it connects to
+a running Rogue server through ``serverList`` and takes no ``root`` argument. Its default
+``ui`` is a ``pydmTop.py`` that the package does not ship, so pass ``ui`` explicitly.
 
-The ``axi_soc_ultra_plus_core.rfsoc_utility.pydm`` subpackage contains PyDM display
-panels for ADC/DAC ring buffer waveforms, RFDC tile configuration, and ring buffer
-control: all board-agnostic and reused across every ``Simple-*-Example`` application.
+The reference application's ``devGui.py`` does not use it. It constructs the ``Root`` in
+a ``with`` block (which starts it) and calls ``pyrogue.pydm.runPyDM()`` with
+``serverList=root.zmqServer.address`` and a ``display_factory`` that builds ``GuiTop``
+with ``numAdcCh`` and ``numDacCh``. The ZMQ server is the ``pyrogue.interfaces.ZmqServer``
+that the application ``Root.__init__`` adds (``127.0.0.1``, port ``zmqSrvPort``, default
+9099).
+
+The ``axi_soc_ultra_plus_core.rfsoc_utility.pydm`` subpackage contains only ``runPyDM``.
+The display panels live in ``axi_soc_ultra_plus_core.rfsoc_utility.gui``: ``GuiTop`` has
+System, Debug Tree, ADC Waveforms and DAC Waveforms tabs, the waveform tabs being
+``LiveDisplay`` panels of the ``RingBufferProcessor`` data. They are board-agnostic (the
+channel counts come from ``numAdcCh`` and ``numDacCh``) and reused across every
+``Simple-*-Example`` application.

@@ -27,8 +27,9 @@ A useful restart therefore has four parts, split across two layers:
 Commands
 --------
 
-Each public command is a ``LocalCommand`` that runs the common sequence described
-below. The hidden ``*Raw`` commands are the bare ``PyRFdc`` restart words, with no wait
+Each public command runs the common sequence described below. ``Rfdc.Init`` is an
+exposed method, ``PllConfigUpdate`` is a ``RemoteCommand`` whose function runs the
+sequence, and the others are each a ``LocalCommand``. The hidden ``*Raw`` commands are the bare ``PyRFdc`` restart words, with no wait
 and no write-back.
 
 .. list-table::
@@ -169,8 +170,8 @@ must be written back as well.
 ``ResetCount`` (tile register 0x38) counts the IP's automatic restarts and saturates at
 255. A software restart does not increment it, so a change across the command marks a
 knocked tile. A tile that reads 255, or whose count cannot be read, is treated as
-knocked. Knocked tiles that passed the gate join the write-back targets and are listed
-in ``_lastGate['knocked']``.
+knocked. Every knocked tile is listed in ``_lastGate['knocked']``, and the knocked tiles
+that passed the gate join the write-back targets.
 
 What gets written back
 ----------------------
@@ -205,7 +206,7 @@ the step order of ``Rfdc.APPLY_ORDER``:
      - The committed tile PLL, before any other write, because a PLL commit restarts
        the tile. It is written only when the hardware differs from the snapshot (clock
        source, reference clock, sample rate), and each commit is followed by a
-       ``StartUpRaw`` of the tile and a second gate.
+       ``StartUpRaw`` of the tile. One second gate follows the commits.
    * - ``rates``
      - ``FabClkOutDiv``, interpolation and decimation factors, fabric words,
        ``DataPathMode``, ``IMRPassMode``, then the tile FIFO enables
@@ -301,7 +302,7 @@ process start. While it is not ``Ok``, every register outside the config status 
    * - 5
      - BadSize
      - Declared payload size does not match ``sizeof(XRFdc_Config)`` for this librfdc,
-       or fewer bytes were read than declared
+       or fewer bytes were read than the 32 byte header or the declared payload needs
    * - 6
      - IpVersionMismatch
      - Live RFDC IP version register disagrees with the ROM header

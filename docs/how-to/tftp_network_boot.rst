@@ -1,8 +1,9 @@
 TFTP Network Boot
 =================
 
-Boot the Linux kernel over Ethernet using TFTP instead of the SD card,
-with automatic fallback to the on-SD image if the network path fails.
+Boot the Linux kernel over Ethernet using TFTP instead of from the SD
+card. A ``fallback`` build drops back to the on-SD image if the network
+path fails; a diskless ``tftp-only`` build halts instead.
 
 .. note::
 
@@ -12,15 +13,18 @@ with automatic fallback to the on-SD image if the network path fails.
    to boards built with ``-m fallback`` or ``-m tftp-only``; see
    :ref:`Step 2 <tftp-boot-modes>` for the full mode table.
 
+.. _tftp-how-it-works:
+
 How It Works
 ------------
 
 On power-up, the boot ROM loads ``BOOT.BIN`` (FSBL + PMU firmware + ATF +
-U-Boot) from the SD card, exactly as in a normal SD boot. From there,
+U-Boot) from the boot device (the SD card, or QSPI flash on a diskless
+board), exactly as in a normal boot. From there,
 U-Boot fetches **only the kernel FIT image** (``image.ub``) over TFTP
 instead of reading it from the SD card, then boots it with ``bootm``.
 The SD card stays in the board and still holds a known-good
-``image.ub``, so if the TFTP fetch fails, U-Boot falls back to booting
+``image.ub``, so if the TFTP fetch fails, a ``fallback`` build boots
 that on-SD image automatically. Nothing about the first boot stage
 changes: only where the kernel FIT comes from.
 
@@ -56,7 +60,7 @@ a ``:`` in a filename as a ``hostIP:file`` separator, so the env uses
 fetch.) A miss costs one immediate TFTP "not found" reply rather than a
 timeout, so the extra probes are effectively free, **provided the server
 is reachable**. If nothing answers at all, each probe instead waits its
-full request timeout; see **Troubleshooting**.
+full request timeout; see :ref:`tftp-troubleshooting`.
 
 ``fpga load`` accepts **either** a Vivado ``.bit`` or a bootgen-produced
 raw ``.bin``; see :ref:`bitstream formats <tftp-bitstream-formats>`
@@ -66,9 +70,11 @@ kernel boots, so a net kernel never runs over an unprogrammed or stale
 PL. A ``fallback`` or ``sd-only`` build does **not** fetch a bitstream in
 U-Boot; its PL is programmed later, after Linux boots, by
 ``startup-app-init`` running ``fpgautil`` on the SD card's ``system.bit``
-(unchanged from a normal SD boot). ``BOOT.BIN`` itself embeds an
-FSBL-programmed bitstream in every mode; the ``tftp-only`` ``fpga load``
-re-programs the PL over it.
+(unchanged from a normal SD boot). In ``fallback`` and ``sd-only``,
+``BOOT.BIN`` itself also embeds an FSBL-programmed bitstream; a
+``tftp-only`` build omits it from ``BOOT.BIN`` (``BuildYoctoProject.sh``
+sets ``BIF_BITSTREAM_ATTR = ""``), so the ``fpga load`` is the only thing
+that programs the PL.
 
 Why the PL must be programmed before the drivers load: the
 ``axi_memory_map`` and ``axi_stream_dma`` kernel modules bind to AXI
@@ -86,15 +92,15 @@ boot); a ``fallback`` or ``sd-only`` board always reaches Linux.
 
 .. warning::
 
-   Because ``BOOT.BIN`` embeds a bitstream that the FSBL programs at
-   power-on, the FPGA manager reports ``operating`` on every boot, even
+   Because a ``fallback`` or ``sd-only`` ``BOOT.BIN`` embeds a bitstream
+   that the FSBL programs at power-on, the FPGA manager reports
+   ``operating`` on every boot of those builds, even
    when no ``system.bit`` is present on the SD card and none is fetched
    over the network. This guarantees a programmed PL for the driver-load
    guard above, but it also means a ``fallback`` or ``sd-only`` board that
    is missing its runtime ``system.bit`` will bind the DMA drivers against
-   the bitstream
-   **frozen into BOOT.BIN at Yocto build time**, which may be stale
-   relative to the firmware you intend to run. An ``operating`` state
+   the bitstream **frozen into BOOT.BIN at Yocto build time**, which may
+   be stale relative to the firmware you intend to run. An ``operating`` state
    therefore confirms only that *a* bitstream is loaded, not that it is the
    *correct* one; use ``axiversiondump`` (printed near the end of
    ``startup-app-init``) to confirm the running firmware version and build
@@ -104,13 +110,14 @@ The active U-Boot network stack is lwIP (U-Boot 2026.01,
 ``CONFIG_NET_LWIP``); a bound DHCP lease prints a line starting with
 ``DHCP client bound to address``. The netboot hooks are added to
 U-Boot's ``CFG_EXTRA_ENV_SETTINGS`` macro, which is shared across boards
-built on this platform.
+built on this platform (except Kria machines, whose ``u-boot-xlnx``
+bbappend drops ``platform-top.h``).
 
 Prerequisites
 -------------
 
 - The board has been imaged and booted at least once (see
-  :doc:`sd_card_imaging` in this how-to section), or has had a bitstream
+  :doc:`sd_card_imaging`), or has had a bitstream
   loaded via :doc:`remote_bitstream_update`.
 - A development host on the same network as the board, with
   ``dnsmasq`` and ``curl`` installed. The provisioning script in Step 1
@@ -129,7 +136,10 @@ Prerequisites
    values; substitute your own. The netboot path does not depend on any
    particular subnet; the board takes its IP from whatever DHCP server is
    present on your network, and only ``serverip`` needs to be set
-   explicitly to point at your TFTP host.
+   explicitly to point at your TFTP host. The provisioning script has no
+   option for the host interface: ``interface=eth2`` is hardcoded in the
+   ``dnsmasq`` config it writes (``print_dnsmasq_conf``), so edit it there
+   for a different interface.
 
 Steps
 -----
@@ -170,7 +180,7 @@ Steps
    the shared ``default`` config or reflashing that board's U-Boot.
 
    For a **tftp-only** (diskless) board, also stage the PL bitstream so
-   U-Boot can fetch and ``fpga load`` it (see **How It Works**).
+   U-Boot can fetch and ``fpga load`` it (see :ref:`tftp-how-it-works`).
 
    Add ``-B`` to stage the bitstream, and ``-M <mac>`` (repeatable) for
    per-board copies:
@@ -211,7 +221,9 @@ Steps
 
    If the script cannot auto-detect a built ``image.ub`` for the board
    (``No image.ub found for board ...``), point it at the file
-   explicitly with ``-f``:
+   explicitly with ``-f``. Auto-detection only knows the
+   ``RealDigitalRfSoC4x2`` build naming; any other board fails with
+   ``No Yocto project-name mapping for board ...`` and always needs ``-f``:
 
    .. code-block:: bash
 
@@ -293,7 +305,7 @@ Steps
    no ``DHCP client bound`` or TFTP lines at all. The login-banner hostname
    is **not** a mode indicator: it comes from the target name via
    ``hostname:pn-base-files`` and is identical in all three modes (see
-   **Verification** below).
+   :ref:`tftp-verification` below).
 
    The mode also decides where the PL bitstream comes from. A
    ``tftp-only`` build additionally requires the bitstream to be staged
@@ -308,7 +320,7 @@ Steps
    To get the resulting ``BOOT.BIN`` onto the board, see
    :doc:`sd_card_imaging` (for a fresh SD card) or
    :doc:`remote_bitstream_update` (for updating a board that is already
-   imaged) in this how-to section.
+   imaged).
 
    .. warning::
 
@@ -328,7 +340,7 @@ Steps
    countdown to interrupt it, then step through the fetch by hand.
 
    These commands mirror the built-in ``netboot`` environment command
-   (installed via ``CFG_EXTRA_ENV_SETTINGS``, see **How It Works**),
+   (installed via ``CFG_EXTRA_ENV_SETTINGS``, see :ref:`tftp-how-it-works`),
    which runs ``dhcp`` (skipped if a static ``ipaddr`` is already
    set), then tries ``pxe get`` / ``pxe boot`` and, only if no PXE
    config is served, falls back to ``tftpboot 0x10000000 image.ub`` then
@@ -457,6 +469,8 @@ Steps
       setenv netmask 255.255.255.0
       run netboot
 
+.. _tftp-verification:
+
 Verification
 ------------
 
@@ -482,8 +496,10 @@ configuration. ``fpga load`` prints nothing at all on success, so the only
 sign it ran is the next command appearing, after roughly 16 s for a
 ``.bit``, or a fraction of a second for a ``.bin``. A long silent pause
 directly after the bitstream's ``Bytes transferred`` line is therefore
-expected, not a hang. Once Linux is up, ``startup-app-init`` confirms the
-PL is programmed before it loads the DMA drivers:
+expected, not a hang. Once Linux is up, ``startup-app-init`` checks that
+the PL is programmed before it loads the DMA drivers. It prints the state
+only after its own SD ``fpgautil`` load (so not on a ``tftp-only`` board
+with no ``/boot/system.bit``, where a passing check is silent):
 
 .. code-block:: text
 
@@ -513,6 +529,8 @@ the board is reachable over the network:
 .. code-block:: bash
 
    ping -c 4 10.0.0.xxx
+
+.. _tftp-troubleshooting:
 
 Troubleshooting
 ---------------
@@ -594,8 +612,8 @@ Troubleshooting
        file
      - Remove ``/boot/system.bit`` on boards that boot ``tftp-only``; the
        served bitstream is only authoritative when it is absent
-   * - ``ERROR: PL not programmed`` at the end of boot; no runtime
-       application starts
+   * - ``ERROR: PL not programmed`` during boot; DMA drivers not loaded
+       (the runtime application still starts, without them)
      - ``startup-app-init`` found ``fpga_manager/fpga0/state`` not
        ``operating`` and skipped the DMA driver load
      - On a ``tftp-only`` board confirm the bitstream was staged and
@@ -639,7 +657,7 @@ ahead of the direct FIT fetch, so a ``fallback`` board on a network with
 silently dropped. When the server *is* reachable and merely missing a
 file, every attempt is refused immediately and the fallback is effectively
 instant. Allow up to ~2 minutes before concluding a board has hung, and
-see the ``Request timeout`` entry in **Troubleshooting** above.
+see the ``Request timeout`` entry in :ref:`tftp-troubleshooting` above.
 
 That full 14-attempt cost needs a **reachable DHCP server** as well as an
 unreachable TFTP one. ``netboot`` starts with ``dhcp`` in an ``&&`` chain, so
@@ -663,8 +681,9 @@ Notes
 -----
 
 - The full JTAG-based recovery procedure for a board that becomes
-  unresponsive is not covered here; it is an emergency recovery path
-  documented alongside this platform's bring-up tooling.
+  unresponsive is not covered here. It is an emergency path, provided by
+  :repo:`scripts/reflash_via_jtag.tcl` and described in
+  :repo:`scripts/NETBOOT_BRINGUP_NOTES.md`.
 
 - The ``tftp-only`` bitstream step is deliberately mode-gated and
   all-or-nothing: in ``tftp-only`` it is mandatory (halt on failure),
@@ -695,22 +714,25 @@ Notes
   the first ``:`` in a filename as a ``hostIP:file`` separator, so a
   colon-form name (``${ethaddr}`` verbatim) is silently mis-parsed and
   never fetched; ``loadpl_net`` therefore rewrites the colons to dashes
-  with ``setexpr gsub`` (requires ``CONFIG_CMD_SETEXPR`` + ``CONFIG_REGEX``,
+  with ``setexpr gsub`` (requires ``CONFIG_CMD_SETEXPR`` and ``CONFIG_REGEX``,
   both on in the ZynqMP defconfig) before the fetch.
 
-- ``BOOT.BIN`` embeds the XSA bitstream by default. This follows from
-  meta-xilinx's ``xilinx-bootbin`` recipe: on the ``zynqmp-user`` machine
-  (which does not set the ``fpga-overlay`` ``MACHINE_FEATURE``),
-  ``BIF_BITSTREAM_ATTR`` defaults to ``bitstream``, so the FSBL programs the
+- Whether ``BOOT.BIN`` embeds the XSA bitstream is set per mode by
+  ``BuildYoctoProject.sh``, which writes ``BIF_BITSTREAM_ATTR`` into
+  ``build/conf/local.conf`` (on configure, and whenever ``-m`` is passed):
+  ``bitstream`` for ``sd-only`` and ``fallback``, so the FSBL programs the
   PL from ``download-zynqmp-user.bit`` at power-on and the FPGA manager reads
-  ``operating`` before Linux starts. To build a ``BOOT.BIN`` that contains
-  **no** bitstream (for example, to exercise the ``startup-app-init``
-  driver-load guard on a board with no ``system.bit`` and no network
-  bitstream), set ``BIF_BITSTREAM_ATTR = ""`` in ``build/conf/local.conf``
-  (or the machine ``.conf``) and rebuild ``xilinx-bootbin``. With no embedded
-  bitstream the FPGA manager stays out of ``operating`` until something (the
-  SD ``fpgautil`` load, or the ``tftp-only`` ``fpga load``) programs the PL,
-  and the guard then skips the driver load as intended.
+  ``operating`` before Linux starts, and ``""`` for ``tftp-only``, which
+  keeps ``BOOT.BIN`` under 2 MB and leaves the network ``fpga load`` as the
+  only PL programmer. To build a no-bitstream ``BOOT.BIN`` in another mode
+  (for example, to exercise the ``startup-app-init`` driver-load guard on a
+  board with no ``system.bit`` and no network bitstream), set
+  ``BIF_BITSTREAM_ATTR = ""`` in ``build/conf/local.conf`` by hand and
+  rebuild ``xilinx-bootbin`` without passing ``-m`` (which would rewrite it).
+  With no embedded bitstream the FPGA manager stays out of ``operating``
+  until something (the SD ``fpgautil`` load, or the ``tftp-only``
+  ``fpga load``) programs the PL, and the guard otherwise skips the driver
+  load as intended.
 
 .. _tftp-bitstream-formats:
 
