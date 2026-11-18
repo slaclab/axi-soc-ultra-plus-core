@@ -100,7 +100,8 @@ RfdcCalFreeze
 ``RfdcCalFreeze`` is the PyRogue ``Device`` for the ``RfdcCalFreeze`` RTL block, which
 drives the RF-ADC ``int_cal_freeze`` pins. The RF-ADC background calibration (GCB and
 TSCB) trains on the input signal and drifts when the input drops below -40 dBFS, so the
-product guide asks for it to be frozen while the input is absent for longer than 100 us.
+product guide (`PG269 <https://docs.amd.com/r/en-US/pg269-rf-data-converter>`__) asks for
+it to be frozen while the input is absent for longer than 100 us.
 The block freezes a channel from either of two sources: a ``ManualFreeze`` register bit,
 or a per-channel signal detector on the ADC samples (``AutoEnable``) that holds the
 calibration while the input is absent and releases it as soon as a signal is back.
@@ -137,6 +138,22 @@ With the defaults (``Window = 15``, ``HoldOff = 1``, 307.2 MHz) a channel freeze
 input returning. ``AutoFreeze`` reads the detector state per channel, ``CalFreeze`` the
 pin actually driven (``ManualFreeze`` or ``AutoEnable and AutoFreeze``), and
 ``CalFrozen`` the ``cal_frozen`` acknowledge from the RF-ADC.
+
+PG269 references:
+
+- The -40 dBFS / 100 us freeze rule, stated for each block:
+  `Gain Calibration Block (GCB)
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Gain-Calibration-Block-GCB>`__ and
+  `Time Skew Calibration Block (TSCB)
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Time-Skew-Calibration-Block-TSCB>`__.
+- The freeze mechanism (active-High freeze, about 7 us to take effect):
+  `Background Calibration Process
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Background-Calibration-Process>`__.
+- The ``int_cal_freeze``, ``cal_frozen`` and ``sig_detect`` pins:
+  `Calibration Freeze Ports for Dual RF-ADC Tiles
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Dual-RF-ADC-Tiles>`__
+  and `Calibration Freeze Ports for Quad RF-ADC Tiles
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Quad-RF-ADC-Tiles>`__.
 
 Responsibilities:
 

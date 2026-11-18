@@ -5,9 +5,10 @@
 --
 --    The RF-ADC gain (GCB) and time skew (TSCB) background calibration blocks
 --    train on the input signal and drift when it drops below -40 dBFS, so the
---    product guide asks for them to be frozen whenever the input is absent for
---    longer than 100 us. This module drives the IP core's int_cal_freeze pin
---    of every ADC channel from two sources, either of which freezes the block:
+--    product guide (PG269, see References) asks for them to be frozen whenever
+--    the input is absent for longer than 100 us. This module drives the IP
+--    core's int_cal_freeze pin of every ADC channel from two sources, either
+--    of which freezes the block:
 --
 --    ManualFreeze : a register bit per channel, for a train-then-freeze policy
 --                   run by software after the converters are up
@@ -81,6 +82,18 @@
 --    async bridge (unless COMMON_CLK_G), so a register access needs that
 --    clock to be running. The freeze pins belong to the IP core's s_axi_aclk
 --    (axilClk) domain and cross as level signals.
+--
+--    References (PG269, Zynq UltraScale+ RFSoC RF Data Converter LogiCORE IP
+--    Product Guide)
+--    ---------------------------------------------------------------------
+--    The -40 dBFS / 100 us freeze rule, stated for each block:
+--       https://docs.amd.com/r/en-US/pg269-rf-data-converter/Gain-Calibration-Block-GCB
+--       https://docs.amd.com/r/en-US/pg269-rf-data-converter/Time-Skew-Calibration-Block-TSCB
+--    The freeze mechanism (active-High freeze, about 7 us to take effect):
+--       https://docs.amd.com/r/en-US/pg269-rf-data-converter/Background-Calibration-Process
+--    The int_cal_freeze, cal_frozen and sig_detect pins:
+--       https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Dual-RF-ADC-Tiles
+--       https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Quad-RF-ADC-Tiles
 -------------------------------------------------------------------------------
 -- This file is part of 'axi-soc-ultra-plus-core'.
 -- It is subject to the license terms in the LICENSE.txt file found in the

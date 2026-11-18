@@ -14,9 +14,10 @@ class RfdcCalFreeze(pr.Device):
     """RF-ADC background calibration freeze control (RfdcCalFreeze.vhd).
 
     The RF-ADC gain (GCB) and time skew (TSCB) background calibration drifts
-    when the input drops below -40 dBFS, so the product guide asks for it to
-    be frozen while the input is absent for more than 100 us. Each channel is
-    frozen by ManualFreeze, or by the signal detector while AutoEnable is set.
+    when the input drops below -40 dBFS, so the product guide (PG269, links
+    below) asks for it to be frozen while the input is absent for more than
+    100 us. Each channel is frozen by ManualFreeze, or by the signal detector
+    while AutoEnable is set.
 
     Channel: one RF-ADC converter (a block of the RF Data Converter IP core,
     not a tile), the unit with its own sample stream and its own
@@ -42,6 +43,16 @@ class RfdcCalFreeze(pr.Device):
     Calibration.DisableFreezePin of the block is 0 (its default).
 
     numCh must match the NUM_CH_G generic of the firmware instance.
+
+    PG269 references:
+    - The -40 dBFS / 100 us freeze rule, stated for each block:
+      https://docs.amd.com/r/en-US/pg269-rf-data-converter/Gain-Calibration-Block-GCB
+      https://docs.amd.com/r/en-US/pg269-rf-data-converter/Time-Skew-Calibration-Block-TSCB
+    - The freeze mechanism (active-High freeze, about 7 us to take effect):
+      https://docs.amd.com/r/en-US/pg269-rf-data-converter/Background-Calibration-Process
+    - The int_cal_freeze, cal_frozen and sig_detect pins:
+      https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Dual-RF-ADC-Tiles
+      https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Quad-RF-ADC-Tiles
     """
     def __init__(self, numCh=1, **kwargs):
         super().__init__(**kwargs)
