@@ -13,9 +13,32 @@ import pyrogue as pr
 class RfdcCalFreeze(pr.Device):
     """RF-ADC background calibration freeze control (RfdcCalFreeze.vhd).
 
-    Every register with one bit per channel uses bit c for channel c, the
-    channel being the index of the adcI<c>/adcQ<c> port of the firmware. The
-    RF-ADC honours the freeze pin only while the PS driver's
+    The RF-ADC gain (GCB) and time skew (TSCB) background calibration drifts
+    when the input drops below -40 dBFS, so the product guide asks for it to
+    be frozen while the input is absent for more than 100 us. Each channel is
+    frozen by ManualFreeze, or by the signal detector while AutoEnable is set.
+
+    Channel: one RF-ADC converter (a block of the RF Data Converter IP core,
+    not a tile), the unit with its own sample stream and its own
+    int_cal_freeze, cal_frozen and sig_detect pins. Every register with one
+    bit per channel uses bit c for channel c, the channel being the index of
+    the adcI<c>/adcQ<c> port of the firmware. Which tile and block that is
+    depends on how the application wired the firmware.
+
+    Signal detector: the mean ADC magnitude (|I|+|Q| per complex sample in
+    I/Q mode, |x| per sample in real mode) is averaged over back to back
+    windows of 2^Window DSP clock cycles, the clock the ADC samples arrive
+    on. At the end of every window the mean is published in Magnitude[c] and
+    compared with Threshold. HoldOff consecutive windows below Threshold (no
+    signal) assert the freeze, so it lands HoldOff to HoldOff+1 windows after
+    the signal disappears. A single window at or above Threshold (signal
+    back) releases it. The polarity is "freeze while the signal is low",
+    since the calibration drifts when it has no signal to train on. With the
+    defaults (Window 15, HoldOff 1) and a 307.2 MHz DSP clock a window is
+    106.7 us, so a channel freezes 107 to 213 us after its input drops below
+    -40 dBFS.
+
+    The RF-ADC honours the freeze pin only while the PS driver's
     Calibration.DisableFreezePin of the block is 0 (its default).
 
     numCh must match the NUM_CH_G generic of the firmware instance.
@@ -88,7 +111,7 @@ class RfdcCalFreeze(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'AutoEnable',
-            description  = 'Let the signal detector freeze the channel while its ADC magnitude stays below Threshold (one bit per channel)',
+            description  = 'Let the signal detector freeze the calibration of the channel while its input is absent: Magnitude below Threshold for HoldOff consecutive windows asserts the freeze, one window at or above Threshold releases it (one bit per channel)',
             offset       = 0x14,
             bitSize      = numCh,
             bitOffset    = 0,
@@ -98,7 +121,7 @@ class RfdcCalFreeze(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'Threshold',
-            description  = 'Signal detector threshold on Magnitude (16-bit full scale). A -40 dBFS tone, the level below which the product guide asks for the freeze, gives 417 in I/Q mode and 209 in real mode',
+            description  = 'Signal detector threshold on Magnitude (16-bit full scale): a window with Magnitude below it counts as no signal. A -40 dBFS tone, the level below which the product guide asks for the freeze, gives 417 in I/Q mode and 209 in real mode',
             offset       = 0x18,
             bitSize      = 16,
             bitOffset    = 0,
@@ -108,7 +131,7 @@ class RfdcCalFreeze(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'Window',
-            description  = 'Signal detector window of 2^Window DSP clock cycles, WINDOW_MAX_C at most. The product guide asks for the freeze after 100 us without signal',
+            description  = 'Signal detector window of 2^Window DSP clock cycles (the clock the ADC samples arrive on, SAMPLE_PER_CYCLE_G samples per cycle), WINDOW_MAX_C at most. Magnitude is updated and compared with Threshold at the end of every window. 15 is 106.7 us at 307.2 MHz, the product guide asks for the freeze after 100 us without signal',
             offset       = 0x1C,
             bitSize      = 5,
             bitOffset    = 0,
@@ -118,7 +141,7 @@ class RfdcCalFreeze(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'HoldOff',
-            description  = 'Consecutive windows below Threshold before the signal detector asserts the freeze. One window above Threshold releases it',
+            description  = 'Consecutive windows with Magnitude below Threshold (no signal) before the signal detector asserts the freeze, so the freeze lands HoldOff to HoldOff+1 windows after the signal disappears. One window at or above Threshold releases it. 0 behaves as 1',
             offset       = 0x20,
             bitSize      = 8,
             bitOffset    = 0,
@@ -139,7 +162,7 @@ class RfdcCalFreeze(pr.Device):
 
         self.add(pr.RemoteVariable(
             name         = 'AutoFreeze',
-            description  = 'Signal detector state of the channel, 1 while it asks for the freeze (one bit per channel)',
+            description  = 'Signal detector state of the channel, 1 while it sees no signal and asks for the freeze (one bit per channel)',
             offset       = 0x34,
             bitSize      = numCh,
             bitOffset    = 0,
@@ -172,7 +195,7 @@ class RfdcCalFreeze(pr.Device):
 
         self.addRemoteVariables(
             name         = 'Magnitude',
-            description  = 'Mean ADC magnitude of the channel over the last signal detector window: |I|+|Q| per complex sample in I/Q mode, |x| per sample in real mode',
+            description  = 'Mean ADC magnitude of the channel over the last signal detector window, the value compared with Threshold: |I|+|Q| per complex sample in I/Q mode, |x| per sample in real mode',
             offset       = 0x40,
             bitSize      = 16,
             bitOffset    = 0,

@@ -11,22 +11,63 @@
 --
 --    ManualFreeze : a register bit per channel, for a train-then-freeze policy
 --                   run by software after the converters are up
---    AutoEnable   : a signal detector per channel on the ADC samples. The mean
---                   magnitude over a window of 2^Window clocks is compared
---                   with Threshold; HoldOff consecutive windows below it
---                   assert the freeze, one window above releases it
+--    AutoEnable   : a signal detector per channel on the ADC samples, which
+--                   holds the calibration while the input is absent (mean
+--                   magnitude below Threshold) and releases it as soon as a
+--                   signal is back. See "Signal detector" below.
 --
 --    Both are off at reset. The IP core honours the pin only while the PS
 --    driver's DisableFreezePin is 0 (its default).
 --
+--    Channel
+--    -------
+--    A channel is one RF-ADC converter, a "block" of the RF Data Converter IP
+--    core, not a tile: the unit with its own sample stream and its own
+--    int_cal_freeze, cal_frozen and sig_detect pins. A dual-ADC tile holds 2
+--    of them and a quad-ADC tile 4. Channel c of this module is whatever the
+--    application wires to adcI<c>/adcQ<c> and to bit c of adcCalFreeze,
+--    adcCalFrozen and adcSigDetect, and bit c of every per-channel register
+--    refers to it. The tile/block to channel order is the application's
+--    choice.
+--
+--    Sample format
+--    -------------
 --    Channel c takes its samples from adcI<c> (and adcQ<c> when IQ_MODE_G),
---    SAMPLE_PER_CYCLE_G 16-bit samples per clock in bits [16k+15:16k]:
+--    SAMPLE_PER_CYCLE_G 16-bit samples per dspClk in bits [16k+15:16k]:
 --
 --    IQ_MODE_G = true  : adcI/adcQ carry the I and Q of SAMPLE_PER_CYCLE_G
 --                        complex samples (the RF-ADC I/Q output streams).
 --                        The magnitude is |I|+|Q| per complex sample.
 --    IQ_MODE_G = false : adcI carries SAMPLE_PER_CYCLE_G real samples and
 --                        adcQ is unused. The magnitude is |x| per sample.
+--
+--    Signal detector
+--    ---------------
+--    Window    : the magnitude is averaged over back to back windows of
+--                2^Window dspClk cycles. dspClk is the clock the sample
+--                stream arrives on, SAMPLE_PER_CYCLE_G samples per cycle, so
+--                a window covers 2^Window * SAMPLE_PER_CYCLE_G samples. At
+--                the end of every window the mean magnitude per sample is
+--                compared with Threshold and published in Magnitude[c].
+--                With a 307.2 MHz dspClk and Window = 15 a window is 32768
+--                cycles = 106.7 us, the shortest power of 2 above the
+--                product guide's 100 us.
+--    Threshold : the mean magnitude below which a window counts as "no
+--                signal". 16-bit full scale: a -40 dBFS tone gives a mean
+--                |I|+|Q| of 417 (I/Q mode) or a mean |x| of 209 (real mode).
+--    HoldOff   : the number of consecutive "no signal" windows before the
+--                detector asserts the freeze, so the freeze lands between
+--                HoldOff and HoldOff+1 windows after the signal disappears
+--                (the window in progress may still average above Threshold).
+--                A single window at or above Threshold clears the count and
+--                releases the freeze, so the release lands within two
+--                windows of the signal coming back. HoldOff = 0 behaves as 1.
+--
+--    The polarity is "freeze while the signal is low": the calibration runs
+--    while there is signal to train on and is held while the input is absent,
+--    which is when it would drift. With the defaults (Window 15, HoldOff 1,
+--    307.2 MHz) a channel freezes 107 to 213 us after its input drops below
+--    -40 dBFS and releases within 213 us of the input returning.
 --
 --    The signal detector pipeline is: |x| of every sample of the clock, an
 --    adder tree of log2 levels down to one magnitude per clock, a window
@@ -63,12 +104,12 @@ entity RfdcCalFreeze is
       TPD_G              : time                     := 1 ns;
       COMMON_CLK_G       : boolean                  := false;  -- true if dspClk=axilClk
       NUM_CH_G           : positive range 1 to 16   := 1;
-      IQ_MODE_G          : boolean                  := true;   -- true: I/Q samples on adcI/adcQ, false: real samples on adcI
+      IQ_MODE_G          : boolean                  := true;   -- true: I/Q samples on adcI/adcQ (|I|+|Q|), false: real samples on adcI (|x|)
       SAMPLE_PER_CYCLE_G : positive                 := 16;     -- (complex) samples per channel per dspClk, power of 2
       -- Reset values of the signal detector registers
-      THRESHOLD_INIT_G   : natural range 0 to 65535 := 416;    -- a -40 dBFS tone gives a mean |I|+|Q| of 417 (|x| of 209)
-      WINDOW_INIT_G      : natural range 0 to 24    := 15;     -- 2^15 clocks, 106.7 us at 307.2 MHz
-      HOLD_OFF_INIT_G    : natural range 0 to 255   := 1);
+      THRESHOLD_INIT_G   : natural range 0 to 65535 := 416;    -- freeze below this mean magnitude: a -40 dBFS tone gives a mean |I|+|Q| of 417 (|x| of 209)
+      WINDOW_INIT_G      : natural range 0 to 24    := 15;     -- 2^15 dspClk cycles per window, 106.7 us at 307.2 MHz
+      HOLD_OFF_INIT_G    : natural range 0 to 255   := 1);     -- consecutive windows below threshold before the freeze
    port (
       -- ADC samples (dspClk domain)
       dspClk          : in  sl;
@@ -418,8 +459,8 @@ begin
             end if;
          end if;
 
-         -- HoldOff consecutive low windows assert the freeze,
-         -- one window with signal releases it
+         -- HoldOff consecutive windows below the threshold (no signal) assert
+         -- the freeze, one window at or above it (signal back) releases it
          if (r.belowValid = '1') then
             if (r.det(ch).below = '1') then
                if (r.det(ch).lowCnt < holdOff) then

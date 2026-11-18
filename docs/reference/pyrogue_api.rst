@@ -99,12 +99,44 @@ RfdcCalFreeze
 
 ``RfdcCalFreeze`` is the PyRogue ``Device`` for the ``RfdcCalFreeze`` RTL block, which
 drives the RF-ADC ``int_cal_freeze`` pins. The RF-ADC background calibration (GCB and
-TSCB) drifts when the input drops below -40 dBFS, so the product guide asks for it to be
-frozen while the input is absent for longer than 100 us. The block freezes a channel from
-either of two sources: a ``ManualFreeze`` register bit, or a per-channel signal detector
-on the ADC samples (``AutoEnable``) that compares the mean magnitude over a window of
-``2^Window`` DSP clocks with ``Threshold`` and asserts the freeze after ``HoldOff``
-consecutive windows below it.
+TSCB) trains on the input signal and drifts when the input drops below -40 dBFS, so the
+product guide asks for it to be frozen while the input is absent for longer than 100 us.
+The block freezes a channel from either of two sources: a ``ManualFreeze`` register bit,
+or a per-channel signal detector on the ADC samples (``AutoEnable``) that holds the
+calibration while the input is absent and releases it as soon as a signal is back.
+
+A *channel* is one RF-ADC converter, a block of the RF Data Converter IP core, not a
+tile. It is the unit with its own sample stream and its own ``int_cal_freeze``,
+``cal_frozen`` and ``sig_detect`` pins; a dual-ADC tile holds two of them and a quad-ADC
+tile four. Channel ``c`` is whatever the application wired to the ``adcI<c>``/``adcQ<c>``
+ports of the firmware, and bit ``c`` of every per-channel register refers to it.
+
+The signal detector works in units of *windows*:
+
+- ``Window``: the magnitude is averaged over back to back windows of ``2^Window`` DSP
+  clock cycles. The DSP clock is the clock the ADC sample stream arrives on,
+  ``SAMPLE_PER_CYCLE_G`` samples per cycle, so a window covers
+  ``2^Window * SAMPLE_PER_CYCLE_G`` samples. At the end of every window the mean
+  magnitude per sample is compared with ``Threshold`` and published in ``Magnitude[c]``.
+  With a 307.2 MHz DSP clock and ``Window = 15`` a window is 32768 cycles, 106.7 us,
+  the shortest power of two above the product guide's 100 us.
+- ``Threshold``: the mean magnitude below which a window counts as "no signal", on a
+  16-bit full scale. A -40 dBFS tone gives a mean ``|I|+|Q|`` of 417 in I/Q mode and a
+  mean ``|x|`` of 209 in real mode; the default of 416 freezes below that level.
+- ``HoldOff``: the number of consecutive "no signal" windows before the detector asserts
+  the freeze. The freeze lands between ``HoldOff`` and ``HoldOff + 1`` windows after the
+  signal disappears, since the window in progress may still average above ``Threshold``.
+  A single window at or above ``Threshold`` clears the count and releases the freeze, so
+  the release lands within two windows of the signal coming back. ``HoldOff = 0``
+  behaves as 1.
+
+The polarity is "freeze while the signal is low": the calibration runs while there is
+signal to train on and is held while the input is absent, which is when it would drift.
+With the defaults (``Window = 15``, ``HoldOff = 1``, 307.2 MHz) a channel freezes
+107 to 213 us after its input drops below -40 dBFS and releases within 213 us of the
+input returning. ``AutoFreeze`` reads the detector state per channel, ``CalFreeze`` the
+pin actually driven (``ManualFreeze`` or ``AutoEnable and AutoFreeze``), and
+``CalFrozen`` the ``cal_frozen`` acknowledge from the RF-ADC.
 
 Responsibilities:
 
