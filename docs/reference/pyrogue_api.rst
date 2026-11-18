@@ -92,6 +92,44 @@ Responsibilities:
 in ``AxiSocCore``. Each application repo sets the ``numAdcCh`` and ``numDacCh`` arguments to
 match the board's RFDC configuration.
 
+RfdcCalFreeze
+-------------
+
+:repo:`python/axi_soc_ultra_plus_core/rfsoc_utility/_RfdcCalFreeze.py`
+
+``RfdcCalFreeze`` is the PyRogue ``Device`` for the ``RfdcCalFreeze`` RTL block, which
+drives the RF-ADC ``int_cal_freeze`` pins. The RF-ADC background calibration (GCB and
+TSCB) drifts when the input drops below -40 dBFS, so the product guide asks for it to be
+frozen while the input is absent for longer than 100 us. The block freezes a channel from
+either of two sources: a ``ManualFreeze`` register bit, or a per-channel signal detector
+on the ADC samples (``AutoEnable``) that compares the mean magnitude over a window of
+``2^Window`` DSP clocks with ``Threshold`` and asserts the freeze after ``HoldOff``
+consecutive windows below it.
+
+Responsibilities:
+
+- Exposes the build-time generics read only (``NUM_CH_G``, ``SAMPLE_PER_CYCLE_G``,
+  ``IQ_MODE_G``, ``COMMON_CLK_G``, ``WINDOW_MAX_C``) so software can check the firmware
+  configuration it is talking to.
+- Holds the per-channel bitmask control and status registers (``ManualFreeze``,
+  ``AutoEnable``, ``CalFrozen``, ``AutoFreeze``, ``SigDetect``, ``CalFreeze``) and the
+  per-channel ``Magnitude[i]`` readback of the last detector window.
+- In I/Q mode (``IQ_MODE_G = true``) the firmware takes I and Q on separate ``adcI<c>`` and
+  ``adcQ<c>`` ports and ``Magnitude`` is the mean of ``|I|+|Q|`` per complex sample. In real
+  mode only ``adcI<c>`` is used and ``Magnitude`` is the mean of ``|x|`` per sample.
+
+The RF-ADC honours the freeze pin only while the PS driver's
+``Calibration.DisableFreezePin`` of the block (see the ``RfdcBlock`` device) is 0, its
+default. The ``numCh`` argument must match the ``NUM_CH_G`` generic:
+
+.. code-block:: python
+
+   self.add(rfsoc_utility.RfdcCalFreeze(
+       name   = 'RfdcCalFreeze',
+       offset = 0x0020_0000,
+       numCh  = 4, # Must match NUM_CH_G
+   ))
+
 RingBufferProcessor
 -------------------
 
