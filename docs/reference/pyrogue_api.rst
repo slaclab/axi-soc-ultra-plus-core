@@ -92,6 +92,93 @@ Responsibilities:
 in ``AxiSocCore``. Each application repo sets the ``numAdcCh`` and ``numDacCh`` arguments to
 match the board's RFDC configuration.
 
+RfdcCalFreeze
+-------------
+
+:repo:`python/axi_soc_ultra_plus_core/rfsoc_utility/_RfdcCalFreeze.py`
+
+``RfdcCalFreeze`` is the PyRogue ``Device`` for the ``RfdcCalFreeze`` RTL block, which
+drives the RF-ADC ``int_cal_freeze`` pins. The RF-ADC background calibration (GCB and
+TSCB) trains on the input signal and drifts when the input drops below -40 dBFS, so the
+product guide (`PG269 <https://docs.amd.com/r/en-US/pg269-rf-data-converter>`__) asks for
+it to be frozen while the input is absent for longer than 100 us.
+The block freezes a channel from either of two sources: a ``ManualFreeze`` register bit,
+or a per-channel signal detector on the ADC samples (``AutoEnable``) that holds the
+calibration while the input is absent and releases it as soon as a signal is back.
+
+A *channel* is one RF-ADC converter, a block of the RF Data Converter IP core, not a
+tile. It is the unit with its own sample stream and its own ``int_cal_freeze``,
+``cal_frozen`` and ``sig_detect`` pins; a dual-ADC tile holds two of them and a quad-ADC
+tile four. Channel ``c`` is whatever the application wired to the ``adcI<c>``/``adcQ<c>``
+ports of the firmware, and bit ``c`` of every per-channel register refers to it.
+
+The signal detector works in units of *windows*:
+
+- ``Window``: the magnitude is averaged over back to back windows of ``2^Window`` DSP
+  clock cycles. The DSP clock is the clock the ADC sample stream arrives on,
+  ``SAMPLE_PER_CYCLE_G`` samples per cycle, so a window covers
+  ``2^Window * SAMPLE_PER_CYCLE_G`` samples. At the end of every window the mean
+  magnitude per sample is compared with ``Threshold`` and published in ``Magnitude[c]``.
+  With a 307.2 MHz DSP clock and ``Window = 15`` a window is 32768 cycles, 106.7 us,
+  the shortest power of two above the product guide's 100 us.
+- ``Threshold``: the mean magnitude below which a window counts as "no signal", on a
+  16-bit full scale. A -40 dBFS tone gives a mean ``|I|+|Q|`` of 417 in I/Q mode and a
+  mean ``|x|`` of 209 in real mode; the default of 416 freezes below that level.
+- ``HoldOff``: the number of consecutive "no signal" windows before the detector asserts
+  the freeze. The freeze lands between ``HoldOff`` and ``HoldOff + 1`` windows after the
+  signal disappears, since the window in progress may still average above ``Threshold``.
+  A single window at or above ``Threshold`` clears the count and releases the freeze, so
+  the release lands within two windows of the signal coming back. ``HoldOff = 0``
+  behaves as 1.
+
+The polarity is "freeze while the signal is low": the calibration runs while there is
+signal to train on and is held while the input is absent, which is when it would drift.
+With the defaults (``Window = 15``, ``HoldOff = 1``, 307.2 MHz) a channel freezes
+107 to 213 us after its input drops below -40 dBFS and releases within 213 us of the
+input returning. ``AutoFreeze`` reads the detector state per channel, ``CalFreeze`` the
+pin actually driven (``ManualFreeze`` or ``AutoEnable and AutoFreeze``), and
+``CalFrozen`` the ``cal_frozen`` acknowledge from the RF-ADC.
+
+PG269 references:
+
+- The -40 dBFS / 100 us freeze rule, stated for each block:
+  `Gain Calibration Block (GCB)
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Gain-Calibration-Block-GCB>`__ and
+  `Time Skew Calibration Block (TSCB)
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Time-Skew-Calibration-Block-TSCB>`__.
+- The freeze mechanism (active-High freeze, about 7 us to take effect):
+  `Background Calibration Process
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Background-Calibration-Process>`__.
+- The ``int_cal_freeze``, ``cal_frozen`` and ``sig_detect`` pins:
+  `Calibration Freeze Ports for Dual RF-ADC Tiles
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Dual-RF-ADC-Tiles>`__
+  and `Calibration Freeze Ports for Quad RF-ADC Tiles
+  <https://docs.amd.com/r/en-US/pg269-rf-data-converter/Calibration-Freeze-Ports-for-Quad-RF-ADC-Tiles>`__.
+
+Responsibilities:
+
+- Exposes the build-time generics read only (``NUM_CH_G``, ``SAMPLE_PER_CYCLE_G``,
+  ``IQ_MODE_G``, ``COMMON_CLK_G``, ``WINDOW_MAX_C``) so software can check the firmware
+  configuration it is talking to.
+- Holds the per-channel bitmask control and status registers (``ManualFreeze``,
+  ``AutoEnable``, ``CalFrozen``, ``AutoFreeze``, ``SigDetect``, ``CalFreeze``) and the
+  per-channel ``Magnitude[i]`` readback of the last detector window.
+- In I/Q mode (``IQ_MODE_G = true``) the firmware takes I and Q on separate ``adcI<c>`` and
+  ``adcQ<c>`` ports and ``Magnitude`` is the mean of ``|I|+|Q|`` per complex sample. In real
+  mode only ``adcI<c>`` is used and ``Magnitude`` is the mean of ``|x|`` per sample.
+
+The RF-ADC honours the freeze pin only while the PS driver's
+``Calibration.DisableFreezePin`` of the block (see the ``RfdcBlock`` device) is 0, its
+default. The ``numCh`` argument must match the ``NUM_CH_G`` generic:
+
+.. code-block:: python
+
+   self.add(rfsoc_utility.RfdcCalFreeze(
+       name   = 'RfdcCalFreeze',
+       offset = 0x0020_0000,
+       numCh  = 4, # Must match NUM_CH_G
+   ))
+
 RingBufferProcessor
 -------------------
 
